@@ -216,11 +216,6 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 .hist-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;width:100%;box-sizing:border-box;}
 .hist-toolbar-left{display:flex;gap:8px;flex-wrap:wrap;}
 .cloud-notice{background:#E6F1FB;border:1px solid #85B7EB;border-radius:8px;padding:10px 14px;font-size:12px;color:#185FA5;margin-bottom:12px;}
-/* Tooltip element — JS-driven, works inside tables */
-#floatTip{position:fixed;background:#1a1a1a;color:#fff;font-size:11px;line-height:1.5;
-  padding:7px 11px;border-radius:7px;white-space:pre-wrap;max-width:260px;
-  pointer-events:none;z-index:99999;display:none;
-  box-shadow:0 3px 12px rgba(0,0,0,.35);text-align:left;}
 [data-tip]{cursor:help;}
 th[data-tip]{cursor:default;}
 .page{max-width:1200px;margin:0 auto;padding:20px 16px;width:100%;}
@@ -1042,54 +1037,39 @@ function updateEventUI(){document.querySelectorAll('.qpill').forEach(pill=>{cons
 function updateEventBanner(){const banner=document.getElementById('evtBanner');if(!banner)return;const selectedSyms=[...sel.keys()];const warnings=[];selectedSyms.forEach(sym=>{getStockEvents(sym).forEach(e=>{warnings.push({sym,...e});});});if(!warnings.length){banner.style.display='none';return;}const lines=warnings.map(w=>'<strong>'+w.sym+'</strong> \u2014 '+w.icon+' '+w.subject+' on '+w.date+' ('+w.daysAway+' day'+(w.daysAway!==1?'s':'')+' away)');banner.innerHTML='<strong>\u26a0 Corporate events in next 7 days:</strong><br>'+lines.join('<br>')+'<br><span style="font-size:11px;opacity:.8;">These events can cause unusual price moves. Trade with extra caution or consider skipping on event day.</span>';banner.style.display='block';}
 function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return '';return evts.map(e=>'<span class="evt-badge '+e.cls+'" title="'+e.subject+' on '+e.date+'">'+e.icon+' '+e.label+' '+e.daysAway+'d</span>').join(' ');}
 
-// ─── FLOATING TOOLTIP ────────────────────────────────────────────────────────
+
+
+</script>
+<div id="floatTip" style="display:none;position:fixed;background:#1a1a1a;color:#fff;font-size:12px;line-height:1.6;padding:8px 12px;border-radius:8px;white-space:pre-wrap;max-width:280px;pointer-events:none;z-index:99999;box-shadow:0 3px 14px rgba(0,0,0,.4);text-align:left;"></div>
+<script>
+// Tooltip engine — in its own script tag AFTER the floatTip div
 (function(){
-  const tip = document.getElementById('floatTip');
-  if(!tip) return;
-
-  let current = null;
-
+  var tip = document.getElementById('floatTip');
   function show(el, e) {
-    if(el === tip) return;          // never tooltip the tooltip itself
-    const text = el.getAttribute('data-tip');
+    var text = el.getAttribute('data-tip');
     if(!text || !text.trim()) return;
-    current = el;
-    // convert newlines to <br> for multi-line tips
-    tip.innerHTML = text.replace(/\n/g, '<br>');
+    tip.innerHTML = text.replace(/\n/g,'<br>');
     tip.style.display = 'block';
     move(e);
   }
-
   function move(e) {
-    const pad = 14;
-    const w = tip.offsetWidth, h = tip.offsetHeight;
-    let x = e.clientX + pad;
-    let y = e.clientY - h - pad;
-    if(x + w > window.innerWidth - 10) x = e.clientX - w - pad;
-    if(y < 8) y = e.clientY + pad + 4;
-    tip.style.left = x + 'px';
-    tip.style.top  = y + 'px';
+    var pad=14, w=tip.offsetWidth, h=tip.offsetHeight;
+    var x=e.clientX+pad, y=e.clientY-h-pad;
+    if(x+w > window.innerWidth-10) x=e.clientX-w-pad;
+    if(y < 8) y=e.clientY+pad+4;
+    tip.style.left=x+'px';
+    tip.style.top=y+'px';
   }
-
-  function hide() {
-    tip.style.display = 'none';
-    current = null;
-  }
-
-  document.addEventListener('mouseover', function(e) {
-    const el = e.target.closest('[data-tip]');
-    if(el && el !== tip) { show(el, e); }
-    else if(!el) { hide(); }
+  function hide(){ tip.style.display='none'; }
+  document.addEventListener('mouseover',function(e){
+    var el=e.target.closest('[data-tip]');
+    if(el && el!==tip) show(el,e); else hide();
   });
-  document.addEventListener('mousemove', function(e) {
-    if(tip.style.display !== 'none') move(e);
+  document.addEventListener('mousemove',function(e){
+    if(tip.style.display!=='none') move(e);
   });
-  document.addEventListener('mouseleave', hide);
-  // Also hide on scroll so tooltip doesn't float away
-  document.addEventListener('scroll', hide, true);
+  document.addEventListener('scroll',hide,true);
 })();
-
 </script>
-<div id="floatTip" style="display:none;"></div>
 </body>
 </html>
