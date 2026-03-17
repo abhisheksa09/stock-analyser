@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NSE Scanner — User Guide</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f0;color:#1a1a1a;line-height:1.7;}
+.page{max-width:860px;margin:0 auto;padding:40px 24px 80px;}
+.doc-header{text-align:center;padding:48px 0 40px;border-bottom:2px solid #e0e0e0;margin-bottom:48px;}
+.doc-header h1{font-size:32px;font-weight:700;letter-spacing:-.5px;margin-bottom:8px;}
+.doc-header .subtitle{font-size:16px;color:#666;margin-bottom:16px;}
+.doc-header .meta{font-size:13px;color:#999;display:flex;justify-content:center;gap:20px;flex-wrap:wrap;}
+.back-btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;border:1px solid #ddd;background:#fff;color:#185FA5;text-decoration:none;font-size:13px;font-weight:500;margin-bottom:32px;}
+.back-btn:hover{background:#E6F1FB;}
+.toc{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:24px 28px;margin-bottom:48px;}
+.toc h2{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#888;margin-bottom:16px;}
+.toc-list{list-style:none;display:flex;flex-direction:column;gap:4px;}
+.toc-list li a{color:#185FA5;text-decoration:none;font-size:14px;}
+.toc-list li a:hover{text-decoration:underline;}
+.toc-list .toc-sub{margin-left:20px;font-size:13px;}
+.section{margin-bottom:56px;}
+h2.sec-title{font-size:22px;font-weight:700;padding-bottom:12px;border-bottom:2px solid #1a1a1a;margin-bottom:24px;}
+h3.sub-title{font-size:17px;font-weight:600;margin:28px 0 12px;color:#1a1a1a;}
+p{margin-bottom:14px;font-size:15px;color:#333;}
+ul,ol{padding-left:24px;margin-bottom:14px;}
+li{font-size:15px;color:#333;margin-bottom:6px;line-height:1.6;}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px;}
+.card{background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:16px;}
+.card-icon{font-size:24px;margin-bottom:8px;}
+.card-title{font-size:14px;font-weight:600;margin-bottom:4px;}
+.card-desc{font-size:13px;color:#666;line-height:1.5;}
+table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:14px;background:#fff;border-radius:10px;overflow:hidden;border:1px solid #e0e0e0;}
+th{background:#1a1a1a;color:#fff;padding:10px 14px;text-align:left;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+td{padding:10px 14px;border-bottom:1px solid #f0f0f0;color:#333;vertical-align:top;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:#fafafa;}
+.code{font-family:'Courier New',monospace;background:#1a1a1a;color:#a8ff78;padding:16px 20px;border-radius:8px;font-size:13px;margin-bottom:16px;overflow-x:auto;}
+.inline-code{font-family:monospace;background:#f0f0f0;padding:2px 6px;border-radius:4px;font-size:13px;color:#E24B4A;}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;margin:2px;}
+.badge-green{background:#EAF3DE;color:#27500A;}
+.badge-red{background:#FCEBEB;color:#791F1F;}
+.badge-blue{background:#E6F1FB;color:#185FA5;}
+.badge-amber{background:#FAEEDA;color:#633806;}
+.badge-gray{background:#f0f0f0;color:#555;}
+.callout{padding:14px 18px;border-radius:8px;margin-bottom:16px;font-size:14px;line-height:1.6;}
+.callout-warning{background:#FFF8E1;border-left:4px solid #FAC775;color:#633806;}
+.callout-tip{background:#EAF3DE;border-left:4px solid #C0DD97;color:#27500A;}
+.callout-info{background:#E6F1FB;border-left:4px solid #85B7EB;color:#185FA5;}
+.callout-danger{background:#FCEBEB;border-left:4px solid #F09595;color:#791F1F;}
+.callout strong{display:block;margin-bottom:4px;}
+.conf-demo{display:flex;align-items:center;gap:12px;padding:12px 16px;background:#fff;border:1px solid #e0e0e0;border-radius:8px;margin-bottom:8px;}
+.conf-pct{font-size:20px;font-weight:700;min-width:52px;}
+.conf-bar-bg{flex:1;height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;}
+.conf-bar-fill{height:100%;border-radius:4px;}
+.conf-label{font-size:13px;font-weight:600;min-width:70px;}
+.steps{counter-reset:step;display:flex;flex-direction:column;gap:16px;margin-bottom:20px;}
+.step{display:flex;gap:16px;align-items:flex-start;}
+.step-num{width:32px;height:32px;border-radius:50%;background:#1a1a1a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;margin-top:2px;}
+.step-body{flex:1;}
+.step-title{font-size:15px;font-weight:600;margin-bottom:4px;}
+.step-desc{font-size:14px;color:#555;line-height:1.6;}
+.evt-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid #e0e0e0;border-radius:8px;background:#fff;margin-bottom:8px;}
+.evt-icon{font-size:20px;}
+.evt-name{font-weight:600;font-size:14px;min-width:100px;}
+.evt-impact{font-size:13px;color:#555;flex:1;}
+.gate-demo{display:flex;flex-direction:column;gap:6px;background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:14px 16px;margin-bottom:16px;}
+.gate-row{display:flex;align-items:center;gap:10px;font-size:13px;}
+.gate-icon{font-size:15px;width:20px;flex-shrink:0;}
+.gate-verdict{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;padding:5px 12px;border-radius:6px;margin-bottom:8px;}
+.verdict-yes{background:#EAF3DE;color:#27500A;}
+.verdict-no{background:#FCEBEB;color:#791F1F;}
+.verdict-wait{background:#FAEEDA;color:#633806;}
+footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;border-top:1px solid #e0e0e0;margin-top:48px;}
+@media(max-width:600px){.doc-header h1{font-size:24px;}.card-grid{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <a href="/" class="back-btn">← Back to Scanner</a>
+
+  <div class="doc-header">
+    <div style="font-size:40px;margin-bottom:12px;">📈</div>
+    <h1>NSE Intraday Scanner</h1>
+    <div class="subtitle">Complete User Guide &amp; Reference</div>
+    <div class="meta">
+      <span>⚡ Powered by Upstox API</span>
+      <span>🤖 Claude AI integration</span>
+      <span>🔒 Everything runs locally</span>
+      <span>📱 Mobile via home WiFi</span>
+    </div>
+  </div>
+
+  <div class="toc">
+    <h2>Contents</h2>
+    <ul class="toc-list">
+      <li><a href="#overview">1. Overview &amp; Architecture</a></li>
+      <li><a href="#setup">2. Daily Setup</a></li>
+      <li class="toc-sub"><a href="#token">→ Generating your Upstox token</a></li>
+      <li class="toc-sub"><a href="#proxy">→ Starting the proxy</a></li>
+      <li class="toc-sub"><a href="#mobile">→ Accessing from mobile</a></li>
+      <li><a href="#scanner">3. Scanner Tab</a></li>
+      <li class="toc-sub"><a href="#stocks">→ Adding stocks</a></li>
+      <li class="toc-sub"><a href="#reading">→ Reading the results table</a></li>
+      <li><a href="#when-to-trade">4. When To Actually Trade</a></li>
+      <li class="toc-sub"><a href="#gates">→ The 6-gate readiness checklist</a></li>
+      <li class="toc-sub"><a href="#morning">→ Morning routine</a></li>
+      <li><a href="#signal-lock">5. Signal Lock &amp; Reversal Detection</a></li>
+      <li><a href="#confirmation">6. Candle Confirmation</a></li>
+      <li><a href="#confidence">7. Confidence Engine</a></li>
+      <li><a href="#indicators">8. Technical Indicators (ORB, VWAP, RSI, ATR)</a></li>
+      <li><a href="#events">9. Corporate Events Warning</a></li>
+      <li><a href="#history">10. History Tab</a></li>
+      <li><a href="#trading">11. Trading Best Practices</a></li>
+      <li><a href="#trouble">12. Troubleshooting</a></li>
+      <li><a href="#api">13. Proxy API Reference</a></li>
+    </ul>
+  </div>
+
+  <!-- 1. OVERVIEW -->
+  <div class="section" id="overview">
+    <h2 class="sec-title">1. Overview &amp; Architecture</h2>
+    <p>The NSE Intraday Scanner is a fully local web application. It fetches real-time OHLCV data from Upstox, computes ORB, RSI, VWAP and ATR, generates confidence-scored trade signals with a 6-gate readiness checklist, and uses Claude AI to write plain-English trade plans. Nothing leaves your machine except API calls to Upstox and Anthropic.</p>
+    <div class="card-grid">
+      <div class="card"><div class="card-icon">🐍</div><div class="card-title">upstox_proxy.py</div><div class="card-desc">Python server on port 8080. Proxies Upstox, Anthropic, NSE. Serves the app and README. Run it every morning.</div></div>
+      <div class="card"><div class="card-icon">🌐</div><div class="card-title">nse_scanner.html</div><div class="card-desc">The full app — served at http://localhost:8080. Works in Chrome, Edge, Firefox on PC and mobile.</div></div>
+      <div class="card"><div class="card-icon">📄</div><div class="card-title">nse_history.json</div><div class="card-desc">Your trade history database. Plain JSON on your PC. Link it once in the History tab.</div></div>
+      <div class="card"><div class="card-icon">📡</div><div class="card-title">Upstox API</div><div class="card-desc">Real-time LTP, intraday 1-min candles, 30 days daily OHLCV. Requires daily token.</div></div>
+      <div class="card"><div class="card-icon">🤖</div><div class="card-title">Anthropic API</div><div class="card-desc">AI market summary and per-stock trade plans. Requires a personal API key (one-time setup).</div></div>
+      <div class="card"><div class="card-icon">🏛</div><div class="card-title">NSE India API</div><div class="card-desc">Public corporate actions data. Auto-fetched to warn about results, dividends, splits in next 7 days.</div></div>
+    </div>
+  </div>
+
+  <!-- 2. SETUP -->
+  <div class="section" id="setup">
+    <h2 class="sec-title">2. Daily Setup</h2>
+
+    <h3 class="sub-title" id="token">Generating your Upstox Token</h3>
+    <p>The Upstox access token expires at midnight IST every day. Run this once each morning:</p>
+    <div class="code">cd C:\Abhi\Learning\stock_preditor
+python GetUpstoxToken.ps1</div>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Run the script</div><div class="step-desc">Browser opens the Upstox login page automatically.</div></div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">Log in with OTP</div><div class="step-desc">Use your Upstox mobile number and OTP. Browser redirects to https://localhost/?code=...</div></div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Copy redirect URL</div><div class="step-desc">Copy the full URL from the address bar and paste into PowerShell when prompted.</div></div></div>
+      <div class="step"><div class="step-num">4</div><div class="step-body"><div class="step-title">Token copied to clipboard</div><div class="step-desc">Script prints the token, copies it to clipboard, and saves to upstox_token.txt.</div></div></div>
+    </div>
+
+    <h3 class="sub-title" id="proxy">Starting the Proxy Server</h3>
+    <div class="code">cd C:\Abhi\Learning\stock_preditor
+python upstox_proxy.py</div>
+    <p>The proxy starts and automatically opens <strong>http://localhost:8080</strong> in your default browser. It also prints your local network IP for mobile access. Keep this PowerShell window open the entire time you are trading.</p>
+    <div class="callout callout-warning"><strong>⚠ Always use http://localhost:8080</strong>Never open by double-clicking the HTML file. Opening as file:// prevents Chrome and Firefox from making API calls due to browser security policies.</div>
+
+    <h3 class="sub-title" id="mobile">Accessing from Mobile (same WiFi)</h3>
+    <p>The proxy listens on all network interfaces, so any device on the same WiFi network can reach it.</p>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Find your PC's IP</div><div class="step-desc">The proxy prints it at startup, e.g. <span class="inline-code">http://192.168.1.45:8080</span>. Or run <span class="inline-code">ipconfig</span> in PowerShell and look for IPv4 Address.</div></div></div>
+      <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">Allow port 8080 through Windows Firewall (one-time)</div><div class="step-desc">Run PowerShell as Administrator:<br><span class="inline-code">New-NetFirewallRule -DisplayName "NSE Scanner" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow</span></div></div></div>
+      <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Open on phone</div><div class="step-desc">Connect phone to same WiFi. Open Chrome/Safari and go to <span class="inline-code">http://192.168.1.45:8080</span>.</div></div></div>
+    </div>
+    <div class="callout callout-info"><strong>ℹ For access outside home WiFi</strong>Install <a href="https://tailscale.com" style="color:#185FA5;">Tailscale</a> (free for personal use) on your PC and phone. It creates a private VPN between your devices so the scanner works anywhere — mobile data, office, anywhere — with zero router configuration.</div>
+  </div>
+
+  <!-- 3. SCANNER -->
+  <div class="section" id="scanner">
+    <h2 class="sec-title">3. Scanner Tab</h2>
+
+    <h3 class="sub-title" id="stocks">Adding Stocks</h3>
+    <table>
+      <tr><th>Method</th><th>How it works</th></tr>
+      <tr><td><strong>Search box</strong></td><td>Type a symbol (INFY) or partial name (Bajaj). Dropdown shows up to 8 matches. Arrow keys to navigate, Enter or click to add. Max 15 stocks per scan.</td></tr>
+      <tr><td><strong>Quick-add pills</strong></td><td>All 30 Nifty stocks shown below the search. Click to add (turns green), click again to remove. Stocks with upcoming corporate events show a coloured badge.</td></tr>
+      <tr><td><strong>Anthropic API key</strong></td><td>Required once for AI features. Get from console.anthropic.com → API Keys. Paste and click Save key. Stored in browser localStorage permanently.</td></tr>
+    </table>
+
+    <h3 class="sub-title" id="reading">Reading the Results Table</h3>
+    <table>
+      <tr><th>Column</th><th>What it means</th><th>Action</th></tr>
+      <tr><td><strong>Signal</strong></td><td><span class="badge badge-green">BUY</span> <span class="badge badge-red">SELL</span> <span class="badge badge-amber">WATCH</span> — based on ORB + VWAP + RSI confluence. Shows candle confirmation badge (✓ 3/3 or ⚡ 1/3)</td><td>Only trade BUY or SELL, never WATCH</td></tr>
+      <tr><td><strong>Stock column</strong></td><td>Shows signal history dots (B/S/W, oldest→newest, current has black ring) and locked signal row if it has changed since first scan</td><td>If you see ⚡ REVERSED, skip the stock</td></tr>
+      <tr><td><strong>LTP</strong></td><td>Last traded price with % change vs previous close</td><td>Reference for sizing</td></tr>
+      <tr><td><strong>Entry / Target / SL</strong></td><td>↗ Entry · ✓ Target · ✗ Stop loss based on ORB and ATR</td><td>Place limit order at entry, hard stop at SL</td></tr>
+      <tr><td><strong>R:R</strong></td><td>Risk:Reward ratio. <span class="badge badge-green">2:1+</span> = good, <span class="badge badge-red">&lt;1.5</span> = skip</td><td>Only trade 2:1 or better</td></tr>
+      <tr><td><strong>Confidence</strong></td><td>Weighted score 0–100% across 6 factors. Green ≥75%, amber 55–74%, red &lt;55%</td><td>75%+ only. 55–74% half size. Below 55% skip.</td></tr>
+      <tr><td><strong>RSI · VWAP · ATR</strong></td><td>Mini bar charts. Green = supports signal, red = conflicts</td><td>All three should support signal direction</td></tr>
+      <tr><td><strong>ORB</strong></td><td>Opening Range Breakout status + H/L levels of 9:15–9:30 candles</td><td>Confirmed breakout required before entry</td></tr>
+      <tr><td><strong>Volume</strong></td><td>Today's volume as % of 20-day average + raw number</td><td>Must be ≥100% for reliable signal</td></tr>
+      <tr><td><strong>Ready?</strong></td><td>6-gate checklist with a verdict: 🟢 Ready, 🟡 Half size, 🔴 Not ready</td><td>Only trade when verdict is 🟢 or 🟡</td></tr>
+    </table>
+    <div class="callout callout-tip"><strong>💡 Click any row</strong> to expand the detail panel. Shows confidence breakdown, signal history timeline, all key levels, corporate event warnings, and an AI trade plan button.</div>
+  </div>
+
+  <!-- 4. WHEN TO TRADE -->
+  <div class="section" id="when-to-trade">
+    <h2 class="sec-title">4. When To Actually Trade</h2>
+    <p>This is the most important section. Having a signal does not mean enter immediately. You need all 6 gates green at the same time.</p>
+
+    <h3 class="sub-title" id="gates">The 6-Gate Readiness Checklist</h3>
+    <p>The <strong>Ready?</strong> column on every scan result row evaluates all 6 gates live and shows a verdict. Here is what each gate means:</p>
+
+    <div class="gate-demo">
+      <div class="gate-verdict verdict-yes">🟢 Ready to trade — example of all gates green at 9:52 AM</div>
+      <div class="gate-row"><span class="gate-icon">✅</span><span>9:45–10:30 AM ✓ prime window</span></div>
+      <div class="gate-row"><span class="gate-icon">✅</span><span>BUY confirmed ✓ (seen on 2 scans, no reversal)</span></div>
+      <div class="gate-row"><span class="gate-icon">✅</span><span>3/3 candles ✓ (last 3 candles all closed above VWAP)</span></div>
+      <div class="gate-row"><span class="gate-icon">✅</span><span>82% ≥ 75% ✓</span></div>
+      <div class="gate-row"><span class="gate-icon">✅</span><span>138% of avg ✓</span></div>
+      <div class="gate-row"><span class="gate-icon">✅</span><span>Above ORB high ✓</span></div>
+    </div>
+
+    <table>
+      <tr><th>Gate</th><th>✅ Pass condition</th><th>❌ Fail condition</th></tr>
+      <tr><td><strong>1. Time</strong></td><td>9:45 AM – 10:30 AM (prime). After 10:30 shows 🟡 warning but allows.</td><td>Before 9:45 AM or after 3:00 PM</td></tr>
+      <tr><td><strong>2. Signal</strong></td><td>BUY or SELL. No reversal flag. Seen on at least 2 scans.</td><td>WATCH signal, or signal reversed since first scan</td></tr>
+      <tr><td><strong>3. Candle confirmation</strong></td><td>Last 3 one-minute candles all closed on correct side of VWAP</td><td>Only 1 or 2 of 3 candles confirm — signal not established</td></tr>
+      <tr><td><strong>4. Confidence</strong></td><td>≥75% for full size. 55–74% for half size (🟡)</td><td>Below 55%</td></tr>
+      <tr><td><strong>5. Volume</strong></td><td>Today's volume ≥ 100% of 20-day average</td><td>Volume below average — breakouts on low volume fail</td></tr>
+      <tr><td><strong>6. ORB breakout</strong></td><td>BUY: price closed above ORB High. SELL: price closed below ORB Low.</td><td>Price still inside the opening range</td></tr>
+    </table>
+
+    <div class="callout callout-danger"><strong>⚡ If the signal reversed between scans — SKIP THE STOCK</strong>A stock that flipped from SELL to BUY (or vice versa) within minutes is ranging, not trending. The ORB has not established a clear direction. No amount of confidence score justifies entering a reversed signal. Come back to it the next day.</div>
+
+    <h3 class="sub-title" id="morning">The Morning Routine</h3>
+    <table>
+      <tr><th>Time (IST)</th><th>Action</th></tr>
+      <tr><td>9:00 AM</td><td>Run GetUpstoxToken.ps1, then python upstox_proxy.py</td></tr>
+      <tr><td>9:15–9:30 AM</td><td>Market opens. Watch only — do not touch scanner or trade.</td></tr>
+      <tr><td><strong>9:30 AM</strong></td><td><strong>Run first scan.</strong> ORB is now formed. Note BUY/SELL signals. Do NOT enter yet.</td></tr>
+      <tr><td>9:30–9:45 AM</td><td>Watch price. Is it holding above ORB High (BUY) or below ORB Low (SELL)?</td></tr>
+      <tr><td><strong>9:45 AM</strong></td><td><strong>Run second scan.</strong> Same signal as 9:30? All 6 gates green? → Enter. Signal flipped? → Skip that stock today.</td></tr>
+      <tr><td>10:00 AM</td><td>Last comfortable entry time for strong setups.</td></tr>
+      <tr><td>10:30 AM</td><td>Absolute cutoff. No new entries after this.</td></tr>
+      <tr><td>1:00–2:00 PM</td><td>Dead zone — low volume, choppy. Never trade this window.</td></tr>
+      <tr><td>3:00 PM</td><td>Hard stop — no new entries.</td></tr>
+      <tr><td>3:15 PM</td><td>Exit all positions. Never hold through close.</td></tr>
+      <tr><td>After 3:30 PM</td><td>Fill in actual entry/exit in History tab. Save predictions.</td></tr>
+    </table>
+  </div>
+
+  <!-- 5. SIGNAL LOCK -->
+  <div class="section" id="signal-lock">
+    <h2 class="sec-title">5. Signal Lock &amp; Reversal Detection</h2>
+    <p>The scanner remembers every signal for each stock across all scans in the same trading session. This lets you see whether a signal is stable or erratic.</p>
+
+    <h3 class="sub-title">How it works</h3>
+    <ul>
+      <li><strong>Session lock</strong> — the very first signal for each stock each day is locked (🔒). It appears below the stock name on every subsequent scan.</li>
+      <li><strong>Signal history dots</strong> — small coloured circles (B=Buy green, S=Sell red, W=Watch amber) show the sequence of signals across scans. The current scan has a black ring. Oldest → newest, left to right.</li>
+      <li><strong>Reversal detection</strong> — if the current signal differs from the locked signal (and both are directional, not WATCH), a red ⚡ REVERSED badge appears on the row, and a red banner at the top of the scanner lists all reversed stocks.</li>
+    </ul>
+
+    <h3 class="sub-title">Advisory only</h3>
+    <p>The signal lock is <strong>advisory</strong> — the scanner shows you both the locked signal and the current signal. You decide. The entry price, target and stop loss are always based on the current scan. The lock is there to inform, not override.</p>
+
+    <h3 class="sub-title">Session reset</h3>
+    <p>Signal history resets automatically at midnight every day so each trading day starts completely fresh.</p>
+
+    <div class="callout callout-tip"><strong>💡 Practical rule</strong>If you see more than one reversal in a stock's history dots (e.g. S → B → S), that stock is ranging sideways. The ORB breakout direction is unclear. Skip it for the entire session and check again the next day.</div>
+  </div>
+
+  <!-- 6. CANDLE CONFIRMATION -->
+  <div class="section" id="confirmation">
+    <h2 class="sec-title">6. Candle Confirmation</h2>
+    <p>A signal appearing on one candle is not enough to enter. The scanner requires the last <strong>3 consecutive one-minute candles</strong> to all close on the correct side of VWAP before marking a signal as confirmed.</p>
+
+    <table>
+      <tr><th>State</th><th>Badge shown</th><th>What to do</th></tr>
+      <tr><td>3/3 candles agree</td><td><span class="badge badge-green">✓ 3/3 confirmed</span></td><td>Gate 3 is green — proceed with other gates</td></tr>
+      <tr><td>1 or 2 candles agree</td><td><span class="badge badge-amber">⚡ 2/3 candles</span></td><td>Gate 3 is red — wait one more candle (1 minute), rescan</td></tr>
+    </table>
+
+    <p>Unconfirmed signals also receive a <strong>−20% confidence penalty</strong> to reflect the higher risk. If a stock shows 78% confidence but is unconfirmed, it drops to 58% — pushing it into the half-size zone automatically.</p>
+
+    <div class="callout callout-warning"><strong>⚠ Why this matters</strong>At 9:30 AM prices are volatile. A single candle closing above ORB High can be a spike that reverses immediately. Three consecutive candles closing above ORB High means buyers are committed. This one rule eliminates most false breakout entries.</div>
+  </div>
+
+  <!-- 7. CONFIDENCE ENGINE -->
+  <div class="section" id="confidence">
+    <h2 class="sec-title">7. Confidence Engine</h2>
+    <p>Every signal gets a 0–100% score from 6 weighted factors, sorted highest first.</p>
+    <div class="conf-demo"><div class="conf-pct" style="color:#27500A;">82%</div><div class="conf-bar-bg"><div class="conf-bar-fill" style="width:82%;background:#639922;"></div></div><div class="conf-label" style="color:#27500A;">High — trade</div></div>
+    <div class="conf-demo"><div class="conf-pct" style="color:#854F0B;">63%</div><div class="conf-bar-bg"><div class="conf-bar-fill" style="width:63%;background:#EF9F27;"></div></div><div class="conf-label" style="color:#854F0B;">Medium — half size</div></div>
+    <div class="conf-demo"><div class="conf-pct" style="color:#A32D2D;">38%</div><div class="conf-bar-bg"><div class="conf-bar-fill" style="width:38%;background:#E24B4A;"></div></div><div class="conf-label" style="color:#A32D2D;">Low — skip</div></div>
+    <table style="margin-top:20px;">
+      <tr><th>Factor</th><th>Weight</th><th>Scores 100% when…</th></tr>
+      <tr><td><strong>ORB breakout</strong></td><td>25%</td><td>Price has cleanly broken ORB High (BUY) or ORB Low (SELL)</td></tr>
+      <tr><td><strong>Volume confirmation</strong></td><td>20%</td><td>Today's volume ≥ 1.5× the 20-day average</td></tr>
+      <tr><td><strong>VWAP alignment</strong></td><td>20%</td><td>Price is on the correct side of VWAP for the signal direction</td></tr>
+      <tr><td><strong>RSI alignment</strong></td><td>15%</td><td>RSI is in the 40–60 neutral zone</td></tr>
+      <tr><td><strong>Risk:Reward</strong></td><td>15%</td><td>R:R is ≥ 3:1</td></tr>
+      <tr><td><strong>ATR / volatility</strong></td><td>5%</td><td>Stock's daily range is 0.8–2.5% of price</td></tr>
+    </table>
+    <div class="callout callout-info"><strong>ℹ WATCH signals are capped at 45%</strong>Unconfirmed signals get −20% penalty. Both are automatic.</div>
+  </div>
+
+  <!-- 8. INDICATORS -->
+  <div class="section" id="indicators">
+    <h2 class="sec-title">8. Technical Indicators</h2>
+    <h3 class="sub-title">ORB — Opening Range Breakout</h3>
+    <p>Calculated from the first 15 one-minute candles (9:15–9:30 AM IST). Highest high = ORB High. Lowest low = ORB Low.</p>
+    <ul>
+      <li>Price closes <strong>above ORB High</strong> + volume spike → BUY signal</li>
+      <li>Price closes <strong>below ORB Low</strong> + volume spike → SELL signal</li>
+      <li>Price inside range → WATCH</li>
+    </ul>
+    <div class="callout callout-warning"><strong>⚠ Never enter before 9:30 AM.</strong> The ORB must be fully formed first.</div>
+
+    <h3 class="sub-title">VWAP — Volume Weighted Average Price</h3>
+    <p>Calculated from all intraday 1-minute candles, reset at 9:15 AM each day. Price above VWAP = buyers in control. Price below VWAP = sellers in control. Also used for candle confirmation (all recent candles must close on the correct side).</p>
+
+    <h3 class="sub-title">RSI (14) — Relative Strength Index</h3>
+    <p>Calculated from the last 14 <em>daily</em> closes, not intraday candles.</p>
+    <table>
+      <tr><th>RSI</th><th>Zone</th><th>On BUY</th><th>On SELL</th></tr>
+      <tr><td>0–30</td><td>Oversold</td><td>✅ Strong bounce</td><td>❌ Risky to short</td></tr>
+      <tr><td>30–60</td><td>Neutral</td><td>✅ Ideal</td><td>✅ Ideal</td></tr>
+      <tr><td>60–70</td><td>Strong</td><td>⚠ Caution</td><td>✅ Good short</td></tr>
+      <tr><td>70–100</td><td>Overbought</td><td>❌ Avoid</td><td>✅ Strong short</td></tr>
+    </table>
+
+    <h3 class="sub-title">ATR — Average True Range</h3>
+    <p>14-day average daily range. Sets stop loss (entry ± 0.3–0.4 × ATR) and target (entry ± 1.5–2.0 × ATR). Ideal: 0.8–2.5% of price.</p>
+  </div>
+
+  <!-- 9. EVENTS -->
+  <div class="section" id="events">
+    <h2 class="sec-title">9. Corporate Events Warning</h2>
+    <p>Fetched automatically from NSE India's public API. Any stock with an event in the next <strong>7 days</strong> is flagged in the quick-add pills, selected stock tags, a yellow warning banner, the scan table, and the detail panel.</p>
+    <div class="evt-row"><span class="evt-icon">📋</span><span class="evt-name" style="color:#791F1F;">Results</span><span class="evt-impact">High impact. Stock can gap 5–15%. ORB signals unreliable. Skip on results day.</span></div>
+    <div class="evt-row"><span class="evt-icon">✂️</span><span class="evt-name" style="color:#633806;">Split / Bonus</span><span class="evt-impact">High impact on ex-date. Price adjusts by ratio — all historical levels become meaningless.</span></div>
+    <div class="evt-row"><span class="evt-icon">💰</span><span class="evt-name" style="color:#27500A;">Dividend</span><span class="evt-impact">Low impact. Price adjusts by dividend amount on ex-date. Trade with awareness.</span></div>
+    <div class="evt-row"><span class="evt-icon">🏛</span><span class="evt-name" style="color:#185FA5;">AGM</span><span class="evt-impact">Minimal direct impact. Monitor news on AGM day.</span></div>
+  </div>
+
+  <!-- 10. HISTORY -->
+  <div class="section" id="history">
+    <h2 class="sec-title">10. History Tab</h2>
+    <p>Track predictions vs actual outcomes to measure scanner accuracy over time.</p>
+
+    <h3 class="sub-title">Tab layout (top to bottom)</h3>
+    <ol>
+      <li>Stats bar — Predictions / Target hit / SL / Win rate / Avg P&amp;L</li>
+      <li>📁 JSON File Storage <em>(collapsible)</em></li>
+      <li>📊 Accuracy by Category <em>(collapsible)</em></li>
+      <li>🔍 Filters &amp; Sort <em>(collapsible)</em></li>
+      <li>Export / Import / Clear buttons — always visible</li>
+      <li>Bulk action bar — appears when rows are selected</li>
+      <li>History table — always visible at bottom</li>
+    </ol>
+
+    <h3 class="sub-title">Persisting data across browsers</h3>
+    <p>Expand 📁 JSON File Storage → type your path → click <strong>Set path &amp; load</strong>. Example: <span class="inline-code">C:\Abhi\Learning\stock_preditor\nse_history.json</span>. Every save writes to this file automatically. Works in Chrome, Edge, Firefox identically.</p>
+
+    <h3 class="sub-title">Recording outcomes</h3>
+    <p>Fill in <strong>Actual entry</strong> and <strong>Actual exit</strong> after the session. Outcome and P&amp;L are calculated automatically.</p>
+
+    <h3 class="sub-title">Bulk delete</h3>
+    <p>Checkbox on each row. Header checkbox selects all visible. Bulk action bar appears with delete count. ✕ button on row hover deletes single row.</p>
+
+    <h3 class="sub-title">Export &amp; Import CSV</h3>
+    <p>Export downloads <span class="inline-code">nse_history_YYYY-MM-DD.csv</span>. Import merges from a previously exported CSV — skips exact duplicates (same stock + same date).</p>
+  </div>
+
+  <!-- 11. TRADING BEST PRACTICES -->
+  <div class="section" id="trading">
+    <h2 class="sec-title">11. Trading Best Practices</h2>
+
+    <h3 class="sub-title">Position sizing</h3>
+    <table>
+      <tr><th>Confidence</th><th>Ready? verdict</th><th>Max position</th><th>Max risk/trade</th></tr>
+      <tr><td><span class="badge badge-green">75%+</span></td><td>🟢 Ready</td><td>Full size</td><td>1% of capital</td></tr>
+      <tr><td><span class="badge badge-amber">55–74%</span></td><td>🟡 Half size</td><td>Half size</td><td>0.5% of capital</td></tr>
+      <tr><td><span class="badge badge-red">&lt;55%</span></td><td>🔴 Not ready</td><td>No trade</td><td>—</td></tr>
+    </table>
+
+    <h3 class="sub-title">Hard rules</h3>
+    <ul>
+      <li>Never enter before 9:45 AM</li>
+      <li>Never trade a reversed signal (⚡ badge)</li>
+      <li>Never trade a WATCH signal</li>
+      <li>Never risk more than 1% of total capital on a single trade</li>
+      <li>Max 3 open positions at any time</li>
+      <li>Stop trading for the day after 2 consecutive losses</li>
+      <li>Place stop loss order immediately after entry — before anything else</li>
+      <li>Use limit orders at Entry price, never market orders</li>
+      <li>Exit all positions by 3:15 PM</li>
+      <li>Never trade on results day or split ex-date</li>
+    </ul>
+  </div>
+
+  <!-- 12. TROUBLESHOOTING -->
+  <div class="section" id="trouble">
+    <h2 class="sec-title">12. Troubleshooting</h2>
+    <table>
+      <tr><th>Problem</th><th>Cause</th><th>Fix</th></tr>
+      <tr><td>Proxy not detected</td><td>Opened HTML as file://, not http://</td><td>Always use http://localhost:8080</td></tr>
+      <tr><td>Token expired</td><td>Upstox tokens expire at midnight IST</td><td>Run GetUpstoxToken.ps1 each morning</td></tr>
+      <tr><td>Invalid instrument key</td><td>Stock ISIN changed after corporate action</td><td>Check Upstox instrument master for updated ISIN</td></tr>
+      <tr><td>AI summary unavailable</td><td>Anthropic API key not set</td><td>Add key in the Anthropic API key card on Scanner tab</td></tr>
+      <tr><td>Volume shows 0%</td><td>Market closed, intraday candles empty</td><td>Normal — populates from 9:15 AM on live session</td></tr>
+      <tr><td>History lost after browser clear</td><td>localStorage wiped</td><td>Link JSON file path in History tab — never cleared by browser</td></tr>
+      <tr><td>BAJAJ AUTO not found</td><td>Internal sym is BAJAJAUTO (no hyphen)</td><td>Search "Bajaj" or use the quick-add pill</td></tr>
+      <tr><td>Can't access from phone</td><td>Windows Firewall blocking port 8080</td><td>Run firewall rule: <span class="inline-code">New-NetFirewallRule -DisplayName "NSE Scanner" -Direction Inbound -Protocol TCP -LocalPort 8080 -Action Allow</span></td></tr>
+      <tr><td>Signal keeps flipping</td><td>Stock ranging sideways, no clear direction</td><td>Skip it — reversed signal badge will appear automatically</td></tr>
+      <tr><td>Candle confirmation shows 1/3</td><td>Signal appeared on only 1 candle</td><td>Wait 2 more minutes, rescan. If still not 3/3, skip.</td></tr>
+      <tr><td>Ready? shows 🔴 at 9:35 AM</td><td>Time gate — before 9:45 AM</td><td>Normal. Rescan at 9:45 AM.</td></tr>
+    </table>
+  </div>
+
+  <!-- 13. API REFERENCE -->
+  <div class="section" id="api">
+    <h2 class="sec-title">13. Proxy API Reference</h2>
+    <table>
+      <tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr>
+      <tr><td>GET</td><td>/</td><td>Serves nse_scanner.html</td></tr>
+      <tr><td>GET</td><td>/readme</td><td>Serves this documentation page</td></tr>
+      <tr><td>GET</td><td>/ping</td><td>Health check → {status: ok}</td></tr>
+      <tr><td>GET</td><td>/history/read?path=...</td><td>Reads nse_history.json from local path</td></tr>
+      <tr><td>POST</td><td>/history/write?path=...</td><td>Writes nse_history.json to local path</td></tr>
+      <tr><td>POST</td><td>/ai/v1/messages</td><td>Proxied to Anthropic API (x-api-key header required)</td></tr>
+      <tr><td>GET</td><td>/nse/corporate-actions</td><td>Proxied to NSE India corporate actions API</td></tr>
+      <tr><td>GET/POST</td><td>/v2/...</td><td>All other paths proxied to Upstox API</td></tr>
+    </table>
+  </div>
+
+  <footer>NSE Intraday Scanner · Built with Upstox API, Claude AI &amp; vanilla JavaScript · All data stays on your PC</footer>
+</div>
+</body>
+</html>
