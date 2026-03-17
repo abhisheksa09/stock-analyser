@@ -127,7 +127,7 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 .evt-other{background:#f0f0f0;color:#555;border:1px solid #ddd;}
 .tbl-box{overflow-x:auto;-webkit-overflow-scrolling:touch;background:#fff;border:1px solid #e0e0e0;border-radius:12px;margin-bottom:12px;}
 .tbl-box table{font-size:12px;}
-.tbl-box th{padding:8px 8px;font-size:10px;}
+.tbl-box th{padding:8px 8px;font-size:10px;white-space:normal;min-width:0;}
 .tbl-box td{padding:7px 8px;}
 .proxyOverride{margin-top:8px;display:none;}
 .sig-history{display:flex;gap:3px;margin-top:4px;flex-wrap:wrap;}
@@ -136,19 +136,19 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 .shd-sell{background:#FCEBEB;color:#791F1F;border:1px solid #F09595;}
 .shd-watch{background:#FAEEDA;color:#633806;border:1px solid #FAC775;}
 .shd-current{box-shadow:0 0 0 2px #1a1a1a;}
-.locked-sig-row{display:flex;align-items:center;gap:6px;background:#F5F5DC;border:1px solid #DDD08A;border-radius:6px;padding:5px 10px;margin-top:6px;font-size:11px;flex-wrap:wrap;}
+.locked-sig-row{display:flex;align-items:center;gap:4px;background:#F5F5DC;border:1px solid #DDD08A;border-radius:6px;padding:4px 8px;margin-top:4px;font-size:10px;flex-wrap:wrap;}
 .locked-sig-label{color:#666;font-weight:500;}
 .reversed-badge{display:inline-flex;align-items:center;gap:4px;background:#FCEBEB;color:#791F1F;border:1px solid #F09595;border-radius:4px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap;}
-.confirm-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 7px;border-radius:4px;font-weight:600;white-space:nowrap;margin-left:4px;}
+.confirm-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;white-space:normal;margin-left:4px;}
 .confirm-ok{background:#EAF3DE;color:#27500A;border:1px solid #C0DD97;}
 .confirm-warn{background:#FAEEDA;color:#633806;border:1px solid #FAC775;}
-.ready-cell{min-width:130px;}
+.ready-cell{min-width:100px;max-width:140px;}
 .ready-box{display:flex;flex-direction:column;gap:3px;}
-.ready-verdict{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:3px 8px;border-radius:6px;white-space:nowrap;}
+.ready-verdict{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 7px;border-radius:6px;white-space:normal;line-height:1.3;}
 .verdict-yes{background:#EAF3DE;color:#27500A;}
 .verdict-no{background:#FCEBEB;color:#791F1F;}
 .verdict-wait{background:#FAEEDA;color:#633806;}
-.gate-row{display:flex;align-items:center;gap:4px;font-size:10px;white-space:nowrap;cursor:help;}
+.gate-row{display:flex;align-items:center;gap:4px;font-size:10px;white-space:normal;cursor:help;}
 .gate-row[data-tip]:hover .gate-label{color:#1a1a1a;}
 .gate-icon{font-size:11px;width:14px;flex-shrink:0;font-weight:700;}
 .gate-ok{color:#639922;}.gate-fail{color:#E24B4A;}.gate-warn{color:#EF9F27;}
@@ -216,16 +216,13 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 .hist-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;width:100%;box-sizing:border-box;}
 .hist-toolbar-left{display:flex;gap:8px;flex-wrap:wrap;}
 .cloud-notice{background:#E6F1FB;border:1px solid #85B7EB;border-radius:8px;padding:10px 14px;font-size:12px;color:#185FA5;margin-bottom:12px;}
-[data-tip]{position:relative;cursor:help;}
-[data-tip]::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#1a1a1a;color:#fff;font-size:11px;line-height:1.5;font-weight:400;padding:6px 10px;border-radius:6px;white-space:pre-wrap;width:max-content;max-width:260px;pointer-events:none;opacity:0;transition:opacity .15s;z-index:9999;text-align:left;box-shadow:0 2px 8px rgba(0,0,0,.3);}
-[data-tip]::before{content:'';position:absolute;bottom:calc(100% + 1px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#1a1a1a;pointer-events:none;opacity:0;transition:opacity .15s;z-index:9999;}
-[data-tip]:hover::after,[data-tip]:hover::before{opacity:1;}
-th[data-tip]{cursor:default;}th[data-tip]:hover{color:#1a1a1a;}
-/* Ready cell gate tooltips — right-align to avoid right-edge clipping */
-.ready-cell [data-tip]::after{left:auto;right:0;transform:none;}
-.ready-cell [data-tip]::before{left:auto;right:12px;transform:none;}
-/* Verdict tooltip — same */
-.ready-verdict[data-tip]{cursor:help;}
+/* Tooltip element — JS-driven, works inside tables */
+#floatTip{position:fixed;background:#1a1a1a;color:#fff;font-size:11px;line-height:1.5;
+  padding:7px 11px;border-radius:7px;white-space:pre-wrap;max-width:260px;
+  pointer-events:none;z-index:99999;display:none;
+  box-shadow:0 3px 12px rgba(0,0,0,.35);text-align:left;}
+[data-tip]{cursor:help;}
+th[data-tip]{cursor:default;}
 .page{max-width:1200px;margin:0 auto;padding:20px 16px;width:100%;}
 @media(max-width:640px){
   .page{padding:12px 8px;}h1{font-size:17px;}
@@ -1045,7 +1042,43 @@ function updateEventUI(){document.querySelectorAll('.qpill').forEach(pill=>{cons
 function updateEventBanner(){const banner=document.getElementById('evtBanner');if(!banner)return;const selectedSyms=[...sel.keys()];const warnings=[];selectedSyms.forEach(sym=>{getStockEvents(sym).forEach(e=>{warnings.push({sym,...e});});});if(!warnings.length){banner.style.display='none';return;}const lines=warnings.map(w=>'<strong>'+w.sym+'</strong> \u2014 '+w.icon+' '+w.subject+' on '+w.date+' ('+w.daysAway+' day'+(w.daysAway!==1?'s':'')+' away)');banner.innerHTML='<strong>\u26a0 Corporate events in next 7 days:</strong><br>'+lines.join('<br>')+'<br><span style="font-size:11px;opacity:.8;">These events can cause unusual price moves. Trade with extra caution or consider skipping on event day.</span>';banner.style.display='block';}
 function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return '';return evts.map(e=>'<span class="evt-badge '+e.cls+'" title="'+e.subject+' on '+e.date+'">'+e.icon+' '+e.label+' '+e.daysAway+'d</span>').join(' ');}
 
+// ─── FLOATING TOOLTIP (works inside tables, no overflow clipping) ─────────────
+(function(){
+  const tip = document.getElementById('floatTip');
+  if(!tip) return;
+
+  function show(el, e) {
+    const text = el.getAttribute('data-tip');
+    if(!text) return;
+    tip.textContent = text;
+    tip.style.display = 'block';
+    position(e);
+  }
+  function position(e) {
+    const pad = 12, w = tip.offsetWidth, h = tip.offsetHeight;
+    let x = e.clientX + pad;
+    let y = e.clientY - h - pad;
+    // keep inside viewport
+    if(x + w > window.innerWidth - 8) x = e.clientX - w - pad;
+    if(y < 8) y = e.clientY + pad;
+    tip.style.left = x + 'px';
+    tip.style.top  = y + 'px';
+  }
+  function hide() { tip.style.display = 'none'; }
+
+  document.addEventListener('mouseover', function(e) {
+    const el = e.target.closest('[data-tip]');
+    if(el) show(el, e); else hide();
+  });
+  document.addEventListener('mousemove', function(e) {
+    if(tip.style.display !== 'none') position(e);
+  });
+  document.addEventListener('mouseout', function(e) {
+    if(!e.relatedTarget || !e.relatedTarget.closest('[data-tip]')) hide();
+  });
+})();
 
 </script>
+<div id="floatTip"></div>
 </body>
 </html>
