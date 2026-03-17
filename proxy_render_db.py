@@ -9,6 +9,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+import json, sqlite3, os
+
 UPSTOX_BASE = "https://api.upstox.com"
 ANTHROPIC_BASE = "https://api.anthropic.com"
 
@@ -80,18 +82,38 @@ async def read_history(path: str = None):
         return json.loads(row[0])
     return []  # empty if no record
 
+app = FastAPI()
+DB_FILE = os.path.join("/tmp", "history.db")
+
 @app.post("/history/write")
 async def write_history(request: Request, path: str = None):
     if not path:
-        return JSONResponse(status_code=400, content={"error": "No file path provided"})
-    body = await request.body()
-    data = json.loads(body)
+        return JSONResponse(status_code=400, content={"error": "No path provided"})
+    
+    body_bytes = await request.body()
+    if not body_bytes:
+        return JSONResponse(status_code=400, content={"error": "Empty request body"})
+    
+    try:
+        body_str = body_bytes.decode("utf-8")   # decode bytes → string
+        data = json.loads(body_str)             # parse JSON
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": f"Invalid JSON: {str(e)}"})
+    
+    # SQLite storage
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    # Insert or replace
-    cursor.execute("INSERT OR REPLACE INTO history (path, data) VALUES (?, ?)", (path, json.dumps(data)))
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS history (
+            path TEXT PRIMARY KEY,
+            data TEXT
+        )
+    """)
+    cursor.execute("INSERT OR REPLACE INTO history (path, data) VALUES (?, ?)",
+                   (path, json.dumps(data)))
     conn.commit()
     conn.close()
+
     return {"status": "ok", "saved": len(data), "path": path}
 
 # -----------------------
