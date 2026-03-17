@@ -702,9 +702,7 @@ se_history.json"
 // If opened via http://192.168.1.45:8080, PROXY = http://192.168.1.45:8080
 // If opened via http://localhost:8080, PROXY = http://localhost:8080
 // This way both PC and phone on the same WiFi work without any config.
-const PROXY = window.location.origin.startsWith('http')
-  ? window.location.origin
-  : 'http://localhost:8080';
+const PROXY = "https://nse-proxy-mojx.onrender.com";
 const SK = 'nse_v2';
 
 const STOCKS = [
