@@ -126,6 +126,9 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 .evt-split{background:#FAEEDA;color:#633806;border:1px solid #FAC775;}
 .evt-other{background:#f0f0f0;color:#555;border:1px solid #ddd;}
 .tbl-box{overflow-x:auto;-webkit-overflow-scrolling:touch;background:#fff;border:1px solid #e0e0e0;border-radius:12px;margin-bottom:12px;}
+.tbl-box table{font-size:12px;}
+.tbl-box th{padding:8px 8px;font-size:10px;}
+.tbl-box td{padding:7px 8px;}
 .proxyOverride{margin-top:8px;display:none;}
 .sig-history{display:flex;gap:3px;margin-top:4px;flex-wrap:wrap;}
 .sig-hist-dot{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;font-size:9px;font-weight:700;cursor:default;flex-shrink:0;}
@@ -145,8 +148,11 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 .verdict-yes{background:#EAF3DE;color:#27500A;}
 .verdict-no{background:#FCEBEB;color:#791F1F;}
 .verdict-wait{background:#FAEEDA;color:#633806;}
-.gate-row{display:flex;align-items:center;gap:4px;font-size:10px;white-space:nowrap;}
-.gate-icon{font-size:11px;width:14px;flex-shrink:0;}.gate-label{color:#555;}
+.gate-row{display:flex;align-items:center;gap:4px;font-size:10px;white-space:nowrap;cursor:help;}
+.gate-row[data-tip]:hover .gate-label{color:#1a1a1a;}
+.gate-icon{font-size:11px;width:14px;flex-shrink:0;font-weight:700;}
+.gate-ok{color:#639922;}.gate-fail{color:#E24B4A;}.gate-warn{color:#EF9F27;}
+.gate-label{color:#666;}
 .hist-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;}
 .hstat{background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:10px 14px;text-align:center;}
 .hstat-n{font-size:20px;font-weight:700;}.hstat-l{font-size:11px;color:#888;}
@@ -191,10 +197,10 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 .del-btn{background:none;border:none;color:#E24B4A;cursor:pointer;font-size:14px;padding:2px 4px;opacity:0;transition:opacity .15s;}
 .oc-hit{color:#27500A;font-weight:600;}.oc-sl{color:#E24B4A;font-weight:600;}.oc-partial{color:#EF9F27;font-weight:600;}.oc-loss{color:#A32D2D;font-weight:600;}.oc-pending{color:#888;}
 .pnl-pos{color:#27500A;font-weight:700;}.pnl-neg{color:#E24B4A;font-weight:700;}
-.bulk-bar{display:none;align-items:center;gap:10px;background:#1a1a1a;color:#fff;border-radius:8px;padding:8px 16px;margin-bottom:8px;font-size:13px;}
+.bulk-bar{display:none;align-items:center;gap:10px;background:#EAF3DE;color:#27500A;border:1px solid #C0DD97;border-radius:8px;padding:8px 16px;margin-bottom:8px;font-size:13px;}
 .bulk-bar.show{display:flex;}
-.bulk-del-btn{padding:4px 12px;border-radius:6px;background:#E24B4A;color:#fff;border:none;cursor:pointer;font-size:12px;}
-.bulk-clear-btn{padding:4px 12px;border-radius:6px;background:#555;color:#fff;border:none;cursor:pointer;font-size:12px;}
+.bulk-del-btn{padding:4px 12px;border-radius:6px;background:#FCEBEB;color:#791F1F;border:1px solid #F09595;cursor:pointer;font-size:12px;}
+.bulk-clear-btn{padding:4px 12px;border-radius:6px;background:#fff;color:#27500A;border:1px solid #C0DD97;cursor:pointer;font-size:12px;}
 .date-group-hdr{background:#f5f5f0;cursor:pointer;border-bottom:2px solid #e0e0e0;}
 .date-group-hdr:hover{background:#eeeeea;}
 .dg-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#1a1a1a;}
@@ -215,6 +221,11 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 [data-tip]::before{content:'';position:absolute;bottom:calc(100% + 1px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#1a1a1a;pointer-events:none;opacity:0;transition:opacity .15s;z-index:9999;}
 [data-tip]:hover::after,[data-tip]:hover::before{opacity:1;}
 th[data-tip]{cursor:default;}th[data-tip]:hover{color:#1a1a1a;}
+/* Ready cell gate tooltips — right-align to avoid right-edge clipping */
+.ready-cell [data-tip]::after{left:auto;right:0;transform:none;}
+.ready-cell [data-tip]::before{left:auto;right:12px;transform:none;}
+/* Verdict tooltip — same */
+.ready-verdict[data-tip]{cursor:help;}
 .page{max-width:1200px;margin:0 auto;padding:20px 16px;width:100%;}
 @media(max-width:640px){
   .page{padding:12px 8px;}h1{font-size:17px;}
@@ -771,8 +782,27 @@ function buildReadinessCheck(s){
 }
 function readinessCellHTML(s){
   const r=buildReadinessCheck(s);
-  let html='<div class="ready-box"><div class="ready-verdict '+r.verdictCls+'">'+r.verdict+'</div>';
-  r.gates.forEach(g=>{const icon=g.warn?'\ud83d\udfe1':g.pass?'\u2705':'\u274c';html+='<div class="gate-row"><span class="gate-icon">'+icon+'</span><span class="gate-label">'+g.label+'</span></div>';});
+  const gateTips=[
+    'Time gate: 9:45-10:30 AM IST\nBefore 9:45 the ORB is too fresh to trust.\nAfter 10:30 intraday momentum fades.',
+    'Signal gate: BUY or SELL only (not WATCH),\nseen on 2+ scans so it has held up,\nand not reversed since first scan today.',
+    'Candle confirmation: last 3 one-minute\ncandles must all close on the correct\nside of VWAP. Filters false breakouts.',
+    'Confidence >=75% for full position.\n55-74% means half position size only.\nBelow 55% has too many conflicting signals.',
+    'Volume >=100% of 20-day average.\nBreakouts on low volume almost always\nfail or reverse quickly.',
+    'ORB breakout confirmed: price closed\nabove ORB High (BUY) or below ORB Low\n(SELL). No confirmed break = no trade.',
+  ];
+  const verdictTips={
+    'verdict-yes':'All 6 gates are green.\nThis is the best quality setup.\nEnter at the limit order price.',
+    'verdict-no': 'One or more gates are red.\nDo NOT enter this trade yet.\nHover each gate to see what is failing.',
+    'verdict-wait':'Minor caution flags (amber).\nEnter at half your normal position size.\nRe-scan in a few minutes.',
+  };
+  const verdictTip=verdictTips[r.verdictCls]||'';
+  let html='<div class="ready-box"><div class="ready-verdict '+r.verdictCls+'" data-tip="'+verdictTip+'">'+r.verdict+'</div>';
+  r.gates.forEach((g,i)=>{
+    const icon=g.warn?'\u26a0':g.pass?'\u2713':'\u2717';
+    const iconCls=g.warn?'gate-warn':g.pass?'gate-ok':'gate-fail';
+    const tip=gateTips[i]||'';
+    html+='<div class="gate-row" data-tip="'+tip+'"><span class="gate-icon '+iconCls+'">'+icon+'</span><span class="gate-label">'+g.label+'</span></div>';
+  });
   return html+'</div>';
 }
 
