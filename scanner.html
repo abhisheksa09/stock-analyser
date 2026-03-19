@@ -548,13 +548,6 @@ th[data-tip]{cursor:default;}
 
     <!-- Right: action buttons -->
     <div class="navbar-right">
-      <!-- Proxy status dot + label -->
-      <button class="nav-btn" id="proxyNavBtn" onclick="switchTab('admin')"
-              title="Cloud proxy status">
-        <span class="pdot" id="pdot" style="width:8px;height:8px;display:inline-block;vertical-align:middle;margin-right:4px;"></span>
-        <span id="proxyNavTxt" style="font-size:11px;">Proxy</span>
-      </button>
-
       <!-- Token / login button -->
       <button class="nav-btn" id="tokenNavBtn" onclick="handleTokenNavClick()"
               title="Upstox login status">
@@ -565,7 +558,8 @@ th[data-tip]{cursor:default;}
       <!-- Docs -->
       <a href="readme.html" target="_blank" class="nav-btn" title="User guide">&#128214; Docs</a>
       <a href="changelog.html" target="_blank" class="nav-btn" title="Build history">&#127959;</a>
-    </div>
+      <button class="nav-btn" onclick="doLogout()" title="Logout" style="color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
+      </div>
   </div>
 
   <div id="coldStartBanner" style="background:#FFF8E1;border:1px solid #FAC775;border-radius:8px;padding:10px 16px;margin-bottom:12px;font-size:12px;color:#633806;display:none;">
@@ -637,7 +631,7 @@ th[data-tip]{cursor:default;}
       <div class="counter"><div class="counter-n" style="color:#EF9F27;" id="cW">0</div><div class="counter-l">WATCH</div></div>
     </div>
 
-    <div class="tbl-box" id="tblBox" style="display:none;">
+    <div class="tbl-box" id="tblBox">
       <table>
         <thead><tr>
           <th data-tip="Stock symbol and sector. Signal history dots show previous scans. Lock = first signal of session.">Stock</th>
@@ -814,20 +808,16 @@ to see the specific analysis and reason.">Signal</th>
 
     <!-- Admin content (hidden until PIN entered) -->
     <div id="adminContent" style="display:none;">
-    <div class="card" style="border-left:4px solid #185FA5;">
-      <div class="card-title" style="color:#185FA5;">&#9881; Admin Panel</div>
-      <p style="font-size:13px;color:#666;margin-bottom:0;">System controls, diagnostics and testing.</p>
-    </div>
-
-
-
     <div class="card">
       <div class="card-title">System Status</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <button class="btn" onclick="checkProxyAdmin()" style="display:inline-flex;align-items:center;gap:6px;">
+          <span class="pdot" id="pdot" style="width:8px;height:8px;display:inline-block;"></span>
+          <span id="proxyNavTxt">Proxy</span>
+        </button>
         <button class="btn" onclick="adminLoad('alert-status','adminStatusBox')">&#128200; Alert status</button>
         <button class="btn" onclick="adminLoad('macro-status','adminStatusBox')">&#127758; Macro status</button>
         <button class="btn" onclick="adminLoad('db/status','adminStatusBox')">&#128451; DB status</button>
-        <button class="btn" onclick="adminLoad('auth/status','adminStatusBox')">&#128274; Auth status</button>
         <button class="btn" onclick="adminLoad('ping','adminStatusBox')">&#128997; Ping</button>
       </div>
       <pre id="adminStatusBox" style="background:#1a1a1a;color:#a8ff78;padding:14px;border-radius:8px;
@@ -1270,6 +1260,17 @@ async function runDryScan(btnEl){
 }
 
 // ─── NAVBAR FUNCTIONS ─────────────────────────────────────────────────────────
+function doLogout(){
+  // Clear token on server by calling set-token with empty, then redirect to login
+  token = '';
+  fetch(PROXY+'/set-token', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({token:''})
+  }).catch(function(){});  // fire and forget
+  window.location.replace('login.html');
+}
+
 function handleTokenNavClick(){
   // If token set → go to Admin tab; if not → open OAuth login
   const dot = document.getElementById('tokenStatusDot');
@@ -1631,6 +1632,11 @@ function updateReversalBanner(){
 // ─── RENDER SCAN TABLE ────────────────────────────────────────────────────────
 function renderScanTable(){
   const tb=document.getElementById('scanBody');tb.innerHTML='';
+  if(!results||!results.length){
+    document.getElementById('emptyBox').style.display='block';
+    return;
+  }
+  document.getElementById('emptyBox').style.display='none';
   results.forEach((s,i)=>{
     const sigC=s.sig==='BUY'?'buy':s.sig==='SELL'?'sell':'watch';
     const rrC=s.rr>=2?'rr-g':s.rr>=1.5?'rr-o':'rr-r';
@@ -1705,9 +1711,9 @@ let _adminUnlocked = false;
 const ADMIN_SESSION_KEY = 'nse_admin_session';
 
 async function checkAdminAccess(){
-  // Always verify with server — never auto-unlock from localStorage alone
   const storedTok = localStorage.getItem(ADMIN_SESSION_KEY)||'';
-  showAdminGate(); // show gate immediately while we check
+  // Show content optimistically if token stored (avoid flash), gate otherwise
+  if(storedTok){ showAdminContent(); } else { showAdminGate(); }
   try{
     const r = await fetch(PROXY+'/admin/check',{
       method:'POST',
