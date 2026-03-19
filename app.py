@@ -379,6 +379,9 @@ UPSTOX_AUTH_BASE  = "https://api.upstox.com/v2/login/authorization"
 RENDER_BASE_URL   = "https://nse-proxy-mojx.onrender.com"
 OAUTH_REDIRECT    = RENDER_BASE_URL + "/auth/callback"
 
+# Store last OAuth attempt result for debugging
+_last_oauth = {"status": "never attempted", "detail": "", "time": ""}
+
 @app.route("/auth/login")
 def auth_login():
     """
@@ -456,19 +459,43 @@ def auth_callback():
 
         token = resp.get("access_token", "")
         if not token:
+            _last_oauth["status"] = "failed"
+            _last_oauth["detail"] = f"No access_token in response: {json.dumps(resp)[:300]}"
+            _last_oauth["time"]   = datetime.now(IST).strftime("%H:%M IST")
             return _auth_page(
                 success=False,
                 title="Token exchange failed",
-                message=f"Upstox response: {json.dumps(resp)[:200]}",
+                message=(
+                    f"Upstox did not return an access_token.<br><br>"
+                    f"<small style='color:#888'>Response: {json.dumps(resp)[:200]}</small><br><br>"
+                    f"Most likely cause: redirect URI in Upstox developer portal "
+                    f"does not exactly match:<br>"
+                    f"<code>https://nse-proxy-mojx.onrender.com/auth/callback</code>"
+                ),
             )
 
         # Set token in scanner automatically
         scanner.set_token(token)
         scanner.STATE.check_date()
 
-        # Show preview (first 40 chars only for security)
+        # Verify it was set
+        stored = scanner.get_token()
+        if not stored:
+            _last_oauth["status"] = "set_failed"
+            _last_oauth["detail"] = "set_token called but get_token returned empty"
+            _last_oauth["time"]   = datetime.now(IST).strftime("%H:%M IST")
+            return _auth_page(
+                success=False,
+                title="Internal error — token not stored",
+                message="Token was received but could not be stored. Please try again.",
+            )
+
         preview = token[:40] + "..." if len(token) > 40 else token
         ist_time = datetime.now(IST).strftime("%H:%M IST")
+        _last_oauth["status"] = "success"
+        _last_oauth["detail"] = f"Token set at {ist_time}, length={len(token)}"
+        _last_oauth["time"]   = ist_time
+        log.info("OAuth success — token set at %s, length=%d", ist_time, len(token))
 
         return _auth_page(
             success=True,
@@ -484,12 +511,22 @@ def auth_callback():
 
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
+        _last_oauth["status"] = f"http_error_{e.code}"
+        _last_oauth["detail"] = body[:300]
+        _last_oauth["time"]   = datetime.now(IST).strftime("%H:%M IST")
         return _auth_page(
             success=False,
             title=f"Upstox API error (HTTP {e.code})",
-            message=body[:300],
+            message=(
+                f"{body[:200]}<br><br>"
+                f"<small>If you see 'invalid_grant' — the auth code was already used "
+                f"or expired. Open /auth/login again to get a fresh code.</small>"
+            ),
         )
     except Exception as e:
+        _last_oauth["status"] = "exception"
+        _last_oauth["detail"] = str(e)
+        _last_oauth["time"]   = datetime.now(IST).strftime("%H:%M IST")
         return _auth_page(
             success=False,
             title="Unexpected error",
@@ -542,6 +579,23 @@ def _auth_page(success: bool, title: str, message: str) -> str:
 </div>
 </body>
 </html>"""
+
+# ── OAuth debug status ───────────────────────────────────────────────────────
+@app.route("/auth/status")
+def auth_status():
+    """Shows the result of the last OAuth login attempt. Useful for debugging."""
+    api_key    = os.environ.get("UPSTOX_API_KEY", "")
+    api_secret = os.environ.get("UPSTOX_API_SECRET", "")
+    return jsonify({
+        "last_oauth_attempt":  _last_oauth,
+        "token_currently_set": bool(scanner.get_token()),
+        "token_preview":       (scanner.get_token()[:20] + "...") if scanner.get_token() else "not set",
+        "api_key_set":         bool(api_key),
+        "api_secret_set":      bool(api_secret),
+        "redirect_uri":        OAUTH_REDIRECT,
+        "login_url":           RENDER_BASE_URL + "/auth/login",
+        "ist_now":             datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
+    })
 
 # ── NSE corporate actions ─────────────────────────────────────────────────────
 @app.route("/nse/corporate-actions")
