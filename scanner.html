@@ -259,7 +259,7 @@ th[data-tip]{cursor:default;}
     <!-- Left: brand -->
     <div class="navbar-brand">
       <span class="navbar-title">NSE Scanner</span>
-      <span class="chip chip-gray" id="versionChip" title="App version">v2.0.0</span>
+      <span class="chip chip-gray" id="versionChip" title="App version">v2.1.0</span>
     </div>
 
     <!-- Centre: market status chips -->
@@ -274,12 +274,6 @@ th[data-tip]{cursor:default;}
 
     <!-- Right: action buttons -->
     <div class="navbar-right">
-      <!-- Proxy status dot + label -->
-      <button class="nav-btn" id="proxyNavBtn" onclick="switchTab('admin')"
-              title="Cloud proxy status">
-        <span class="pdot" id="pdot" style="width:8px;height:8px;display:inline-block;vertical-align:middle;margin-right:4px;"></span>
-        <span id="proxyNavTxt" style="font-size:11px;">Proxy</span>
-      </button>
 
       <!-- Token / login button -->
       <button class="nav-btn" id="tokenNavBtn" onclick="handleTokenNavClick()"
@@ -289,9 +283,7 @@ th[data-tip]{cursor:default;}
       </button>
 
       <!-- Docs -->
-      <a href="readme.html" target="_blank" class="nav-btn" title="User guide">&#128214; Docs</a>
-      <a href="changelog.html" target="_blank" class="nav-btn" title="Build history">&#127959;</a>
-    </div>
+      </div>
   </div>
 
   <div id="coldStartBanner" style="background:#FFF8E1;border:1px solid #FAC775;border-radius:8px;padding:10px 16px;margin-bottom:12px;font-size:12px;color:#633806;display:none;">
@@ -548,35 +540,9 @@ to see the specific analysis and reason.">Signal</th>
 
 
     <div class="card">
-      <div class="card-title">Upstox Session</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
-        <button id="oauthBtn" onclick="openOAuthLogin()"
-           style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
-                  border-radius:8px;background:#27500A;color:#fff;border:none;
-                  font-size:13px;font-weight:600;cursor:pointer;">
-          &#128274; Login with Upstox
-        </button>
-        <button class="btn" onclick="checkTokenStatus()" style="font-size:12px;padding:6px 14px;">
-          &#8635; Refresh token status
-        </button>
-      </div>
-      <div style="margin-top:4px;">
-        <button onclick="toggleManualToken()" style="font-size:12px;color:#888;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;">
-          Or paste token manually
-        </button>
-        <div id="manualTokenWrap" style="display:none;margin-top:10px;">
-          <div class="token-row">
-            <input class="token-inp" id="tokenInput" type="password" placeholder="Paste Upstox access token&#8230;"/>
-            <button class="btn" onclick="verifyToken()">Set token</button>
-          </div>
-        </div>
-      </div>
-      <div class="tok-msg" id="tokenMsg"></div>
-    </div>
-
-    <div class="card">
       <div class="card-title">System Status</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <button class="btn" onclick="checkProxyAdmin()" style="display:inline-flex;align-items:center;gap:6px;"><span class="pdot" id="pdot" style="width:8px;height:8px;display:inline-block;"></span><span id="proxyNavTxt">Proxy</span></button>
         <button class="btn" onclick="adminLoad('alert-status','adminStatusBox')">&#128200; Alert status</button>
         <button class="btn" onclick="adminLoad('macro-status','adminStatusBox')">&#127758; Macro status</button>
         <button class="btn" onclick="adminLoad('db/status','adminStatusBox')">&#128451; DB status</button>
@@ -592,8 +558,17 @@ to see the specific analysis and reason.">Signal</th>
       <div class="card-title">Dry Scan</div>
       <p style="font-size:12px;color:#888;margin-bottom:10px;">Run a real scan right now ignoring the 9:15&#8211;10:30 window. Sends a Telegram alert for the best signal found.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
-        <input id="dryScanSym" class="search-inp" type="text" placeholder="Symbol e.g. HDFCBANK (blank = first 5)"
-               style="width:220px;padding:7px 12px;font-size:13px;"/>
+        <div style="position:relative;display:inline-block;">
+          <input id="dryScanSym" class="search-inp" type="text"
+                 placeholder="Symbol e.g. HDFCBANK"
+                 autocomplete="off"
+                 oninput="dryScanAutocomplete(this.value)"
+                 onkeydown="dryScanKeydown(event)"
+                 style="width:200px;padding:7px 12px;font-size:13px;"/>
+          <div id="dryScanDrop" style="display:none;position:absolute;top:100%;left:0;
+               width:200px;background:#fff;border:1px solid #ddd;border-radius:6px;
+               box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:999;max-height:220px;overflow-y:auto;"></div>
+        </div>
         <button class="btn" onclick="runDryScanFull()" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#128270; Run live dry scan</button>
         <button class="btn" onclick="runDryScanMock()" style="background:#FAEEDA;color:#633806;border-color:#FAC775;">&#127916; Mock (no token)</button>
       </div>
@@ -620,8 +595,6 @@ to see the specific analysis and reason.">Signal</th>
         <a href="https://supabase.com"                                target="_blank" class="btn" style="font-size:12px;">&#128451; Supabase</a>
         <a href="https://dashboard.render.com"                        target="_blank" class="btn" style="font-size:12px;">&#9729; Render</a>
         <a href="https://uptimerobot.com"                             target="_blank" class="btn" style="font-size:12px;">&#9201; UptimeRobot</a>
-        <a href="readme.html"                                     target="_blank" class="btn" style="font-size:12px;">&#128214; Readme</a>
-        <a href="changelog.html"                                  target="_blank" class="btn" style="font-size:12px;">&#127959; Changelog</a>
       </div>
     </div>
 
@@ -637,7 +610,7 @@ to see the specific analysis and reason.">Signal</th>
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const PROXY = 'https://nse-proxy-mojx.onrender.com';
-const APP_VERSION = 'v1.9.0';
+const APP_VERSION = 'v2.1.0';
 const SK = 'nse_v2';
 
 const STOCKS = [
@@ -1363,7 +1336,7 @@ function renderScanTable(){
     tr.className='drow'+(_meta.reversed?' evt-row-flag':'');tr.id='sr'+i;
     tr.innerHTML=
       '<td><div class="sym">'+s.sym+evtBadgeHTML(s.sym)+'</div><div class="sec">'+s.sec+'</div>'+sigHistoryHTML(s.sym,s.sig)+lockedSigHTML(s.sym,s.sig)+'</td>'+
-      '<td data-tip="'+sigTip(s).replace(/"/g,'&quot;')+'">'+(function(){const _n=new Date();const _um=_n.getUTCHours()*60+_n.getUTCMinutes();const _im=(_um+330)%1440;const _ah=_im<555||_im>=930;return _ah?'<span style="font-size:10px;color:#aaa;background:#f5f5f0;border:1px solid #e0e0e0;border-radius:4px;padding:1px 6px;margin-right:4px;">After hours</span>':'';})()+' <span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+confirmBadgeHTML(s)+'</td>'+
+      '<td data-tip="'+sigTip(s).replace(/"/g,'&quot;')+'"><div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;">'+(function(){var _n=new Date(),_um=_n.getUTCHours()*60+_n.getUTCMinutes(),_im=(_um+330)%1440,_ah=_im<555||_im>=930;return _ah?'<span style="font-size:9px;color:#aaa;background:#f5f5f0;border:1px solid #ddd;border-radius:3px;padding:1px 4px;white-space:nowrap;">After hours</span>':'';})()+'<span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+'<div>'+confirmBadgeHTML(s)+'</div></div></td>'+
       '<td class="r" data-tip="Last traded price.\n% change vs yesterday close.\nGreen = up, Red = down."><div class="ltp">\u20b9'+fc(s.ltp)+'</div><div class="'+(s.chg>=0?'pos':'neg')+'">'+(s.chg>=0?'+':'')+s.chg+'%</div></td>'+
       '<td class="r"><div class="ev">\u2197 \u20b9'+fc(s.en)+'</div><div class="tgt">\u2713 \u20b9'+fc(s.tg)+'</div><div class="slv">\u2717 \u20b9'+fc(s.sl)+'</div></td>'+
       '<td class="r hm" data-tip="Risk:Reward ratio.\nHow much you gain vs how much you risk.\n>=2:1 Good (green)\n1.5-2:1 Acceptable (amber)\n<1.5 Skip (red)\nAlways aim for 2:1 minimum."><span class="rr '+rrC+'">'+(isNaN(s.rr)?'N/A':s.rr+':1')+'</span></td>'+
@@ -1487,6 +1460,18 @@ async function verifyAdminPin(){
 }
 
 // ─── ADMIN TAB FUNCTIONS ─────────────────────────────────────────────────────
+function checkProxyAdmin(){
+  var box=document.getElementById('adminStatusBox');
+  if(box){box.style.display='block';box.textContent='Checking proxy...';}
+  checkProxy().then(function(){
+    var dot=document.getElementById('pdot');
+    var ok=dot&&dot.style.background==='rgb(99, 153, 34)';
+    if(box) box.textContent=ok
+      ?'Proxy OK — nse-proxy-mojx.onrender.com is reachable'
+      :'Proxy unreachable — Render may be sleeping. Wait 30s and retry.';
+  });
+}
+
 async function adminLoad(endpoint, boxId){
   const box=document.getElementById(boxId);
   if(!box)return;
@@ -1496,7 +1481,9 @@ async function adminLoad(endpoint, boxId){
     const r=await fetch(PROXY+'/'+endpoint);
     const d=await r.json();
     box.textContent=JSON.stringify(d,null,2);
-  }catch(e){box.textContent='Error: '+e.message;}
+  }catch(e){
+    box.textContent='Error: '+e.message+'\n\nIf you see 403: your token may have expired. \nLogin again via the navbar Login button, then retry.\n\nOr use Mock scan to test Telegram without a live token.';
+  }
 }
 
 async function adminFetch(endpoint,method,msgId){
@@ -1511,6 +1498,49 @@ async function adminFetch(endpoint,method,msgId){
     }
   }catch(e){if(msg){msg.textContent='✗ '+e.message;msg.style.color='#A32D2D';}}
 }
+
+function dryScanAutocomplete(val){
+  const drop = document.getElementById('dryScanDrop');
+  if(!val || val.length < 1){ drop.style.display='none'; return; }
+  const q = val.toUpperCase();
+  const matches = STOCKS.filter(s =>
+    s.sym.startsWith(q) || s.name.toUpperCase().includes(q)
+  ).slice(0, 8);
+  if(!matches.length){ drop.style.display='none'; return; }
+  drop.innerHTML = matches.map(function(s){
+    return '<div class="dry-ac-item" data-sym="'+s.sym+'"'+
+    ' style="padding:7px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f0;">' +
+    '<strong>'+s.sym+'</strong> <span style="color:#888;font-size:11px;">'+s.sec+'</span></div>';
+  }).join('');
+  drop.querySelectorAll('.dry-ac-item').forEach(function(el){
+    el.addEventListener('click', function(){ dryScanSelect(el.getAttribute('data-sym')); });
+    el.addEventListener('mouseover', function(){ el.style.background='#EAF3DE'; });
+    el.addEventListener('mouseout',  function(){ el.style.background='#fff'; });
+  });
+  drop.style.display = 'block';
+}
+
+function dryScanSelect(sym){
+  document.getElementById('dryScanSym').value = sym;
+  document.getElementById('dryScanDrop').style.display = 'none';
+}
+
+function dryScanKeydown(e){
+  if(e.key === 'Escape') document.getElementById('dryScanDrop').style.display='none';
+  if(e.key === 'Enter'){
+    document.getElementById('dryScanDrop').style.display='none';
+    runDryScanFull();
+  }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e){
+  if(!e.target.closest || !e.target.closest('#dryScanSym') &&
+     !e.target.closest('#dryScanDrop')){
+    const d=document.getElementById('dryScanDrop');
+    if(d) d.style.display='none';
+  }
+});
 
 async function runDryScanFull(){
   const box=document.getElementById('adminDryBox');
