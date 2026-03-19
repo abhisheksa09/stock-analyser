@@ -451,7 +451,14 @@ def dry_scan():
     server_token = scanner.get_token()
     token        = header_token or server_token
     sym_req      = request.args.get("sym", "").upper().strip()
-    use_mock     = request.args.get("mock", "0") == "1" or not token
+    # Auto-switch to mock outside Upstox market hours (9:00-15:40 IST)
+    from datetime import datetime, timezone, timedelta
+    _ist   = timezone(timedelta(hours=5, minutes=30))
+    _now   = datetime.now(_ist)
+    _mins  = _now.hour * 60 + _now.minute
+    _mkt_open = 540 <= _mins <= 940   # 9:00–15:40 IST
+    force_mock = request.args.get("mock", "0") == "1"
+    use_mock   = force_mock or not token or not _mkt_open
 
     from signals import STOCKS, build_setup, is_ready
     from scanner import send_telegram, format_alert, STATE
@@ -556,12 +563,12 @@ def dry_scan():
         "results":     results,
         "alert_sent":  alert_sent,
         "tip": (
-            "No token set — used mock data. Call POST /set-token first for live data."
-            if use_mock and not token else
-            "Live data used. Check your Telegram for the alert."
-            if not use_mock else
+            "No token set — used mock data." if use_mock and not token else
+            "Outside market hours (9:00–15:40 IST) — used mock data. Try live scan between 9–3:30 PM IST." if use_mock and not _mkt_open else
+            "Live data used. Check your Telegram for the alert." if not use_mock else
             "Mock data used. Check your Telegram for the alert."
         ),
+        "market_open": _mkt_open,
     })
 
 # ── Upstox OAuth (mobile-friendly token flow) ────────────────────────────────

@@ -1095,7 +1095,7 @@ function updateTokenNavBtn(ok, name){
   if(ok){
     if(txt) txt.textContent = name ? name.split(' ')[0] : 'Logged in';
     btn.style.borderColor='#C0DD97';btn.style.color='#27500A';
-    btn.title = 'Logged in as '+(name||'user')+' — click for Admin';
+    btn.title = 'Logged in as '+(name||'user')+'.';
   } else {
     if(txt) txt.textContent = 'Login';
     btn.style.borderColor='#e0e0e0';btn.style.color='#555';
@@ -1209,6 +1209,27 @@ function vwap(c){let tv=0,v=0;c.forEach(x=>{const tp=(x[2]+x[3]+x[4])/3;tv+=tp*x
 function atr14(c){if(c.length<2)return 0;const t=[];for(let i=1;i<c.length;i++){const h=c[i][2],l=c[i][3],p=c[i-1][4];t.push(Math.max(h-l,Math.abs(h-p),Math.abs(l-p)));}const s=t.slice(-14);return +(s.reduce((a,b)=>a+b,0)/s.length).toFixed(2);}
 
 // ─── BUILD SETUP ──────────────────────────────────────────────────────────────
+function confTip(s){
+  var lines = [];
+  lines.push('Confidence: ' + s.conf + '%');
+  lines.push('');
+  if(s.confBD && s.confBD.length){
+    lines.push('Factor breakdown:');
+    s.confBD.forEach(function(b){ lines.push('  ' + b); });
+    lines.push('');
+  }
+  var pen = s.ctxWarnings ? s.ctxWarnings.slice() : [];
+  if(s.marketBlocked) pen.unshift('Nifty ±0.5% hard block — forced WATCH');
+  if(pen.length){ lines.push('Adjustments:'); pen.forEach(function(p){ lines.push('  ' + p); }); lines.push(''); }
+  if(s.macroImpact && s.macroImpact.trim()){ lines.push('Macro/news: ' + s.macroImpact.trim()); lines.push(''); }
+  if(s.confirmCount !== undefined){
+    lines.push('Candles: ' + s.confirmCount + '/3' + (s.confirmCount < 3 ? ' — −20% penalty' : ' ✓'));
+    lines.push('');
+  }
+  lines.push('Verdict: ' + (s.conf >= 75 ? '✓ Green — full size' : s.conf >= 55 ? '◑ Amber — half size' : '✗ Red — skip'));
+  return lines.join('|NEWLINE|');
+}
+
 function sigTip(s){
   // Rich tooltip explaining exactly why this signal was inferred
   var lines = [];
