@@ -250,7 +250,7 @@ def dry_scan():
     use_mock = request.args.get("mock", "0") == "1" or not token
 
     from signals import STOCKS, build_setup, is_ready
-    from scanner import send_telegram, format_alert, STATE, apply_macro_penalties_to_setup
+    from scanner import send_telegram, format_alert, STATE
 
     # Pick stock(s) to test
     if sym_req:
