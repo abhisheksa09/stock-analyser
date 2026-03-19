@@ -251,107 +251,7 @@ th[data-tip]{cursor:default;}
   .hist-toolbar > .btn{width:100%;}
 }
 
-/* ── Embedded chatbot panel ────────────────────────────────────────────────── */
-#chatPanel{
-  position:fixed;bottom:88px;right:24px;
-  width:380px;height:560px;
-  background:#fff;border:1px solid #e0e0e0;
-  border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.14);
-  display:flex;flex-direction:column;z-index:9998;
-  transform:scale(.92) translateY(20px);opacity:0;
-  pointer-events:none;
-  transition:transform .22s cubic-bezier(.34,1.56,.64,1),opacity .18s ease;
-}
-#chatPanel.open{
-  transform:scale(1) translateY(0);opacity:1;
-  pointer-events:all;
-}
-.cp-header{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:12px 14px;border-bottom:1px solid #f0f0f0;
-  background:#EAF3DE;border-radius:16px 16px 0 0;flex-shrink:0;
-}
-.cp-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#27500A;}
-.cp-close{
-  width:26px;height:26px;border-radius:6px;border:none;background:rgba(0,0,0,.06);
-  color:#555;font-size:14px;cursor:pointer;display:flex;align-items:center;
-  justify-content:center;transition:background .15s;
-}
-.cp-close:hover{background:rgba(0,0,0,.14);}
-.cp-msgs{
-  flex:1;overflow-y:auto;padding:14px 12px;display:flex;
-  flex-direction:column;gap:12px;
-  scrollbar-width:thin;scrollbar-color:#e0e0e0 transparent;
-}
-.cp-msgs::-webkit-scrollbar{width:3px;}
-.cp-msgs::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}
-.cp-msg-user{
-  align-self:flex-end;max-width:88%;background:#EAF3DE;
-  border:1px solid #C0DD97;border-radius:12px 4px 12px 12px;
-  padding:8px 12px;font-size:13px;line-height:1.55;color:#1a1a1a;
-  animation:cpFadeUp .2s ease;
-}
-.cp-msg-bot{
-  align-self:flex-start;max-width:92%;background:#f8f8f6;
-  border:1px solid #e8e8e8;border-radius:4px 12px 12px 12px;
-  padding:8px 12px;font-size:13px;line-height:1.55;color:#1a1a1a;
-  animation:cpFadeUp .2s ease;
-}
-.cp-msg-bot code{
-  font-family:'Courier New',monospace;font-size:11px;
-  background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px;
-}
-.cp-msg-bot strong{font-weight:600;}
-.cp-msg-bot ul{padding-left:16px;margin:4px 0;}
-.cp-msg-bot li{margin-bottom:2px;}
-.cp-msg-bot p{margin-bottom:6px;}
-.cp-msg-bot p:last-child{margin-bottom:0;}
-@keyframes cpFadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.cp-typing{display:flex;gap:4px;align-items:center;padding:6px 0;}
-.cp-typing span{
-  width:5px;height:5px;border-radius:50%;background:#aaa;
-  animation:cpDot 1.2s ease-in-out infinite;
-}
-.cp-typing span:nth-child(2){animation-delay:.2s;}
-.cp-typing span:nth-child(3){animation-delay:.4s;}
-@keyframes cpDot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1.1)}}
-.cp-input-row{
-  display:flex;gap:8px;padding:10px 12px;
-  border-top:1px solid #f0f0f0;flex-shrink:0;
-  background:#fff;border-radius:0 0 16px 16px;
-}
-.cp-input{
-  flex:1;border:1px solid #e0e0e0;border-radius:8px;
-  padding:8px 10px;font-size:13px;font-family:inherit;
-  outline:none;resize:none;max-height:80px;min-height:34px;
-  background:#fff;color:#1a1a1a;transition:border-color .15s;
-}
-.cp-input:focus{border-color:#27500A;}
-.cp-send{
-  width:34px;height:34px;border-radius:8px;border:none;
-  background:#27500A;color:#fff;cursor:pointer;font-size:14px;
-  flex-shrink:0;transition:background .15s,transform .1s;
-  display:flex;align-items:center;justify-content:center;font-weight:700;
-}
-.cp-send:hover{background:#1a3d07;transform:scale(1.05);}
-.cp-send:disabled{background:#ccc;transform:none;cursor:not-allowed;}
-.cp-suggestions{
-  display:flex;flex-wrap:nowrap;gap:6px;padding:0 12px 8px;
-  overflow-x:auto;scrollbar-width:none;flex-shrink:0;
-}
-.cp-suggestions::-webkit-scrollbar{display:none;}
-.cp-sug{
-  font-size:11px;padding:4px 9px;border-radius:16px;
-  border:1px solid #ddd;background:#f9f9f7;color:#555;
-  cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0;
-}
-.cp-sug:hover{border-color:#27500A;color:#27500A;background:#EAF3DE;}
-/* Mobile */
-@media(max-width:440px){
-  #chatPanel{width:calc(100vw - 16px);right:8px;bottom:80px;height:70dvh;}
-}
-
-/* ── Embedded chatbot panel ────────────────────────────────────────────────── */
+/* ── Embedded chatbot ─────────────────────────────────────────────────────── */
 #chatPanel{position:fixed;bottom:88px;right:24px;width:370px;height:540px;
   background:#fff;border:1px solid #e0e0e0;border-radius:16px;
   box-shadow:0 8px 40px rgba(0,0,0,.14);display:flex;flex-direction:column;
@@ -376,8 +276,7 @@ th[data-tip]{cursor:default;}
 .cp-b{align-self:flex-start;max-width:92%;background:#f8f8f6;border:1px solid #ebebeb;
   border-radius:4px 12px 12px 12px;padding:8px 11px;font-size:13px;line-height:1.55;
   animation:cpUp .18s ease;}
-.cp-b code{font-family:monospace;font-size:11px;background:rgba(0,0,0,.06);
-  padding:1px 4px;border-radius:3px;}
+.cp-b code{font-family:monospace;font-size:11px;background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px;}
 .cp-b strong{font-weight:600;}
 .cp-b ul{padding-left:14px;margin:4px 0;}
 .cp-b li{margin-bottom:2px;}
@@ -385,13 +284,11 @@ th[data-tip]{cursor:default;}
 .cp-b p:last-child{margin-bottom:0;}
 @keyframes cpUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 .cp-dots{display:flex;gap:4px;align-items:center;padding:4px 0;}
-.cp-dots span{width:5px;height:5px;border-radius:50%;background:#bbb;
-  animation:cpDt 1.2s ease-in-out infinite;}
+.cp-dots span{width:5px;height:5px;border-radius:50%;background:#bbb;animation:cpDt 1.2s ease-in-out infinite;}
 .cp-dots span:nth-child(2){animation-delay:.2s;}
 .cp-dots span:nth-child(3){animation-delay:.4s;}
 @keyframes cpDt{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1.1)}}
-.cp-sugs{display:flex;flex-wrap:nowrap;gap:6px;padding:0 12px 8px;
-  overflow-x:auto;flex-shrink:0;scrollbar-width:none;}
+.cp-sugs{display:flex;flex-wrap:nowrap;gap:6px;padding:0 12px 8px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;}
 .cp-sugs::-webkit-scrollbar{display:none;}
 .cp-sug{font-size:11px;padding:4px 9px;border-radius:16px;border:1px solid #ddd;
   background:#f9f9f7;color:#555;cursor:pointer;white-space:nowrap;transition:all .15s;}
@@ -399,15 +296,13 @@ th[data-tip]{cursor:default;}
 .cp-foot{display:flex;gap:8px;padding:9px 12px;border-top:1px solid #f0f0f0;
   flex-shrink:0;background:#fff;border-radius:0 0 16px 16px;}
 .cp-inp{flex:1;border:1px solid #ddd;border-radius:8px;padding:7px 10px;
-  font-size:13px;font-family:inherit;outline:none;resize:none;
-  max-height:72px;min-height:32px;transition:border-color .15s;}
+  font-size:13px;font-family:inherit;outline:none;resize:none;max-height:72px;min-height:32px;transition:border-color .15s;}
 .cp-inp:focus{border-color:#27500A;}
 .cp-btn{width:32px;height:32px;border-radius:8px;border:none;background:#27500A;
   color:#fff;cursor:pointer;font-size:14px;font-weight:700;flex-shrink:0;
   transition:background .15s,transform .1s;display:flex;align-items:center;justify-content:center;}
 .cp-btn:hover{background:#1a3d07;transform:scale(1.05);}
 .cp-btn:disabled{background:#ccc;transform:none;cursor:not-allowed;}
-/* fab */
 #chatFab{position:fixed;bottom:24px;right:24px;z-index:9999;width:52px;height:52px;
   border-radius:50%;background:#27500A;border:2px solid #4ade80;
   box-shadow:0 4px 20px rgba(74,222,128,.35);display:flex;align-items:center;
@@ -418,122 +313,19 @@ th[data-tip]{cursor:default;}
   50%{box-shadow:0 4px 28px rgba(74,222,128,.65);}}
 #chatFab::after{content:"Ask AI";position:absolute;right:60px;background:#1a1a1a;
   color:#4ade80;font-size:11px;font-weight:600;padding:4px 9px;border-radius:6px;
-  border:1px solid #2a2a2a;white-space:nowrap;opacity:0;pointer-events:none;
-  transition:opacity .15s;}
+  border:1px solid #2a2a2a;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;}
 #chatFab:hover::after{opacity:1;}
-@media(max-width:440px){
-  #chatPanel{width:calc(100vw - 16px);right:8px;bottom:78px;height:65dvh;}}
-
-/* ── Embedded chatbot panel ────────────────────────────────────────────────── */
-#chatPanel{
-  position:fixed;bottom:88px;right:24px;
-  width:380px;height:560px;
-  background:#fff;border:1px solid #e0e0e0;
-  border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.14);
-  display:flex;flex-direction:column;z-index:9998;
-  transform:scale(.92) translateY(20px);opacity:0;
-  pointer-events:none;
-  transition:transform .22s cubic-bezier(.34,1.56,.64,1),opacity .18s ease;
-}
-#chatPanel.open{
-  transform:scale(1) translateY(0);opacity:1;
-  pointer-events:all;
-}
-.cp-header{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:12px 14px;border-bottom:1px solid #f0f0f0;
-  background:#EAF3DE;border-radius:16px 16px 0 0;flex-shrink:0;
-}
-.cp-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#27500A;}
-.cp-close{
-  width:26px;height:26px;border-radius:6px;border:none;background:rgba(0,0,0,.06);
-  color:#555;font-size:14px;cursor:pointer;display:flex;align-items:center;
-  justify-content:center;transition:background .15s;
-}
-.cp-close:hover{background:rgba(0,0,0,.14);}
-.cp-msgs{
-  flex:1;overflow-y:auto;padding:14px 12px;display:flex;
-  flex-direction:column;gap:12px;
-  scrollbar-width:thin;scrollbar-color:#e0e0e0 transparent;
-}
-.cp-msgs::-webkit-scrollbar{width:3px;}
-.cp-msgs::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}
-.cp-msg-user{
-  align-self:flex-end;max-width:88%;background:#EAF3DE;
-  border:1px solid #C0DD97;border-radius:12px 4px 12px 12px;
-  padding:8px 12px;font-size:13px;line-height:1.55;color:#1a1a1a;
-  animation:cpFadeUp .2s ease;
-}
-.cp-msg-bot{
-  align-self:flex-start;max-width:92%;background:#f8f8f6;
-  border:1px solid #e8e8e8;border-radius:4px 12px 12px 12px;
-  padding:8px 12px;font-size:13px;line-height:1.55;color:#1a1a1a;
-  animation:cpFadeUp .2s ease;
-}
-.cp-msg-bot code{
-  font-family:'Courier New',monospace;font-size:11px;
-  background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px;
-}
-.cp-msg-bot strong{font-weight:600;}
-.cp-msg-bot ul{padding-left:16px;margin:4px 0;}
-.cp-msg-bot li{margin-bottom:2px;}
-.cp-msg-bot p{margin-bottom:6px;}
-.cp-msg-bot p:last-child{margin-bottom:0;}
-@keyframes cpFadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.cp-typing{display:flex;gap:4px;align-items:center;padding:6px 0;}
-.cp-typing span{
-  width:5px;height:5px;border-radius:50%;background:#aaa;
-  animation:cpDot 1.2s ease-in-out infinite;
-}
-.cp-typing span:nth-child(2){animation-delay:.2s;}
-.cp-typing span:nth-child(3){animation-delay:.4s;}
-@keyframes cpDot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1.1)}}
-.cp-input-row{
-  display:flex;gap:8px;padding:10px 12px;
-  border-top:1px solid #f0f0f0;flex-shrink:0;
-  background:#fff;border-radius:0 0 16px 16px;
-}
-.cp-input{
-  flex:1;border:1px solid #e0e0e0;border-radius:8px;
-  padding:8px 10px;font-size:13px;font-family:inherit;
-  outline:none;resize:none;max-height:80px;min-height:34px;
-  background:#fff;color:#1a1a1a;transition:border-color .15s;
-}
-.cp-input:focus{border-color:#27500A;}
-.cp-send{
-  width:34px;height:34px;border-radius:8px;border:none;
-  background:#27500A;color:#fff;cursor:pointer;font-size:14px;
-  flex-shrink:0;transition:background .15s,transform .1s;
-  display:flex;align-items:center;justify-content:center;font-weight:700;
-}
-.cp-send:hover{background:#1a3d07;transform:scale(1.05);}
-.cp-send:disabled{background:#ccc;transform:none;cursor:not-allowed;}
-.cp-suggestions{
-  display:flex;flex-wrap:nowrap;gap:6px;padding:0 12px 8px;
-  overflow-x:auto;scrollbar-width:none;flex-shrink:0;
-}
-.cp-suggestions::-webkit-scrollbar{display:none;}
-.cp-sug{
-  font-size:11px;padding:4px 9px;border-radius:16px;
-  border:1px solid #ddd;background:#f9f9f7;color:#555;
-  cursor:pointer;white-space:nowrap;transition:all .15s;flex-shrink:0;
-}
-.cp-sug:hover{border-color:#27500A;color:#27500A;background:#EAF3DE;}
-/* Mobile */
-@media(max-width:440px){
-  #chatPanel{width:calc(100vw - 16px);right:8px;bottom:80px;height:70dvh;}
-}
+@media(max-width:440px){#chatPanel{width:calc(100vw - 16px);right:8px;bottom:78px;height:65dvh;}}
 </style>
 </head>
 <body>
 <div class="page">
 
-  
-<div class="navbar">
+  <div class="navbar">
     <!-- Left: brand -->
     <div class="navbar-brand">
       <span class="navbar-title">NSE Scanner</span>
-      <span class="chip chip-gray" id="versionChip" title="App version">v2.0.0</span>
+      <span class="chip chip-gray" id="versionChip" title="App version">v2.2.0</span>
     </div>
 
     <!-- Centre: market status chips -->
@@ -559,7 +351,7 @@ th[data-tip]{cursor:default;}
       <a href="readme.html" target="_blank" class="nav-btn" title="User guide">&#128214; Docs</a>
       <a href="changelog.html" target="_blank" class="nav-btn" title="Build history">&#127959;</a>
       <button class="nav-btn" onclick="doLogout()" title="Logout" style="color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
-      </div>
+    </div>
   </div>
 
   <div id="coldStartBanner" style="background:#FFF8E1;border:1px solid #FAC775;border-radius:8px;padding:10px 16px;margin-bottom:12px;font-size:12px;color:#633806;display:none;">
@@ -631,7 +423,7 @@ th[data-tip]{cursor:default;}
       <div class="counter"><div class="counter-n" style="color:#EF9F27;" id="cW">0</div><div class="counter-l">WATCH</div></div>
     </div>
 
-    <div class="tbl-box" id="tblBox">
+    <div class="tbl-box" id="tblBox" style="display:none;">
       <table>
         <thead><tr>
           <th data-tip="Stock symbol and sector. Signal history dots show previous scans. Lock = first signal of session.">Stock</th>
@@ -808,14 +600,18 @@ to see the specific analysis and reason.">Signal</th>
 
     <!-- Admin content (hidden until PIN entered) -->
     <div id="adminContent" style="display:none;">
+    <div class="card" style="border-left:4px solid #185FA5;">
+      <div class="card-title" style="color:#185FA5;">&#9881; Admin Panel</div>
+      <p style="font-size:13px;color:#666;margin-bottom:0;">System controls, diagnostics and testing.</p>
+    </div>
+
+
+
     <div class="card">
       <div class="card-title">System Status</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-        <button class="btn" onclick="checkProxyAdmin()" style="display:inline-flex;align-items:center;gap:6px;">
-          <span class="pdot" id="pdot" style="width:8px;height:8px;display:inline-block;"></span>
-          <span id="proxyNavTxt">Proxy</span>
-        </button>
-        <button class="btn" onclick="adminLoad('alert-status','adminStatusBox')">&#128200; Alert status</button>
+        <button class="btn" onclick="checkProxyAdmin()" style="display:inline-flex;align-items:center;gap:6px;"><span class="pdot" id="pdot" style="width:8px;height:8px;display:inline-block;"></span><span id="proxyNavTxt">Proxy</span></button>
+                <button class="btn" onclick="adminLoad('alert-status','adminStatusBox')">&#128200; Alert status</button>
         <button class="btn" onclick="adminLoad('macro-status','adminStatusBox')">&#127758; Macro status</button>
         <button class="btn" onclick="adminLoad('db/status','adminStatusBox')">&#128451; DB status</button>
         <button class="btn" onclick="adminLoad('ping','adminStatusBox')">&#128997; Ping</button>
@@ -883,36 +679,8 @@ to see the specific analysis and reason.">Signal</th>
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const PROXY = 'https://nse-proxy-mojx.onrender.com';
-const APP_VERSION = 'v1.9.0';
+const APP_VERSION = 'v2.2.0';
 const SK = 'nse_v2';
-// ── Auth guard — redirect to login if no token ──────────────────────────────
-(async function authGuard(){
-  try{
-    var r = await fetch(PROXY + '/get-token');
-    if(!r.ok){ window.location.replace('login.html'); return; }
-    var d = await r.json();
-    if(!d.token){ window.location.replace('login.html'); return; }
-    // Token exists — set it and continue
-    token = d.token;
-    // Try to get user name for navbar
-    try{
-      var pr = await fetch(PROXY + '/v2/user/profile',{
-        headers:{'Authorization':'Bearer '+d.token,'Accept':'application/json'}
-      });
-      var pd = await pr.json();
-      if(pd.data){
-        var name = pd.data.full_name||pd.data.user_name||pd.data.name||'user';
-        updateTokenNavBtn(true, name);
-        setTokenStatusUI(true, name);
-      }
-    }catch(e2){ updateTokenNavBtn(true,'Logged in'); }
-  }catch(e){
-    // Server unreachable — still let through (Render cold start)
-    console.warn('Auth guard: server unreachable', e.message);
-  }
-})();
-
-
 
 const STOCKS = [
   {sym:'HDFCBANK',  name:'HDFC Bank',              ikey:'NSE_EQ|INE040A01034', sec:'Banking'},
@@ -1105,8 +873,7 @@ function getSignalMeta(sym,currentSig){
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
-(
-function init(){
+(function init(){
   const now=new Date(),utcM=now.getUTCHours()*60+now.getUTCMinutes(),istM=(utcM+330)%1440;
   const mc=document.getElementById('mktChip');
   if(istM>=555&&istM<570){mc.textContent='Pre-open (IST)';mc.className='chip chip-amber';}
@@ -1119,7 +886,7 @@ function init(){
   // Show version chip
   const vc = document.getElementById('versionChip');
   if(vc) vc.textContent = APP_VERSION;
-  // Token check handled by login screen
+  // Token checked by authGuard on load
   // Listen for OAuth success message from the popup tab
   window.addEventListener('message', function(e){
     if(e.data && e.data.type === 'upstox_auth_success'){
@@ -1260,16 +1027,35 @@ async function runDryScan(btnEl){
 }
 
 // ─── NAVBAR FUNCTIONS ─────────────────────────────────────────────────────────
+// ── Logout ────────────────────────────────────────────────────────────────────
 function doLogout(){
-  // Clear token on server by calling set-token with empty, then redirect to login
   token = '';
-  fetch(PROXY+'/set-token', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({token:''})
-  }).catch(function(){});  // fire and forget
-  window.location.replace('login.html');
+  // Tell server to delete today's token from DB
+  fetch(PROXY+'/auth/logout', {method:'POST'}).catch(function(){});
+  setTimeout(function(){ window.location.replace('login.html'); }, 350);
 }
+
+// ── Auth guard — redirect to login if no server token ────────────────────────
+(async function authGuard(){
+  try{
+    var r = await fetch(PROXY+'/get-token');
+    if(!r.ok){ window.location.replace('login.html'); return; }
+    var d = await r.json();
+    if(!d.token || !d.token.trim()){ window.location.replace('login.html'); return; }
+    token = d.token;
+    try{
+      var pr = await fetch(PROXY+'/v2/user/profile',{
+        headers:{'Authorization':'Bearer '+d.token,'Accept':'application/json'}
+      });
+      var pd = await pr.json();
+      if(pd.data){
+        var name = pd.data.full_name||pd.data.user_name||pd.data.name||'user';
+        updateTokenNavBtn(true, name);
+        setTokenStatusUI(true, name);
+      }
+    }catch(e2){ updateTokenNavBtn(true,'Logged in'); }
+  }catch(e){ console.warn('Auth guard: server unreachable'); }
+})();
 
 function handleTokenNavClick(){
   // If token set → go to Admin tab; if not → open OAuth login
@@ -1632,11 +1418,6 @@ function updateReversalBanner(){
 // ─── RENDER SCAN TABLE ────────────────────────────────────────────────────────
 function renderScanTable(){
   const tb=document.getElementById('scanBody');tb.innerHTML='';
-  if(!results||!results.length){
-    document.getElementById('emptyBox').style.display='block';
-    return;
-  }
-  document.getElementById('emptyBox').style.display='none';
   results.forEach((s,i)=>{
     const sigC=s.sig==='BUY'?'buy':s.sig==='SELL'?'sell':'watch';
     const rrC=s.rr>=2?'rr-g':s.rr>=1.5?'rr-o':'rr-r';
@@ -1653,7 +1434,7 @@ function renderScanTable(){
     tr.className='drow'+(_meta.reversed?' evt-row-flag':'');tr.id='sr'+i;
     tr.innerHTML=
       '<td><div class="sym">'+s.sym+evtBadgeHTML(s.sym)+'</div><div class="sec">'+s.sec+'</div>'+sigHistoryHTML(s.sym,s.sig)+lockedSigHTML(s.sym,s.sig)+'</td>'+
-      '<td data-tip="'+sigTip(s).replace(/"/g,'&quot;')+'">'+(function(){const _n=new Date();const _um=_n.getUTCHours()*60+_n.getUTCMinutes();const _im=(_um+330)%1440;const _ah=_im<555||_im>=930;return _ah?'<span style="font-size:10px;color:#aaa;background:#f5f5f0;border:1px solid #e0e0e0;border-radius:4px;padding:1px 6px;margin-right:4px;">After hours</span>':'';})()+' <span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+confirmBadgeHTML(s)+'</td>'+
+      '<td data-tip="'+sigTip(s).replace(/"/g,'&quot;')+'"><div style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;">'+(function(){var _n=new Date(),_um=_n.getUTCHours()*60+_n.getUTCMinutes(),_im=(_um+330)%1440,_ah=_im<555||_im>=930;return _ah?'<span style="font-size:9px;color:#aaa;background:#f5f5f0;border:1px solid #ddd;border-radius:3px;padding:1px 4px;">After hours</span>':'';})()+'<span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+'<div style="margin-top:1px;">'+confirmBadgeHTML(s)+'</div></div></td>'+
       '<td class="r" data-tip="Last traded price.\n% change vs yesterday close.\nGreen = up, Red = down."><div class="ltp">\u20b9'+fc(s.ltp)+'</div><div class="'+(s.chg>=0?'pos':'neg')+'">'+(s.chg>=0?'+':'')+s.chg+'%</div></td>'+
       '<td class="r"><div class="ev">\u2197 \u20b9'+fc(s.en)+'</div><div class="tgt">\u2713 \u20b9'+fc(s.tg)+'</div><div class="slv">\u2717 \u20b9'+fc(s.sl)+'</div></td>'+
       '<td class="r hm" data-tip="Risk:Reward ratio.\nHow much you gain vs how much you risk.\n>=2:1 Good (green)\n1.5-2:1 Acceptable (amber)\n<1.5 Skip (red)\nAlways aim for 2:1 minimum."><span class="rr '+rrC+'">'+(isNaN(s.rr)?'N/A':s.rr+':1')+'</span></td>'+
@@ -1711,8 +1492,8 @@ let _adminUnlocked = false;
 const ADMIN_SESSION_KEY = 'nse_admin_session';
 
 async function checkAdminAccess(){
+  // Always verify with server — never auto-unlock from localStorage alone
   const storedTok = localStorage.getItem(ADMIN_SESSION_KEY)||'';
-  // Show content optimistically if token stored (avoid flash), gate otherwise
   if(storedTok){ showAdminContent(); } else { showAdminGate(); }
   try{
     const r = await fetch(PROXY+'/admin/check',{
@@ -2048,8 +1829,6 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
 <div id="floatTip" style="display:none;position:fixed;background:#1a1a1a;color:#fff;font-size:12px;line-height:1.6;padding:8px 12px;border-radius:8px;white-space:pre-wrap;max-width:280px;pointer-events:none;z-index:99999;box-shadow:0 3px 14px rgba(0,0,0,.4);text-align:left;"></div>
 <script>
 // Tooltip engine — in its own script tag AFTER the floatTip div
-
-
 (function(){
   var tip = document.getElementById('floatTip');
   function show(el, e) {
@@ -2079,7 +1858,7 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
 })();
 </script>
 
-  <!-- Embedded chatbot panel -->
+  <!-- Chatbot panel + FAB -->
   <div id="chatPanel">
     <div class="cp-hdr">
       <div class="cp-title"><span>&#129302;</span><span>Scanner Assistant</span></div>
@@ -2087,31 +1866,26 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
     </div>
     <div class="cp-msgs" id="cpMsgs"></div>
     <div class="cp-sugs" id="cpSugs">
-      <button class="cp-sug" onclick="cpAsk('How does the confidence score work?')">Confidence score</button>
+      <button class="cp-sug" onclick="cpAsk('How does confidence score work?')">Confidence</button>
       <button class="cp-sug" onclick="cpAsk('What is ORB?')">ORB</button>
-      <button class="cp-sug" onclick="cpAsk('Why is my signal WATCH?')">Signal WATCH</button>
+      <button class="cp-sug" onclick="cpAsk('Why is my signal WATCH?')">WATCH signal</button>
       <button class="cp-sug" onclick="cpAsk('How do Telegram alerts fire?')">Alerts</button>
-      <button class="cp-sug" onclick="cpAsk('What are the 4 macro layers?')">Macro layers</button>
+      <button class="cp-sug" onclick="cpAsk('What are the 4 macro layers?')">Macro</button>
     </div>
     <div class="cp-foot">
       <textarea class="cp-inp" id="cpInp" rows="1"
         placeholder="Ask about signals, alerts, confidence…"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cpSend();}"
-        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,72)+'px'">
-      </textarea>
+        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,72)+'px'"></textarea>
       <button class="cp-btn" id="cpBtn" onclick="cpSend()">&#8593;</button>
     </div>
   </div>
-
-  <!-- FAB -->
-  <div id="chatFab" onclick="cpToggle()" title="Ask the Scanner Assistant"
-       aria-label="Open chat assistant">
+  <div id="chatFab" onclick="cpToggle()" title="Ask the Scanner Assistant" aria-label="Open chat">
     <span style="font-size:22px;line-height:1;pointer-events:none;">&#129302;</span>
   </div>
 
   <script>
 var cpH=[],cpBusy=false,cpOpn=false;
-
 function cpToggle(){
   cpOpn=!cpOpn;
   var p=document.getElementById('chatPanel');
@@ -2119,92 +1893,31 @@ function cpToggle(){
     p.classList.add('cp-open');
     if(!cpH.length) cpBot("<strong>Hi! I’m your Scanner Assistant.</strong><br>Ask me anything about signals, confidence, alerts, login flow, or macros.");
     setTimeout(function(){var i=document.getElementById('cpInp');if(i)i.focus();},240);
-  } else {
-    p.classList.remove('cp-open');
-  }
+  } else { p.classList.remove('cp-open'); }
 }
-
-document.addEventListener('keydown',function(e){
-  if(e.key==='Escape'&&cpOpn) cpToggle();
-});
-
-function cpBot(html){
-  var d=document.createElement('div');d.className='cp-b';d.innerHTML=html;
-  var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;
-}
-
-function cpUser(txt){
-  var d=document.createElement('div');d.className='cp-u';
-  d.textContent=txt;
-  var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;
-}
-
-function cpTyping(){
-  var d=document.createElement('div');d.className='cp-b cp-dots';d.id='cpTyping';
-  d.innerHTML='<span></span><span></span><span></span>';
-  var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;
-}
-
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&cpOpn)cpToggle();});
+function cpBot(html){var d=document.createElement('div');d.className='cp-b';d.innerHTML=html;var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;}
+function cpUser(txt){var d=document.createElement('div');d.className='cp-u';d.textContent=txt;var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;}
+function cpTyping(){var d=document.createElement('div');d.className='cp-b cp-dots';d.id='cpTyping';d.innerHTML='<span></span><span></span><span></span>';var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;}
 function cpRm(){var t=document.getElementById('cpTyping');if(t)t.remove();}
-
-function cpMd(t){
-  return t
-    .replace(/```[\w]*\n?([\s\S]*?)```/g,'<pre style="background:#f0f0ed;padding:7px;border-radius:5px;overflow-x:auto;font-size:11px;margin:4px 0;"><code>$1</code></pre>')
-    .replace(/`([^`]+)`/g,'<code>$1</code>')
-    .replace(/^#{1,3} (.+)$/gm,'<strong style="display:block;margin:7px 0 3px;color:#27500A;font-size:11px;text-transform:uppercase;letter-spacing:.05em;">$1</strong>')
-    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
-    .replace(/^[-*] (.+)$/gm,'<li>$1</li>')
-    .replace(/(<li>[\s\S]*?<\/li>)/g,'<ul style="padding-left:14px;margin:4px 0;">$1</ul>')
-    .replace(/\n\n/g,'</p><p>')
-    .replace(/\n/g,'<br>')
-    .replace(/^(.)/,'<p>$1')
-    .replace(/(.)$/,'$1</p>');
-}
-
-function cpAsk(q){
-  document.getElementById('cpInp').value=q;
-  cpSend();
-}
-
+function cpMd(t){return t.replace(/```[\w]*\n?([\s\S]*?)```/g,'<pre style="background:#f0f0ed;padding:7px;border-radius:5px;overflow-x:auto;font-size:11px;margin:4px 0;"><code>$1</code></pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/^#{1,3} (.+)$/gm,'<strong style="display:block;margin:7px 0 3px;color:#27500A;font-size:11px;text-transform:uppercase;letter-spacing:.05em;">$1</strong>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/^[-*] (.+)$/gm,'<li>$1</li>').replace(/(<li>[\s\S]*?<\/li>)/g,'<ul style="padding-left:14px;margin:4px 0;">$1</ul>').replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>').replace(/^(.)/,'<p>$1').replace(/(.)$/,'$1</p>');}
+function cpAsk(q){document.getElementById('cpInp').value=q;cpSend();}
 async function cpSend(){
-  if(cpBusy) return;
-  var inp=document.getElementById('cpInp'),
-      txt=inp.value.trim();
-  if(!txt) return;
+  if(cpBusy)return;
+  var inp=document.getElementById('cpInp'),txt=inp.value.trim();
+  if(!txt)return;
   inp.value='';inp.style.height='auto';
-  cpBusy=true;
-  document.getElementById('cpBtn').disabled=true;
+  cpBusy=true;document.getElementById('cpBtn').disabled=true;
   document.getElementById('cpSugs').style.display='none';
-  cpUser(txt);
-  cpH.push({role:'user',content:txt});
-  cpTyping();
+  cpUser(txt);cpH.push({role:'user',content:txt});cpTyping();
   try{
-    var res=await fetch(PROXY+'/chat',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({messages:cpH,max_tokens:768})
-    });
-    var d=await res.json();
-    cpRm();
-    if(d.error){
-      var em=typeof d.error==='object'?d.error.message:String(d.error);
-      cpBot('<span style="color:#A32D2D">&#9888; '+em+'</span><br><small style="color:#999">Check ANTHROPIC_API_KEY is set in Render env vars.</small>');
-    } else {
-      var rep=(d.content&&d.content[0]&&d.content[0].text)||'No response.';
-      cpBot(cpMd(rep));
-      cpH.push({role:'assistant',content:rep});
-      if(cpH.length>30) cpH=cpH.slice(-30);
-    }
-  }catch(e){
-    cpRm();
-    cpBot('<span style="color:#A32D2D">&#9888; Could not reach server.</span>');
-  }
-  cpBusy=false;
-  document.getElementById('cpBtn').disabled=false;
-  document.getElementById('cpInp').focus();
+    var res=await fetch(PROXY+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:cpH,max_tokens:768})});
+    var d=await res.json();cpRm();
+    if(d.error){var em=typeof d.error==='object'?d.error.message:String(d.error);cpBot('<span style="color:#A32D2D">&#9888; '+em+'</span><br><small style="color:#999">Check ANTHROPIC_API_KEY is set in Render env vars.</small>');}
+    else{var rep=(d.content&&d.content[0]&&d.content[0].text)||'No response.';cpBot(cpMd(rep));cpH.push({role:'assistant',content:rep});if(cpH.length>30)cpH=cpH.slice(-30);}
+  }catch(e){cpRm();cpBot('<span style="color:#A32D2D">&#9888; Could not reach server.</span>');}
+  cpBusy=false;document.getElementById('cpBtn').disabled=false;document.getElementById('cpInp').focus();
 }
   </script>
 </body>
-</html
-
->
+</html>

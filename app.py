@@ -234,6 +234,32 @@ def set_token():
         "alert_window": f"{os.environ.get('ALERT_START_IST','09:15')} - {os.environ.get('ALERT_STOP_IST','10:30')} IST",
     })
 
+# ── Logout — clear token from memory and DB ──────────────────────────────────
+@app.route("/logout", methods=["POST"])
+@app.route("/logout/", methods=["POST"])
+def logout():
+    """
+    Clear the Upstox token from in-memory scanner and from the DB.
+    Called by the browser when the user taps Logout.
+    """
+    # Clear in-memory token
+    scanner.set_token("")
+
+    # Clear from DB if available
+    if _DB:
+        try:
+            from datetime import date as _date
+            with _db.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM token_store WHERE ist_date = %s",
+                    (_date.today(),)
+                )
+            log.info("Token deleted from DB on logout")
+        except Exception as e:
+            log.warning("DB token delete failed: %s", e)
+
+    return jsonify({"status": "ok", "message": "Logged out"})
+
 @app.route("/get-token")
 @app.route("/get-token/")
 def get_token_for_browser():
@@ -772,6 +798,27 @@ def _auth_page(success: bool, title: str, message: str) -> str:
 </html>"""
 
 # ── OAuth debug status ───────────────────────────────────────────────────────
+@app.route("/auth/logout", methods=["POST"])
+@app.route("/auth/logout/", methods=["POST"])
+def auth_logout():
+    """
+    Clear the server-side token so the next authGuard check redirects to login.
+    Deletes today's token from Supabase and clears scanner in-memory token.
+    """
+    scanner.set_token("")          # clear in-memory
+    if _DB:
+        try:
+            from datetime import date
+            with _db.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM token_store WHERE ist_date = %s",
+                    (date.today(),)
+                )
+            log.info("Token deleted from DB on logout")
+        except Exception as e:
+            log.warning("DB token delete failed: %s", e)
+    return jsonify({"status": "ok", "message": "Logged out"})
+
 @app.route("/auth/status")
 def auth_status():
     """Shows the result of the last OAuth login attempt. Useful for debugging."""
