@@ -231,7 +231,7 @@ def get_chat_id():
     })
 
 # ── Dry run test scan ────────────────────────────────────────────────────────
-@app.route("/dry-scan", methods=["GET", "POST"])
+@app.route("/dry-scan", methods=["GET", "POST"], strict_slashes=False)
 def dry_scan():
     """
     Trigger a one-shot test scan right now, ignoring the time window.
