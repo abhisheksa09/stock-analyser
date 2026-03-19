@@ -268,6 +268,9 @@ th[data-tip]{cursor:default;}
       <span class="chip" id="dataChip">No data</span>
       <span class="chip chip-gray" id="genChip" style="display:none;" title="Time of last scan">&#8212;</span>
     </div>
+    <!-- Hidden status elements used by JS (kept for compatibility) -->
+    <span id="tokenStatusTxt" style="display:none;"></span>
+    <span id="pTxt"           style="display:none;"></span>
 
     <!-- Right: action buttons -->
     <div class="navbar-right">
@@ -286,8 +289,8 @@ th[data-tip]{cursor:default;}
       </button>
 
       <!-- Docs -->
-      <a href="nse_readme.html" target="_blank" class="nav-btn" title="User guide">&#128214; Docs</a>
-      <a href="nse_changelog.html" target="_blank" class="nav-btn" title="Build history">&#127959;</a>
+      <a href="readme.html" target="_blank" class="nav-btn" title="User guide">&#128214; Docs</a>
+      <a href="changelog.html" target="_blank" class="nav-btn" title="Build history">&#127959;</a>
     </div>
   </div>
 
@@ -509,36 +512,40 @@ th[data-tip]{cursor:default;}
   <!-- =========== ADMIN =========== -->
   <div class="tab-pane" id="tab-admin">
 
-    <!-- Admin PIN gate (hidden when unlocked) -->
-    <div id="adminPinGate" style="display:none;">
-      <div class="card" style="border-left:4px solid #185FA5;max-width:340px;margin:0 auto;">
-        <div class="card-title" style="color:#185FA5;">&#128274; Admin access</div>
-        <p style="font-size:13px;color:#666;margin-bottom:12px;">Enter your admin PIN to continue.</p>
-        <div style="display:flex;gap:8px;">
-          <input id="adminPinInput" type="password" class="token-inp"
-                 placeholder="PIN&#8230;" style="width:120px;"
-                 onkeydown="if(event.key==='Enter')verifyAdminPin()"/>
-          <button class="btn" onclick="verifyAdminPin()"
-                  style="background:#27500A;color:#fff;border-color:#27500A;">Unlock</button>
-        </div>
-        <div id="adminPinMsg" class="tok-msg" style="margin-top:8px;"></div>
-      </div>
-    </div>
-
-    <!-- Admin content (hidden until unlocked) -->
-    <div id="adminContent" style="display:none;">
+    <!-- Admin content -->
+    <div id="adminContent">
     <div class="card" style="border-left:4px solid #185FA5;">
       <div class="card-title" style="color:#185FA5;">&#9881; Admin Panel</div>
       <p style="font-size:13px;color:#666;margin-bottom:0;">System controls, diagnostics and testing.</p>
     </div>
 
+
+
     <div class="card">
-      <div class="card-title">Alert Testing</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-        <button class="btn" onclick="runDryScan()" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#9993; Send test Telegram alert</button>
-        <button class="btn" onclick="adminFetch('/test-alert','POST','adminAlertMsg')" style="background:#E6F1FB;color:#185FA5;border-color:#85B7EB;">&#128241; Ping bot only</button>
+      <div class="card-title">Upstox Session</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+        <button id="oauthBtn" onclick="openOAuthLogin()"
+           style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
+                  border-radius:8px;background:#27500A;color:#fff;border:none;
+                  font-size:13px;font-weight:600;cursor:pointer;">
+          &#128274; Login with Upstox
+        </button>
+        <button class="btn" onclick="checkTokenStatus()" style="font-size:12px;padding:6px 14px;">
+          &#8635; Refresh token status
+        </button>
       </div>
-      <div id="adminAlertMsg" class="tok-msg"></div>
+      <div style="margin-top:4px;">
+        <button onclick="toggleManualToken()" style="font-size:12px;color:#888;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;">
+          Or paste token manually
+        </button>
+        <div id="manualTokenWrap" style="display:none;margin-top:10px;">
+          <div class="token-row">
+            <input class="token-inp" id="tokenInput" type="password" placeholder="Paste Upstox access token&#8230;"/>
+            <button class="btn" onclick="verifyToken()">Set token</button>
+          </div>
+        </div>
+      </div>
+      <div class="tok-msg" id="tokenMsg"></div>
     </div>
 
     <div class="card">
@@ -587,8 +594,8 @@ th[data-tip]{cursor:default;}
         <a href="https://supabase.com"                                target="_blank" class="btn" style="font-size:12px;">&#128451; Supabase</a>
         <a href="https://dashboard.render.com"                        target="_blank" class="btn" style="font-size:12px;">&#9729; Render</a>
         <a href="https://uptimerobot.com"                             target="_blank" class="btn" style="font-size:12px;">&#9201; UptimeRobot</a>
-        <a href="nse_readme.html"                                     target="_blank" class="btn" style="font-size:12px;">&#128214; Readme</a>
-        <a href="nse_changelog.html"                                  target="_blank" class="btn" style="font-size:12px;">&#127959; Changelog</a>
+        <a href="readme.html"                                     target="_blank" class="btn" style="font-size:12px;">&#128214; Readme</a>
+        <a href="changelog.html"                                  target="_blank" class="btn" style="font-size:12px;">&#127959; Changelog</a>
       </div>
     </div>
 
@@ -890,53 +897,46 @@ function hideAlerts(){document.getElementById('errBox').style.display='none';doc
 
 // ─── TOKEN ────────────────────────────────────────────────────────────────────
 function setTokenStatusUI(ok, name){
-  const dot  = document.getElementById('tokenStatusDot');
-  const txt  = document.getElementById('tokenStatusTxt');
-  const btn  = document.getElementById('oauthBtn');
-  if(!dot||!txt) return;
+  // tokenStatusDot is now in the navbar (always present)
+  // tokenStatusTxt and oauthBtn are in the admin tab (may not exist yet)
+  const dot = document.getElementById('tokenStatusDot');
+  const txt = document.getElementById('tokenStatusTxt');  // optional
+  const btn = document.getElementById('oauthBtn');         // optional
+
   if(ok){
-    dot.className=''; dot.style.background='#639922';
-    txt.textContent = '\u2713 Logged in as ' + (name||'user') + ' \u2014 scanner active';
-    txt.style.color = '#27500A';
+    if(dot){ dot.className=''; dot.style.background='#639922'; }
+    if(txt){ txt.textContent='\u2713 Logged in as '+(name||'user')+' \u2014 scanner active'; txt.style.color='#27500A'; }
+    // Always update the navbar token button
     updateTokenNavBtn(true, name||'user');
     // Update dataChip
     const dc=document.getElementById('dataChip');
-    if(dc){dc.textContent='Token active';dc.className='chip chip-blue';}
-    // Keep OAuth button visible but style it as secondary (re-login)
+    if(dc){ dc.textContent='Token active'; dc.className='chip chip-blue'; }
+    // OAuth button → secondary style if visible
     if(btn){
-      btn.style.background='#EAF3DE';
-      btn.style.color='#27500A';
-      btn.style.border='1px solid #C0DD97';
-      btn.style.fontSize='12px';
+      btn.style.background='#EAF3DE'; btn.style.color='#27500A';
+      btn.style.border='1px solid #C0DD97'; btn.style.fontSize='12px';
       btn.style.padding='6px 14px';
       btn.innerHTML='&#128274; Re-login with Upstox';
     }
-    // Collapse manual paste if open
     const w=document.getElementById('manualTokenWrap');
     if(w) w.style.display='none';
   } else {
-    dot.className=''; dot.style.background='#E24B4A';
-    txt.textContent = '\u2717 Token invalid \u2014 login again';
-    txt.style.color = '#A32D2D';
+    if(dot){ dot.className=''; dot.style.background='#E24B4A'; }
+    if(txt){ txt.textContent='\u2717 Token invalid \u2014 login again'; txt.style.color='#A32D2D'; }
     updateTokenNavBtn(false, '');
-
-    // Restore OAuth button to primary style
     if(btn){
-      btn.style.background='#27500A';
-      btn.style.color='#fff';
-      btn.style.border='none';
-      btn.style.fontSize='14px';
+      btn.style.background='#27500A'; btn.style.color='#fff';
+      btn.style.border='none'; btn.style.fontSize='14px';
       btn.style.padding='11px 22px';
       btn.innerHTML='&#128274; Login with Upstox';
     }
   }
 }
 
-async function runDryScan(){
+async function runDryScan(btnEl){
   // Call dry-scan with Authorization header so server uses browser's fresh token
-  const btn = event.target;
-  btn.disabled = true;
-  btn.textContent = 'Sending\u2026';
+  const btn = btnEl || null;
+  if(btn){ btn.disabled=true; btn.textContent='Sending\u2026'; }
   try {
     const headers = {'Content-Type':'application/json'};
     if(token) headers['Authorization'] = 'Bearer ' + token;
@@ -955,8 +955,7 @@ async function runDryScan(){
   } catch(e) {
     showErr('Dry scan failed: ' + e.message);
   } finally {
-    btn.disabled = false;
-    btn.textContent = '\u2709 Test alert';
+    if(btn){ btn.disabled=false; btn.textContent='\u2709 Test alert'; }
   }
 }
 
@@ -997,11 +996,11 @@ function updateTokenNavBtn(ok, name){
   const txt = document.getElementById('tokenNavTxt');
   if(!btn) return;
   if(ok){
-    txt.textContent = name ? name.split(' ')[0] : 'Logged in';
+    if(txt) txt.textContent = name ? name.split(' ')[0] : 'Logged in';
     btn.style.borderColor='#C0DD97';btn.style.color='#27500A';
-    btn.title = 'Logged in as '+name+' — click for Admin';
+    btn.title = 'Logged in as '+(name||'user')+' — click for Admin';
   } else {
-    txt.textContent = 'Login';
+    if(txt) txt.textContent = 'Login';
     btn.style.borderColor='#e0e0e0';btn.style.color='#555';
     btn.title = 'Click to login with Upstox';
   }
@@ -1060,7 +1059,7 @@ async function checkTokenStatus(){
       if(prof&&prof.data){
         const name = prof.data.full_name||prof.data.user_name||prof.data.name||prof.data.email||'user';
         setTokenStatusUI(true, name);
-        document.getElementById('tokenMsg').textContent='';
+        const tm=document.getElementById('tokenMsg'); if(tm) tm.textContent='';
       } else {
         // Token on server but rejected by Upstox — likely expired
         token='';
@@ -1068,12 +1067,16 @@ async function checkTokenStatus(){
         if(txt){ txt.textContent='Token expired \u2014 login again'; txt.style.color='#A32D2D'; }
       }
     } catch(e2){
-      // Upstox call failed — set token anyway, show warning
-      setTokenStatusUI(true,'user');
-      if(txt){ txt.textContent='\u2713 Token synced from server (profile check failed)'; txt.style.color='#666'; }
+      // Upstox profile call failed — token is valid but cant get name
+      // Still show green since token works for Upstox API calls
+      if(dot){ dot.className=''; dot.style.background='#639922'; }
+      updateTokenNavBtn(true,'Logged in');
+      if(txt){ txt.textContent='✓ Token active'; txt.style.color='#27500A'; }
     }
   } catch(e){
+    if(dot){ dot.style.background='#e0e0e0'; }
     if(txt){ txt.textContent='Could not reach server: '+e.message; txt.style.color='#A32D2D'; }
+    updateTokenNavBtn(false,'');
   }
 }
 
@@ -1304,7 +1307,7 @@ function renderScanTable(){
     tr.className='drow'+(_meta.reversed?' evt-row-flag':'');tr.id='sr'+i;
     tr.innerHTML=
       '<td><div class="sym">'+s.sym+evtBadgeHTML(s.sym)+'</div><div class="sec">'+s.sec+'</div>'+sigHistoryHTML(s.sym,s.sig)+lockedSigHTML(s.sym,s.sig)+'</td>'+
-      '<td data-tip="BUY: go long, expect price to rise.\nSELL: go short, expect price to fall.\nWATCH: mixed signals, no trade today.\n\nConfirm badge shows candle agreement:\n3/3 = all candles agree (strong)\n2/3 or less = wait for confirmation\n\nReversed badge means signal flipped\nsince first scan today - skip this stock.">'+(function(){const _n=new Date();const _um=_n.getUTCHours()*60+_n.getUTCMinutes();const _im=(_um+330)%1440;const _ah=_im<555||_im>=930;return _ah?'<span style="font-size:10px;color:#aaa;background:#f5f5f0;border:1px solid #e0e0e0;border-radius:4px;padding:1px 6px;margin-right:4px;">After hours</span>':'';})()+' <span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+confirmBadgeHTML(s)+'</td>'+
+      '<td data-tip="Signal: '+s.sig+'\\nReason: '+s.reason+'\\n\\nBUY = go long (expect rise)\\nSELL = go short (expect fall)\\nWATCH = mixed signals, skip\\n\\n3/3 = candles confirmed\\nReversed badge = flipped today, skip">'+(function(){const _n=new Date();const _um=_n.getUTCHours()*60+_n.getUTCMinutes();const _im=(_um+330)%1440;const _ah=_im<555||_im>=930;return _ah?'<span style="font-size:10px;color:#aaa;background:#f5f5f0;border:1px solid #e0e0e0;border-radius:4px;padding:1px 6px;margin-right:4px;">After hours</span>':'';})()+' <span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+confirmBadgeHTML(s)+'</td>'+
       '<td class="r" data-tip="Last traded price.\n% change vs yesterday close.\nGreen = up, Red = down."><div class="ltp">\u20b9'+fc(s.ltp)+'</div><div class="'+(s.chg>=0?'pos':'neg')+'">'+(s.chg>=0?'+':'')+s.chg+'%</div></td>'+
       '<td class="r"><div class="ev">\u2197 \u20b9'+fc(s.en)+'</div><div class="tgt">\u2713 \u20b9'+fc(s.tg)+'</div><div class="slv">\u2717 \u20b9'+fc(s.sl)+'</div></td>'+
       '<td class="r hm" data-tip="Risk:Reward ratio.\nHow much you gain vs how much you risk.\n>=2:1 Good (green)\n1.5-2:1 Acceptable (amber)\n<1.5 Skip (red)\nAlways aim for 2:1 minimum."><span class="rr '+rrC+'">'+(isNaN(s.rr)?'N/A':s.rr+':1')+'</span></td>'+
@@ -1362,62 +1365,16 @@ let _adminUnlocked = false;
 const ADMIN_SESSION_KEY = 'nse_admin_session';
 
 async function checkAdminAccess(){
-  // Check if PIN is required and if we have a valid session
-  try {
-    const storedTok = localStorage.getItem(ADMIN_SESSION_KEY)||'';
-    const r = await fetch(PROXY+'/admin/check', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({session_token: storedTok})
-    });
-    const d = await r.json();
-    if(d.ok){
-      showAdminContent();
-    } else {
-      showAdminGate();
-    }
-  } catch(e){
-    showAdminContent(); // if check fails, show content (no PIN configured)
-  }
+  showAdminContent(); // PIN gate disabled — open access
 }
 
-function showAdminGate(){
-  document.getElementById('adminPinGate').style.display='block';
-  document.getElementById('adminContent').style.display='none';
-  setTimeout(()=>{ const inp=document.getElementById('adminPinInput'); if(inp)inp.focus(); },100);
-}
+function showAdminGate(){ showAdminContent(); } // PIN disabled
 
 function showAdminContent(){
-  _adminUnlocked = true;
-  document.getElementById('adminPinGate').style.display='none';
-  document.getElementById('adminContent').style.display='block';
+  const el=document.getElementById('adminContent'); if(el) el.style.display='block';
 }
 
-async function verifyAdminPin(){
-  const pin = document.getElementById('adminPinInput').value.trim();
-  const msg = document.getElementById('adminPinMsg');
-  if(!pin){ msg.textContent='Enter your PIN'; msg.style.color='#A32D2D'; return; }
-  msg.textContent='Checking\u2026'; msg.style.color='#888';
-  try {
-    const r = await fetch(PROXY+'/admin/verify',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({pin})
-    });
-    const d = await r.json();
-    if(d.ok){
-      localStorage.setItem(ADMIN_SESSION_KEY, d.session_token||'');
-      document.getElementById('adminPinInput').value='';
-      showAdminContent();
-    } else {
-      msg.textContent='\u2717 Incorrect PIN';
-      msg.style.color='#A32D2D';
-    }
-  } catch(e){
-    msg.textContent='\u2717 '+e.message;
-    msg.style.color='#A32D2D';
-  }
-}
+async function verifyAdminPin(){} // PIN disabled
 
 // ─── ADMIN TAB FUNCTIONS ─────────────────────────────────────────────────────
 async function adminLoad(endpoint, boxId){
