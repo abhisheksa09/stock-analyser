@@ -251,17 +251,6 @@ th[data-tip]{cursor:default;}
   .hist-toolbar > .btn{width:100%;}
 }
 
-/* ── Login screen ──────────────────────────────────────────────────────────── */
-#loginScreen{ animation:lsFadeIn .35s ease; }
-@keyframes lsFadeIn{ from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:none} }
-#loginScreen .ls-card{
-  background:#fff;border:1px solid #e0e0e0;border-radius:16px;
-  padding:32px 28px;box-shadow:0 4px 24px rgba(0,0,0,.07);
-}
-#loginOAuthBtn{ transition:background .15s,transform .12s; }
-#loginOAuthBtn:hover{ background:#1a3d07!important; transform:translateY(-1px); }
-#loginEnterBtn:hover{ background:#d4edbc!important; }
-
 /* ── Embedded chatbot panel ────────────────────────────────────────────────── */
 #chatPanel{
   position:fixed;bottom:88px;right:24px;
@@ -540,93 +529,6 @@ th[data-tip]{cursor:default;}
 <div class="page">
 
   
-  <!-- ══════ LOGIN SCREEN ══════ -->
-  <div id="loginScreen">
-
-    <!-- Slim top bar: only Docs + Changelog visible -->
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0 0;">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:18px;">&#128200;</span>
-        <span style="font-size:16px;font-weight:700;letter-spacing:-.02em;">NSE Scanner</span>
-        <span class="chip chip-gray" style="font-size:10px;">v2.2.0</span>
-      </div>
-      <div style="display:flex;gap:8px;">
-        <a href="readme.html" target="_blank" class="nav-btn">&#128214; Docs</a>
-        <a href="changelog.html" target="_blank" class="nav-btn">&#127959; Changelog</a>
-      </div>
-    </div>
-
-    <!-- Hero + card -->
-    <div style="max-width:400px;margin:56px auto 0;text-align:center;">
-
-      <div style="margin-bottom:28px;">
-        <div style="width:68px;height:68px;border-radius:20px;
-                    background:#EAF3DE;border:2px solid #C0DD97;
-                    margin:0 auto 16px;display:flex;align-items:center;
-                    justify-content:center;font-size:30px;">&#128200;</div>
-        <h1 style="font-size:24px;font-weight:700;letter-spacing:-.03em;margin-bottom:8px;">
-          NSE Intraday Scanner
-        </h1>
-        <p style="font-size:13px;color:#666;line-height:1.6;">
-          Real-time signals &#183; Macro intelligence &#183; Telegram alerts
-        </p>
-      </div>
-
-      <div class="ls-card">
-        <!-- Status indicator -->
-        <div style="display:flex;align-items:center;justify-content:center;gap:8px;
-                    margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid #f0f0f0;">
-          <span id="lsDot" style="width:8px;height:8px;border-radius:50%;
-                 background:#e0e0e0;display:inline-block;transition:background .3s;"></span>
-          <span id="lsTxt" style="font-size:13px;color:#888;">Checking login status&#8230;</span>
-        </div>
-
-        <!-- Login button -->
-        <button id="loginOAuthBtn" onclick="doLogin()"
-                style="width:100%;display:flex;align-items:center;justify-content:center;
-                       gap:10px;padding:13px 20px;border-radius:12px;border:none;
-                       background:#27500A;color:#fff;font-size:14px;font-weight:600;
-                       cursor:pointer;margin-bottom:10px;letter-spacing:-.01em;">
-          &#128274; Login with Upstox
-        </button>
-
-        <!-- Enter button (shown when already logged in) -->
-        <button id="loginEnterBtn" onclick="enterApp()"
-                style="display:none;width:100%;padding:13px 20px;border-radius:12px;
-                       border:1px solid #C0DD97;background:#EAF3DE;color:#27500A;
-                       font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;">
-          &#10003; Enter Scanner
-        </button>
-
-        <div id="lsMsg" style="font-size:12px;color:#888;min-height:16px;margin-bottom:12px;"></div>
-
-        <button onclick="document.getElementById('lsManual').style.display=document.getElementById('lsManual').style.display==='none'?'block':'none'"
-                style="font-size:12px;color:#bbb;background:none;border:none;cursor:pointer;text-decoration:underline;">
-          Or paste token manually
-        </button>
-        <div id="lsManual" style="display:none;margin-top:12px;text-align:left;">
-          <div style="display:flex;gap:8px;">
-            <input id="lsTokenInp" type="password" class="token-inp"
-                   placeholder="Paste Upstox access token&#8230;" style="flex:1;font-size:13px;"/>
-            <button class="btn" onclick="doManualLogin()">Set</button>
-          </div>
-        </div>
-      </div>
-
-      <div style="display:flex;justify-content:center;gap:8px;margin-top:18px;flex-wrap:wrap;">
-        <span class="chip">30 Nifty stocks</span>
-        <span class="chip">Telegram alerts</span>
-        <span class="chip">Macro intelligence</span>
-      </div>
-      <p style="font-size:11px;color:#ccc;margin-top:16px;line-height:1.6;">
-        Connects via official Upstox OAuth.<br>No credentials stored.
-      </p>
-    </div>
-  </div>
-  <!-- ══════ END LOGIN SCREEN ══════ -->
-
-  <!-- App shell (hidden until login) -->
-  <div id="appShell" style="display:none;">
 <div class="navbar">
     <!-- Left: brand -->
     <div class="navbar-brand">
@@ -993,6 +895,34 @@ to see the specific analysis and reason.">Signal</th>
 const PROXY = 'https://nse-proxy-mojx.onrender.com';
 const APP_VERSION = 'v1.9.0';
 const SK = 'nse_v2';
+// ── Auth guard — redirect to login if no token ──────────────────────────────
+(async function authGuard(){
+  try{
+    var r = await fetch(PROXY + '/get-token');
+    if(!r.ok){ window.location.replace('login.html'); return; }
+    var d = await r.json();
+    if(!d.token){ window.location.replace('login.html'); return; }
+    // Token exists — set it and continue
+    token = d.token;
+    // Try to get user name for navbar
+    try{
+      var pr = await fetch(PROXY + '/v2/user/profile',{
+        headers:{'Authorization':'Bearer '+d.token,'Accept':'application/json'}
+      });
+      var pd = await pr.json();
+      if(pd.data){
+        var name = pd.data.full_name||pd.data.user_name||pd.data.name||'user';
+        updateTokenNavBtn(true, name);
+        setTokenStatusUI(true, name);
+      }
+    }catch(e2){ updateTokenNavBtn(true,'Logged in'); }
+  }catch(e){
+    // Server unreachable — still let through (Render cold start)
+    console.warn('Auth guard: server unreachable', e.message);
+  }
+})();
+
+
 
 const STOCKS = [
   {sym:'HDFCBANK',  name:'HDFC Bank',              ikey:'NSE_EQ|INE040A01034', sec:'Banking'},
@@ -1213,8 +1143,6 @@ function init(){
   // File storage disabled on cloud deployment
   const savedKey=localStorage.getItem('anthropic_key');
   if(savedKey){const el=document.getElementById('anthropicKey');if(el)el.value=savedKey;const msg=document.getElementById('anthropicMsg');if(msg){msg.textContent='\u2713 Key loaded \u2014 AI features enabled.';msg.style.color='#3B6D11';}}
-  // Show login screen on startup
-  showLoginScreen();
 })();
 
 // ─── TABS ─────────────────────────────────────────────────────────────────────
@@ -2114,127 +2042,6 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
 <div id="floatTip" style="display:none;position:fixed;background:#1a1a1a;color:#fff;font-size:12px;line-height:1.6;padding:8px 12px;border-radius:8px;white-space:pre-wrap;max-width:280px;pointer-events:none;z-index:99999;box-shadow:0 3px 14px rgba(0,0,0,.4);text-align:left;"></div>
 <script>
 // Tooltip engine — in its own script tag AFTER the floatTip div
-// ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
-var _loginChecked = false;
-
-function showLoginScreen(){
-  document.getElementById('loginScreen').style.display = 'block';
-  document.getElementById('appShell').style.display    = 'none';
-  if(!_loginChecked){ checkLoginStatus(); _loginChecked=true; }
-}
-
-function hideLoginScreen(){
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('appShell').style.display    = 'block';
-}
-
-async function checkLoginStatus(){
-  var dot=document.getElementById('lsDot');
-  var txt=document.getElementById('lsTxt');
-  var enterBtn=document.getElementById('loginEnterBtn');
-  var loginBtn=document.getElementById('loginOAuthBtn');
-  if(dot) dot.style.background='#EF9F27';
-  if(txt) txt.textContent='Checking…';
-  try{
-    var r=await fetch(PROXY+'/get-token');
-    if(r.ok){
-      var d=await r.json();
-      if(d.status==='ok'&&d.token){
-        token=d.token;
-        try{
-          var prof=await api('/v2/user/profile');
-          if(prof&&prof.data){
-            var name=prof.data.full_name||prof.data.user_name||prof.data.name||'user';
-            if(dot) dot.style.background='#639922';
-            if(txt){ txt.textContent='✓ Logged in as '+name; txt.style.color='#27500A'; }
-            if(loginBtn){
-              loginBtn.innerHTML='&#128274; Re-login with Upstox';
-              loginBtn.style.background='#EAF3DE';
-              loginBtn.style.color='#27500A';
-              loginBtn.style.border='1px solid #C0DD97';
-            }
-            if(enterBtn) enterBtn.style.display='block';
-            // Auto-enter after brief pause
-            setTimeout(enterApp, 1400);
-            return;
-          }
-        }catch(e2){}
-      }
-    }
-    // Not logged in
-    if(dot) dot.style.background='#e0e0e0';
-    if(txt){ txt.textContent='Connect your Upstox account to continue'; txt.style.color='#888'; }
-    if(enterBtn) enterBtn.style.display='none';
-    if(loginBtn){
-      loginBtn.innerHTML='&#128274; Login with Upstox';
-      loginBtn.style.background='#27500A';
-      loginBtn.style.color='#fff';
-      loginBtn.style.border='none';
-    }
-  }catch(e){
-    if(txt){ txt.textContent='Could not reach server'; txt.style.color='#A32D2D'; }
-  }
-}
-
-function doLogin(){
-  var msg=document.getElementById('lsMsg');
-  if(msg) msg.textContent='Opening Upstox login…';
-  openOAuthLogin();
-  var handler=function(e){
-    if(e.data&&e.data.type==='upstox_auth_success'){
-      window.removeEventListener('message',handler);
-      if(msg) msg.textContent='Login successful — syncing…';
-      setTimeout(checkLoginStatus, 900);
-    }
-  };
-  window.addEventListener('message',handler);
-}
-
-function enterApp(){
-  hideLoginScreen();
-  // Sync token to main app UI
-  if(token){
-    api('/v2/user/profile').then(function(prof){
-      if(prof&&prof.data){
-        var name=prof.data.full_name||prof.data.user_name||'user';
-        setTokenStatusUI(true,name);
-        updateTokenNavBtn(true,name);
-      }
-    }).catch(function(){
-      setTokenStatusUI(true,'user');
-    });
-  }
-  checkProxy();
-  renderHistBadge();
-}
-
-function doManualLogin(){
-  var inp=document.getElementById('lsTokenInp');
-  var msg=document.getElementById('lsMsg');
-  var t=inp?inp.value.trim():'';
-  if(!t){ if(msg){msg.textContent='Paste your token first';msg.style.color='#A32D2D';} return; }
-  token=t;
-  if(msg) msg.textContent='Verifying…';
-  api('/v2/user/profile').then(function(prof){
-    if(prof&&prof.data){
-      var name=prof.data.full_name||prof.data.user_name||'user';
-      var dot=document.getElementById('lsDot');
-      var txt=document.getElementById('lsTxt');
-      if(dot) dot.style.background='#639922';
-      if(txt){ txt.textContent='✓ Logged in as '+name; txt.style.color='#27500A'; }
-      if(msg) msg.textContent='';
-      var eb=document.getElementById('loginEnterBtn');
-      if(eb) eb.style.display='block';
-      setTimeout(enterApp,700);
-    }else{
-      token='';
-      if(msg){ msg.textContent='✗ Invalid token'; msg.style.color='#A32D2D'; }
-    }
-  }).catch(function(e){
-    token='';
-    if(msg){ msg.textContent='✗ '+e.message; msg.style.color='#A32D2D'; }
-  });
-}
 
 
 (function(){

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Login — NSE Scanner</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:#f5f5f0;color:#1a1a1a;min-height:100dvh;
+  display:flex;flex-direction:column;
+}
+
+/* ── Top bar ── */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 24px;border-bottom:1px solid #e0e0e0;background:#fff;
+}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand-icon{font-size:20px;}
+.brand-name{font-size:15px;font-weight:700;letter-spacing:-.02em;}
+.brand-ver{font-size:10px;color:#aaa;border:1px solid #e0e0e0;
+  border-radius:20px;padding:2px 8px;background:#fafafa;}
+.top-links{display:flex;gap:8px;}
+.top-link{
+  font-size:12px;color:#666;text-decoration:none;
+  padding:5px 12px;border:1px solid #ddd;border-radius:20px;
+  background:#fff;transition:all .15s;
+}
+.top-link:hover{border-color:#27500A;color:#27500A;background:#EAF3DE;}
+
+/* ── Main ── */
+.main{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  padding:40px 24px;
+}
+
+/* ── Login card ── */
+.card{
+  width:100%;max-width:400px;
+  background:#fff;border:1px solid #e0e0e0;border-radius:20px;
+  padding:40px 36px;
+  box-shadow:0 4px 32px rgba(0,0,0,.07);
+  animation:fadeUp .3s ease;
+}
+@keyframes fadeUp{
+  from{opacity:0;transform:translateY(16px)}
+  to{opacity:1;transform:none}
+}
+
+/* ── Hero ── */
+.hero{text-align:center;margin-bottom:32px;}
+.hero-icon{
+  width:72px;height:72px;border-radius:20px;
+  background:#EAF3DE;border:2px solid #C0DD97;
+  margin:0 auto 18px;display:flex;align-items:center;
+  justify-content:center;font-size:32px;
+}
+.hero h1{font-size:22px;font-weight:700;letter-spacing:-.03em;margin-bottom:6px;}
+.hero p{font-size:13px;color:#888;line-height:1.5;}
+
+/* ── Divider ── */
+.divider{height:1px;background:#f0f0f0;margin:0 0 24px;}
+
+/* ── Status pill ── */
+.status-row{
+  display:flex;align-items:center;gap:8px;
+  justify-content:center;margin-bottom:20px;
+  min-height:20px;
+}
+.status-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:#e0e0e0;flex-shrink:0;
+  transition:background .3s;
+}
+.status-dot.green{background:#639922;}
+.status-dot.amber{background:#EF9F27;}
+.status-dot.red{background:#E24B4A;}
+.status-txt{font-size:13px;color:#888;}
+
+/* ── Buttons ── */
+.btn-primary{
+  width:100%;display:flex;align-items:center;justify-content:center;
+  gap:10px;padding:14px 20px;border-radius:12px;border:none;
+  background:#27500A;color:#fff;font-size:14px;font-weight:600;
+  cursor:pointer;letter-spacing:-.01em;margin-bottom:10px;
+  transition:background .15s,transform .12s;font-family:inherit;
+}
+.btn-primary:hover{background:#1a3d07;transform:translateY(-1px);}
+.btn-primary:active{transform:translateY(0);}
+
+.btn-enter{
+  width:100%;padding:13px 20px;border-radius:12px;
+  border:1px solid #C0DD97;background:#EAF3DE;color:#27500A;
+  font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;
+  transition:background .15s;font-family:inherit;
+  display:none;
+}
+.btn-enter:hover{background:#d4edbc;}
+
+/* ── Chips ── */
+.chips{display:flex;justify-content:center;gap:8px;margin-top:20px;flex-wrap:wrap;}
+.chip{
+  font-size:11px;padding:4px 11px;border-radius:20px;
+  border:1px solid #e0e0e0;color:#888;background:#fafafa;
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <span class="brand-icon">&#128200;</span>
+    <span class="brand-name">NSE Scanner</span>
+    <span class="brand-ver">v2.2.0</span>
+  </div>
+  <div class="top-links">
+    <a href="readme.html" class="top-link">&#128214; Docs</a>
+    <a href="changelog.html" class="top-link">&#127959; Changelog</a>
+  </div>
+</div>
+
+<div class="main">
+  <div class="card">
+
+    <div class="hero">
+      <div class="hero-icon">&#128200;</div>
+      <h1>NSE Intraday Scanner</h1>
+      <p>Real-time signals &middot; Macro intelligence &middot; Telegram alerts</p>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="status-row">
+      <span class="status-dot" id="sDot"></span>
+      <span class="status-txt" id="sTxt">&nbsp;</span>
+    </div>
+
+    <button class="btn-primary" id="loginBtn" onclick="doLogin()">
+      &#128274;&nbsp; Login with Upstox
+    </button>
+
+    <button class="btn-enter" id="enterBtn" onclick="goToScanner()">
+      &#10003;&nbsp; Enter Scanner
+    </button>
+
+    <div class="chips">
+      <span class="chip">30 Nifty stocks</span>
+      <span class="chip">Telegram alerts</span>
+      <span class="chip">4-layer macro</span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const PROXY = 'https://nse-proxy-mojx.onrender.com';
+
+// ── Check if already logged in ────────────────────────────────────────────────
+async function checkLogin(){
+  setDot('amber', 'Checking\u2026');
+  try{
+    var r = await fetch(PROXY + '/get-token');
+    if(!r.ok){ setDot('', 'Login to continue'); return; }
+    var d = await r.json();
+    if(d.status === 'ok' && d.token){
+      // Token on server — verify it's still valid
+      try{
+        var pr = await fetch(PROXY + '/v2/user/profile', {
+          headers: { 'Authorization': 'Bearer ' + d.token, 'Accept': 'application/json' }
+        });
+        var pd = await pr.json();
+        if(pd.data){
+          var name = pd.data.full_name || pd.data.user_name || pd.data.name || 'user';
+          setDot('green', '\u2713 Logged in as ' + name);
+          styleLoginBtn(true);
+          document.getElementById('enterBtn').style.display = 'block';
+          // Auto-redirect after brief pause
+          setTimeout(goToScanner, 1500);
+          return;
+        }
+      } catch(e2){}
+    }
+    setDot('', 'Login to continue');
+  } catch(e){
+    setDot('red', 'Cannot reach server');
+  }
+}
+
+function setDot(cls, txt){
+  var dot = document.getElementById('sDot');
+  var t   = document.getElementById('sTxt');
+  dot.className = 'status-dot' + (cls ? ' ' + cls : '');
+  t.textContent = txt;
+  t.style.color = cls === 'green' ? '#27500A' : cls === 'red' ? '#A32D2D' : '#888';
+}
+
+function styleLoginBtn(loggedIn){
+  var btn = document.getElementById('loginBtn');
+  if(loggedIn){
+    btn.innerHTML = '&#128274;&nbsp; Re-login with Upstox';
+    btn.style.background = '#EAF3DE';
+    btn.style.color = '#27500A';
+    btn.style.border = '1px solid #C0DD97';
+  } else {
+    btn.innerHTML = '&#128274;&nbsp; Login with Upstox';
+    btn.style.background = '#27500A';
+    btn.style.color = '#fff';
+    btn.style.border = 'none';
+  }
+}
+
+// ── OAuth login ───────────────────────────────────────────────────────────────
+function doLogin(){
+  var w = 520, h = 640;
+  var left = Math.round(screen.width/2 - w/2);
+  var top  = Math.round(screen.height/2 - h/2);
+  var pop  = window.open(
+    PROXY + '/auth/login', 'upstox_login',
+    'width='+w+',height='+h+',left='+left+',top='+top+
+    ',toolbar=no,menubar=no,scrollbars=yes,resizable=yes'
+  );
+  if(!pop){ window.location.href = PROXY + '/auth/login'; return; }
+
+  // Listen for success postMessage from popup
+  var handler = function(e){
+    if(e.data && e.data.type === 'upstox_auth_success'){
+      window.removeEventListener('message', handler);
+      setDot('amber', 'Login successful \u2014 syncing\u2026');
+      setTimeout(checkLogin, 900);
+    }
+  };
+  window.addEventListener('message', handler);
+}
+
+// ── Go to scanner ─────────────────────────────────────────────────────────────
+function goToScanner(){
+  window.location.href = 'scanner.html';
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+checkLogin();
+</script>
+</body>
+</html>
