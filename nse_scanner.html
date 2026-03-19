@@ -288,19 +288,17 @@ th[data-tip]{cursor:default;}
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
         <span id="tokenStatusDot" style="width:10px;height:10px;border-radius:50%;background:#e0e0e0;flex-shrink:0;display:inline-block;"></span>
         <span id="tokenStatusTxt" style="font-size:13px;color:#888;">Not set &#8212; login to activate scanner</span>
-        <span id="tokenPreview" style="font-family:monospace;font-size:11px;color:#aaa;display:none;"></span>
+
       </div>
 
       <!-- Primary: OAuth login button -->
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-        <a href="https://nse-proxy-mojx.onrender.com/auth/login"
-           target="_blank"
-           id="oauthBtn"
+        <button id="oauthBtn" onclick="openOAuthLogin()"
            style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;
                   border-radius:10px;background:#27500A;color:#fff;border:none;
-                  font-size:14px;font-weight:600;text-decoration:none;cursor:pointer;">
+                  font-size:14px;font-weight:600;cursor:pointer;">
           &#128274; Login with Upstox
-        </a>
+        </button>
         <button class="btn" onclick="checkTokenStatus()"
                 style="font-size:12px;padding:6px 14px;">
           &#8635; Refresh status
@@ -733,6 +731,16 @@ function getSignalMeta(sym,currentSig){
   renderHistBadge();
   // Check if token already set on server (e.g. via OAuth)
   setTimeout(checkTokenStatus, 1500);
+  // Listen for OAuth success message from the popup tab
+  window.addEventListener('message', function(e){
+    if(e.data && e.data.type === 'upstox_auth_success'){
+      // OAuth tab closed and sent us a success signal
+      const txt = document.getElementById('tokenStatusTxt');
+      if(txt){ txt.textContent = 'Login successful — syncing token\u2026'; txt.style.color='#888'; }
+      // Small delay to let server process before we fetch
+      setTimeout(checkTokenStatus, 800);
+    }
+  });
   // File storage disabled on cloud deployment
   const savedKey=localStorage.getItem('anthropic_key');
   if(savedKey){const el=document.getElementById('anthropicKey');if(el)el.value=savedKey;const msg=document.getElementById('anthropicMsg');if(msg){msg.textContent='\u2713 Key loaded \u2014 AI features enabled.';msg.style.color='#3B6D11';}}
@@ -793,18 +801,26 @@ function hideAlerts(){document.getElementById('errBox').style.display='none';doc
 
 // ─── TOKEN ────────────────────────────────────────────────────────────────────
 function setTokenStatusUI(ok, name){
-  const dot = document.getElementById('tokenStatusDot');
-  const txt = document.getElementById('tokenStatusTxt');
-  const prev = document.getElementById('tokenPreview');
+  const dot  = document.getElementById('tokenStatusDot');
+  const txt  = document.getElementById('tokenStatusTxt');
+  const btn  = document.getElementById('oauthBtn');
   if(!dot||!txt) return;
   if(ok){
     dot.className=''; dot.style.background='#639922';
     txt.textContent = '\u2713 Logged in as ' + (name||'user') + ' \u2014 scanner active';
     txt.style.color = '#27500A';
-    if(prev){ prev.textContent='Token: '+token.slice(0,20)+'\u2026'; prev.style.display=''; }
     // Update dataChip
     const dc=document.getElementById('dataChip');
     if(dc){dc.textContent='Token active';dc.className='chip chip-blue';}
+    // Keep OAuth button visible but style it as secondary (re-login)
+    if(btn){
+      btn.style.background='#EAF3DE';
+      btn.style.color='#27500A';
+      btn.style.border='1px solid #C0DD97';
+      btn.style.fontSize='12px';
+      btn.style.padding='6px 14px';
+      btn.innerHTML='&#128274; Re-login with Upstox';
+    }
     // Collapse manual paste if open
     const w=document.getElementById('manualTokenWrap');
     if(w) w.style.display='none';
@@ -812,7 +828,33 @@ function setTokenStatusUI(ok, name){
     dot.className=''; dot.style.background='#E24B4A';
     txt.textContent = '\u2717 Token invalid \u2014 login again';
     txt.style.color = '#A32D2D';
-    if(prev) prev.style.display='none';
+
+    // Restore OAuth button to primary style
+    if(btn){
+      btn.style.background='#27500A';
+      btn.style.color='#fff';
+      btn.style.border='none';
+      btn.style.fontSize='14px';
+      btn.style.padding='11px 22px';
+      btn.innerHTML='&#128274; Login with Upstox';
+    }
+  }
+}
+
+function openOAuthLogin(){
+  // Open as popup so window.opener is set — enables auto-close and postMessage
+  const w = 520, h = 640;
+  const left = Math.round(window.screen.width/2 - w/2);
+  const top  = Math.round(window.screen.height/2 - h/2);
+  const popup = window.open(
+    'https://nse-proxy-mojx.onrender.com/auth/login',
+    'upstox_login',
+    'width='+w+',height='+h+',left='+left+',top='+top+
+    ',toolbar=no,menubar=no,scrollbars=yes,resizable=yes'
+  );
+  if(!popup){
+    // Popup blocked — fallback to new tab
+    window.open('https://nse-proxy-mojx.onrender.com/auth/login', '_blank');
   }
 }
 
@@ -1083,18 +1125,18 @@ function renderScanTable(){
     tr.className='drow'+(_meta.reversed?' evt-row-flag':'');tr.id='sr'+i;
     tr.innerHTML=
       '<td><div class="sym">'+s.sym+evtBadgeHTML(s.sym)+'</div><div class="sec">'+s.sec+'</div>'+sigHistoryHTML(s.sym,s.sig)+lockedSigHTML(s.sym,s.sig)+'</td>'+
-      '<td><span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+confirmBadgeHTML(s)+'</td>'+
-      '<td class="r"><div class="ltp">\u20b9'+fc(s.ltp)+'</div><div class="'+(s.chg>=0?'pos':'neg')+'">'+(s.chg>=0?'+':'')+s.chg+'%</div></td>'+
+      '<td data-tip="BUY: go long, expect price to rise.\nSELL: go short, expect price to fall.\nWATCH: mixed signals, no trade today.\n\nConfirm badge shows candle agreement:\n3/3 = all candles agree (strong)\n2/3 or less = wait for confirmation\n\nReversed badge means signal flipped\nsince first scan today - skip this stock."><span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+confirmBadgeHTML(s)+'</td>'+
+      '<td class="r" data-tip="Last traded price.\n% change vs yesterday close.\nGreen = up, Red = down."><div class="ltp">\u20b9'+fc(s.ltp)+'</div><div class="'+(s.chg>=0?'pos':'neg')+'">'+(s.chg>=0?'+':'')+s.chg+'%</div></td>'+
       '<td class="r"><div class="ev">\u2197 \u20b9'+fc(s.en)+'</div><div class="tgt">\u2713 \u20b9'+fc(s.tg)+'</div><div class="slv">\u2717 \u20b9'+fc(s.sl)+'</div></td>'+
-      '<td class="r hm"><span class="rr '+rrC+'">'+(isNaN(s.rr)?'N/A':s.rr+':1')+'</span></td>'+
-      '<td class="r"><div class="conf-cell"><span class="conf-n '+cm.cls+'">'+s.conf+'%</span><div class="conf-bar"><div class="conf-fill" style="width:'+s.conf+'%;background:'+cm.color+';"></div></div><span class="conf-lbl '+cm.cls+'">'+cm.label+'</span></div></td>'+
-      '<td class="hm"><div class="ibar">'+
+      '<td class="r hm" data-tip="Risk:Reward ratio.\nHow much you gain vs how much you risk.\n>=2:1 Good (green)\n1.5-2:1 Acceptable (amber)\n<1.5 Skip (red)\nAlways aim for 2:1 minimum."><span class="rr '+rrC+'">'+(isNaN(s.rr)?'N/A':s.rr+':1')+'</span></td>'+
+      '<td class="r" data-tip="Confidence score 0-100%.\n>=75% Green: full position size\n55-74% Amber: half position size\n<55% Red: skip this trade\n\nWeighted from 6 factors:\nORB 25% + Volume 20% + VWAP 20%\nRSI 15% + R:R 15% + ATR 5%\n\nReduced by market/macro penalties."><div class="conf-cell"><span class="conf-n '+cm.cls+'">'+s.conf+'%</span><div class="conf-bar"><div class="conf-fill" style="width:'+s.conf+'%;background:'+cm.color+';"></div></div><span class="conf-lbl '+cm.cls+'">'+cm.label+'</span></div></td>'+
+      '<td class="hm" data-tip="RSI(14): 14-day momentum.\n>70 Overbought (expect pullback)\n<30 Oversold (expect bounce)\n40-60 Neutral (best for entries)\n\nVWAP: Volume Weighted Avg Price.\nUp arrow = price above VWAP (bullish)\nDown arrow = below VWAP (bearish)\n\nATR: Avg daily range in rupees.\nSets stop loss width + target distance."><div class="ibar">'+
         '<div class="irow"><span class="iname">RSI</span><div class="ibg"><div class="ifill" style="width:'+s.rsi+'%;background:'+rc+';"></div></div><span class="ival" style="color:'+rc+';">'+s.rsi+'</span></div>'+
         '<div class="irow"><span class="iname">VWAP</span><div class="ibg"><div class="ifill" style="width:'+(s.av?70:30)+'%;background:'+vc2+';"></div></div><span class="ival" style="color:'+vc2+';">'+(s.av?'\u2191':'\u2193')+'</span></div>'+
         '<div class="irow"><span class="iname">ATR</span><div class="ibg"><div class="ifill" style="width:'+ap+'%;background:#aaa;"></div></div><span class="ival">\u20b9'+Math.round(s.atr)+'</span></div>'+
       '</div></td>'+
-      '<td class="r hm"><div><span class="orbc '+oc+'">'+ol+'</span></div><div class="orl">H:\u20b9'+fc(s.orbH)+' L:\u20b9'+fc(s.orbL)+'</div></td>'+
-      '<td class="r hm"><div style="color:'+vc+';font-size:12px;font-weight:600;">'+(vp>0?vp+'% of avg':'\u2014')+'</div>'+
+      '<td class="r hm" data-tip="Opening Range Breakout.\nFirst 15 candles: 9:15-9:30 AM IST.\nORB High = highest point in first 15 min.\nORB Low = lowest point in first 15 min.\n\nBREAKOUT: price above ORB High = BUY signal\nBREAKDOWN: price below ORB Low = SELL signal\nINSIDE: still in range = wait"><div><span class="orbc '+oc+'">'+ol+'</span></div><div class="orl">H:\u20b9'+fc(s.orbH)+' L:\u20b9'+fc(s.orbL)+'</div></td>'+
+      '<td class="r hm" data-tip="Today volume vs 20-day average.\n>=150% Very high (strong conviction)\n>=100% Above average (required)\n70-99% Below average (weak signal)\n<70% Low volume (skip the trade)\n\nLow volume breakouts almost always fail."><div style="color:'+vc+';font-size:12px;font-weight:600;">'+(vp>0?vp+'% of avg':'\u2014')+'</div>'+
         '<div style="width:60px;height:4px;border-radius:2px;margin-top:3px;background:#e0e0e0;"><div style="height:100%;border-radius:2px;width:'+Math.min(vp,200)/2+'%;background:'+vc+';"></div></div>'+
         '<div style="font-size:10px;color:#aaa;margin-top:2px;">'+(s.tV>0?fv(s.tV)+' today':'Market closed')+'</div>'+
         '<div style="font-size:10px;color:#aaa;">'+(s.aV>0?'avg '+fv(s.aV):'')+'</div></td>'+

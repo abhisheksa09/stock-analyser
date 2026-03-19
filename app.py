@@ -94,9 +94,8 @@ def get_token_for_browser():
         return jsonify({"status": "not_set",
                         "message": "No token on server. Complete OAuth login first."}), 404
     return jsonify({
-        "status":  "ok",
-        "token":   tok,
-        "preview": tok[:20] + "...",
+        "status": "ok",
+        "token":  tok,
     })
 
 @app.route("/set-token-form")
@@ -483,7 +482,9 @@ def auth_callback():
         token = resp.get("access_token", "")
         if not token:
             _last_oauth["status"] = "failed"
-            _last_oauth["detail"] = f"No access_token in response: {json.dumps(resp)[:300]}"
+            # Don't store full response — may contain sensitive data
+            keys_received = list(resp.keys()) if isinstance(resp, dict) else "non-dict response"
+            _last_oauth["detail"] = f"No access_token in response. Keys received: {keys_received}"
             _last_oauth["time"]   = datetime.now(IST).strftime("%H:%M IST")
             return _auth_page(
                 success=False,
@@ -513,12 +514,11 @@ def auth_callback():
                 message="Token was received but could not be stored. Please try again.",
             )
 
-        preview = token[:40] + "..." if len(token) > 40 else token
         ist_time = datetime.now(IST).strftime("%H:%M IST")
         _last_oauth["status"] = "success"
         _last_oauth["detail"] = f"Token set at {ist_time}, length={len(token)}"
         _last_oauth["time"]   = ist_time
-        log.info("OAuth success — token set at %s, length=%d", ist_time, len(token))
+        log.info("OAuth success — token set at %s (length=%d chars)", ist_time, len(token))
 
         return _auth_page(
             success=True,
@@ -527,15 +527,20 @@ def auth_callback():
                 f"Logged in at {ist_time}.<br>"
                 f"Scanner is now active and will run every 5 min "
                 f"from {os.environ.get('ALERT_START_IST','09:15')} to "
-                f"{os.environ.get('ALERT_STOP_IST','10:30')} IST.<br><br>"
-                f"<small style='color:#888'>Token preview: {preview}</small>"
+                f"{os.environ.get('ALERT_STOP_IST','10:30')} IST."
             ),
         )
 
     except urllib.error.HTTPError as e:
         body = e.read().decode(errors="replace")
         _last_oauth["status"] = f"http_error_{e.code}"
-        _last_oauth["detail"] = body[:300]
+        # Store error type only, not full body (may contain sensitive fragments)
+        import json as _json
+        try:
+            err_data = _json.loads(body)
+            _last_oauth["detail"] = err_data.get("error", body[:100])
+        except Exception:
+            _last_oauth["detail"] = body[:100]
         _last_oauth["time"]   = datetime.now(IST).strftime("%H:%M IST")
         return _auth_page(
             success=False,
@@ -596,10 +601,12 @@ def _auth_page(success: bool, title: str, message: str) -> str:
   <div class="icon">{icon}</div>
   <h2>{title}</h2>
   <p>{message}</p>
-  {'<a href="/auth/login" class="btn">Login again</a>' if not success else ''}
-  <a href="{status_url}" class="btn btn-sec">Check alert status</a>
+  {'<a href="/auth/login" class="btn">Try again</a>' if not success else
+   '<p style="font-size:13px;color:#888;margin-top:8px;">This tab will close in <span id="cd">3</span>s&#8230;</p>'}
+  {'<a href="' + status_url + '" class="btn btn-sec">Check alert status</a>' if not success else ''}
   <p class="tip">NSE Intraday Scanner &#183; Render.com</p>
 </div>
+{'<script>if(window.opener){window.opener.postMessage({type:"upstox_auth_success"},"*");}let n=3;const i=setInterval(()=>{n--;const el=document.getElementById("cd");if(el)el.textContent=n;if(n<=0){clearInterval(i);window.close();}},1000);</script>' if success else ''}
 </body>
 </html>"""
 
@@ -612,7 +619,7 @@ def auth_status():
     return jsonify({
         "last_oauth_attempt":  _last_oauth,
         "token_currently_set": bool(scanner.get_token()),
-        "token_preview":       (scanner.get_token()[:20] + "...") if scanner.get_token() else "not set",
+        "token_length":        len(scanner.get_token()) if scanner.get_token() else 0,
         "api_key_set":         bool(api_key),
         "api_secret_set":      bool(api_secret),
         "redirect_uri":        OAUTH_REDIRECT,
