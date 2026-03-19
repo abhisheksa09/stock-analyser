@@ -80,6 +80,25 @@ def set_token():
         "alert_window": f"{os.environ.get('ALERT_START_IST','09:15')} - {os.environ.get('ALERT_STOP_IST','10:30')} IST",
     })
 
+@app.route("/get-token")
+@app.route("/get-token/")
+def get_token_for_browser():
+    """
+    Returns the current server-side Upstox token to the browser.
+    Called by the scanner UI after OAuth login to sync the token
+    into localStorage so the browser can make direct Upstox API calls.
+    Only returns the token if it is set — never returns an empty string.
+    """
+    tok = scanner.get_token()
+    if not tok:
+        return jsonify({"status": "not_set",
+                        "message": "No token on server. Complete OAuth login first."}), 404
+    return jsonify({
+        "status":  "ok",
+        "token":   tok,
+        "preview": tok[:20] + "...",
+    })
+
 @app.route("/set-token-form")
 def set_token_form():
     wp_ok      = bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))

@@ -821,30 +821,50 @@ function toggleManualToken(){
 }
 
 async function checkTokenStatus(){
-  // Poll /alert-status to see if token was set via OAuth
+  // Fetch token from server (set via OAuth) and store in browser localStorage
   const dot=document.getElementById('tokenStatusDot');
   const txt=document.getElementById('tokenStatusTxt');
   if(dot){ dot.style.background='#EF9F27'; }
   if(txt){ txt.textContent='Checking\u2026'; txt.style.color='#888'; }
   try{
-    const r = await fetch(PROXY+'/alert-status');
-    const d = await r.json();
-    if(d.token_set){
-      // Token is set on server — verify it works with Upstox
-      const prof = await api('/v2/user/profile');
-      if(prof&&prof.data){
-        token = '__server_token__'; // mark as set via server OAuth
-        setTokenStatusUI(true, prof.data.user_name||prof.data.email||'user');
-        document.getElementById('tokenMsg').textContent='';
-      } else {
-        setTokenStatusUI(false,'');
-      }
-    } else {
+    // Step 1: get token from server
+    const r = await fetch(PROXY+'/get-token');
+    if(!r.ok){
+      // Token not set on server yet
       if(dot){ dot.style.background='#e0e0e0'; }
       if(txt){ txt.textContent='Not set \u2014 tap Login with Upstox'; txt.style.color='#888'; }
+      return;
+    }
+    const d = await r.json();
+    if(d.status!=='ok'||!d.token){
+      if(dot){ dot.style.background='#e0e0e0'; }
+      if(txt){ txt.textContent='Not set \u2014 tap Login with Upstox'; txt.style.color='#888'; }
+      return;
+    }
+
+    // Step 2: store token in browser so Upstox API calls work
+    token = d.token;
+
+    // Step 3: verify it works with Upstox profile call
+    try{
+      const prof = await api('/v2/user/profile');
+      if(prof&&prof.data){
+        const name = prof.data.user_name||prof.data.email||prof.data.name||'user';
+        setTokenStatusUI(true, name);
+        document.getElementById('tokenMsg').textContent='';
+      } else {
+        // Token on server but rejected by Upstox — likely expired
+        token='';
+        setTokenStatusUI(false,'');
+        if(txt){ txt.textContent='Token expired \u2014 login again'; txt.style.color='#A32D2D'; }
+      }
+    } catch(e2){
+      // Upstox call failed — set token anyway, show warning
+      setTokenStatusUI(true,'user');
+      if(txt){ txt.textContent='\u2713 Token synced from server (profile check failed)'; txt.style.color='#666'; }
     }
   } catch(e){
-    if(txt){ txt.textContent='Could not check status: '+e.message; txt.style.color='#A32D2D'; }
+    if(txt){ txt.textContent='Could not reach server: '+e.message; txt.style.color='#A32D2D'; }
   }
 }
 
