@@ -1,6 +1,6 @@
 """
 NSE Intraday Scanner — Cloud Proxy + Alert Engine
-Version : v1.9.0
+Version : v2.0.0
 Hosted on Render.com at: https://nse-proxy-mojx.onrender.com
 Frontend at: https://abhisheksa09.github.io/stock-analyser/nse_scanner.html
 
@@ -39,7 +39,7 @@ IST            = timezone(timedelta(hours=5, minutes=30))
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin":  ALLOWED_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PATCH, DELETE",
     "Access-Control-Allow-Headers": (
         "Authorization, Content-Type, Accept, "
         "x-api-key, anthropic-version, "
@@ -63,7 +63,121 @@ def options_handler(path): return cors(Response(status=204))
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.route("/ping")
 def ping():
-    return jsonify({"status": "ok", "proxy": "upstox-render", "alerts": "active", "version": "v1.9.0"})
+    return jsonify({"status": "ok", "proxy": "upstox-render", "alerts": "active", "version": "v2.0.0"})
+
+# ── Database endpoints ───────────────────────────────────────────────────────
+@app.route("/db/init")
+@app.route("/db/init/")
+def db_init():
+    if not _DB:
+        return jsonify({"error": "DATABASE_URL not set in Render env vars"}), 503
+    try:
+        _db.init_db()
+        return jsonify({"status": "ok", "message": "All tables created successfully."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/db/status")
+@app.route("/db/status/")
+def db_status():
+    if not _DB:
+        return jsonify({"database": "not configured"}), 503
+    try:
+        with _db.cursor() as cur:
+            cur.execute(
+                "SELECT "
+                "(SELECT COUNT(*) FROM token_store) AS tokens,"
+                "(SELECT COUNT(*) FROM session_state) AS sessions,"
+                "(SELECT COUNT(*) FROM trade_history) AS trades,"
+                "(SELECT COUNT(*) FROM alert_log) AS alerts"
+            )
+            row = cur.fetchone()
+        return jsonify({
+            "database":   "connected",
+            "row_counts": {"tokens": row[0], "sessions": row[1],
+                           "trades": row[2], "alerts": row[3]},
+            "token_info": _db.get_token_info(),
+            "ist_now":    datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
+        })
+    except Exception as e:
+        return jsonify({"database": "error", "detail": str(e)}), 500
+
+@app.route("/history/trades", methods=["GET"])
+@app.route("/history/trades/", methods=["GET"])
+def get_trades():
+    if not _DB:
+        return jsonify({"error": "Database not configured"}), 503
+    try:
+        trades = _db.load_trades(
+            from_date=request.args.get("from_date"),
+            to_date=request.args.get("to_date"),
+            sym=request.args.get("sym"),
+            sig=request.args.get("sig"),
+            outcome=request.args.get("outcome"),
+            limit=int(request.args.get("limit", 500)),
+        )
+        return jsonify({"trades": trades, "stats": _db.get_trade_stats(), "count": len(trades)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/history/trades", methods=["POST"])
+@app.route("/history/trades/", methods=["POST"])
+def save_trades():
+    if not _DB:
+        return jsonify({"error": "Database not configured"}), 503
+    try:
+        data   = request.get_json(silent=True) or {}
+        trades = data.get("trades", [data] if data.get("id") else [])
+        saved  = sum(1 for t in trades if t.get("id") and _db.save_trade(t))
+        return jsonify({"status": "ok", "saved": saved})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/history/trades/<trade_id>", methods=["PATCH"])
+@app.route("/history/trades/<trade_id>/", methods=["PATCH"])
+def update_trade_route(trade_id):
+    if not _DB:
+        return jsonify({"error": "Database not configured"}), 503
+    try:
+        _db.update_trade(trade_id, request.get_json(silent=True) or {})
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/history/trades/<trade_id>", methods=["DELETE"])
+@app.route("/history/trades/<trade_id>/", methods=["DELETE"])
+def delete_trade_route(trade_id):
+    if not _DB:
+        return jsonify({"error": "Database not configured"}), 503
+    try:
+        _db.delete_trade(trade_id)
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/history/stats")
+@app.route("/history/stats/")
+def trade_stats():
+    if not _DB:
+        return jsonify({"error": "Database not configured"}), 503
+    try:
+        return jsonify(_db.get_trade_stats(from_date=request.args.get("from_date")))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/history/alerts")
+@app.route("/history/alerts/")
+def alert_history():
+    if not _DB:
+        return jsonify({"error": "Database not configured"}), 503
+    try:
+        return jsonify(_db.load_alert_log(
+            from_date=request.args.get("from_date"),
+            sym=request.args.get("sym"),
+            limit=int(request.args.get("limit", 100)),
+        ))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ── Token management ──────────────────────────────────────────────────────────
 @app.route("/set-token", methods=["POST"])
@@ -265,9 +379,14 @@ def dry_scan():
     """
     import time as _time
 
-    token    = scanner.get_token()
-    sym_req  = request.args.get("sym", "").upper().strip()
-    use_mock = request.args.get("mock", "0") == "1" or not token
+    # Accept token from: 1) request header (browser passes its fresh token)
+    #                    2) server-side scanner token (from DB/OAuth)
+    #                    3) fall back to mock if neither available
+    header_token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
+    server_token = scanner.get_token()
+    token        = header_token or server_token
+    sym_req      = request.args.get("sym", "").upper().strip()
+    use_mock     = request.args.get("mock", "0") == "1" or not token
 
     from signals import STOCKS, build_setup, is_ready
     from scanner import send_telegram, format_alert, STATE

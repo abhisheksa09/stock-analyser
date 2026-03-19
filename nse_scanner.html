@@ -366,6 +366,7 @@ th[data-tip]{cursor:default;}
     <div class="scan-row">
       <button class="scan-btn" id="scanBtn" onclick="runScan()">&#10227; &nbsp;Fetch live data &amp; scan</button>
       <button class="save-btn" id="saveBtn" onclick="saveToHistory()">Save to history</button>
+      <button class="btn" onclick="runDryScan()" style="font-size:12px;padding:6px 14px;background:#E6F1FB;color:#185FA5;border-color:#85B7EB;" title="Send a test Telegram alert now">&#9993; Test alert</button>
     </div>
     <div class="footnote" id="footnote"></div>
 
@@ -858,6 +859,34 @@ function setTokenStatusUI(ok, name){
   }
 }
 
+async function runDryScan(){
+  // Call dry-scan with Authorization header so server uses browser's fresh token
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Sending\u2026';
+  try {
+    const headers = {'Content-Type':'application/json'};
+    if(token) headers['Authorization'] = 'Bearer ' + token;
+    const r = await fetch(PROXY + '/dry-scan?mock=' + (token ? '0' : '1'),
+                          {headers});
+    const d = await r.json();
+    const sent = d.alert_sent && d.alert_sent.telegram_sent;
+    const sym  = d.alert_sent && d.alert_sent.sym;
+    if(sent){
+      showOk('\u2713 Test alert sent for ' + (sym||'stock') + ' \u2014 check your Telegram');
+    } else if(d.results && d.results.every(r=>r.error)){
+      showErr('All stocks returned errors. Token may be expired \u2014 login again via Upstox.');
+    } else {
+      showErr('Alert not sent \u2014 check /test-alert endpoint or Telegram bot config.');
+    }
+  } catch(e) {
+    showErr('Dry scan failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '\u2709 Test alert';
+  }
+}
+
 function openOAuthLogin(){
   // Open as popup so window.opener is set — enables auto-close and postMessage
   const w = 520, h = 640;
@@ -909,7 +938,7 @@ async function checkTokenStatus(){
     try{
       const prof = await api('/v2/user/profile');
       if(prof&&prof.data){
-        const name = prof.data.user_name||prof.data.email||prof.data.name||'user';
+        const name = prof.data.full_name||prof.data.user_name||prof.data.name||prof.data.email||'user';
         setTokenStatusUI(true, name);
         document.getElementById('tokenMsg').textContent='';
       } else {
@@ -1003,6 +1032,18 @@ async function runScan(){
   const btn=document.getElementById('scanBtn');
   btn.disabled=true;openRow=-1;aiCache={};results=[];
   const errs=[];
+
+  // Check if outside market hours and warn user
+  const _now=new Date();
+  const _utcM=_now.getUTCHours()*60+_now.getUTCMinutes();
+  const _istM=(_utcM+330)%1440;
+  const _mktOpen=_istM>=570&&_istM<930;  // 9:30 AM to 3:30 PM IST
+  const _primeWin=_istM>=585&&_istM<630; // 9:45-10:30 IST
+  if(!_mktOpen){
+    const _h=Math.floor(_istM/60).toString().padStart(2,'0');
+    const _m=(_istM%60).toString().padStart(2,'0');
+    showOk('Market is closed ('+_h+':'+_m+' IST). Signals are shown for reference only — do not trade outside 9:15 AM–3:30 PM IST.');
+  }
 
   // Fetch market context once before scanning any stocks
   btn.innerHTML='\u27f3 &nbsp;Fetching market context\u2026';
@@ -1142,7 +1183,7 @@ function renderScanTable(){
     tr.className='drow'+(_meta.reversed?' evt-row-flag':'');tr.id='sr'+i;
     tr.innerHTML=
       '<td><div class="sym">'+s.sym+evtBadgeHTML(s.sym)+'</div><div class="sec">'+s.sec+'</div>'+sigHistoryHTML(s.sym,s.sig)+lockedSigHTML(s.sym,s.sig)+'</td>'+
-      '<td data-tip="BUY: go long, expect price to rise.\nSELL: go short, expect price to fall.\nWATCH: mixed signals, no trade today.\n\nConfirm badge shows candle agreement:\n3/3 = all candles agree (strong)\n2/3 or less = wait for confirmation\n\nReversed badge means signal flipped\nsince first scan today - skip this stock."><span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+confirmBadgeHTML(s)+'</td>'+
+      '<td data-tip="BUY: go long, expect price to rise.\nSELL: go short, expect price to fall.\nWATCH: mixed signals, no trade today.\n\nConfirm badge shows candle agreement:\n3/3 = all candles agree (strong)\n2/3 or less = wait for confirmation\n\nReversed badge means signal flipped\nsince first scan today - skip this stock.">'+(function(){const _n=new Date();const _um=_n.getUTCHours()*60+_n.getUTCMinutes();const _im=(_um+330)%1440;const _ah=_im<555||_im>=930;return _ah?'<span style="font-size:10px;color:#aaa;background:#f5f5f0;border:1px solid #e0e0e0;border-radius:4px;padding:1px 6px;margin-right:4px;">After hours</span>':'';})()+' <span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+confirmBadgeHTML(s)+'</td>'+
       '<td class="r" data-tip="Last traded price.\n% change vs yesterday close.\nGreen = up, Red = down."><div class="ltp">\u20b9'+fc(s.ltp)+'</div><div class="'+(s.chg>=0?'pos':'neg')+'">'+(s.chg>=0?'+':'')+s.chg+'%</div></td>'+
       '<td class="r"><div class="ev">\u2197 \u20b9'+fc(s.en)+'</div><div class="tgt">\u2713 \u20b9'+fc(s.tg)+'</div><div class="slv">\u2717 \u20b9'+fc(s.sl)+'</div></td>'+
       '<td class="r hm" data-tip="Risk:Reward ratio.\nHow much you gain vs how much you risk.\n>=2:1 Good (green)\n1.5-2:1 Acceptable (amber)\n<1.5 Skip (red)\nAlways aim for 2:1 minimum."><span class="rr '+rrC+'">'+(isNaN(s.rr)?'N/A':s.rr+':1')+'</span></td>'+
