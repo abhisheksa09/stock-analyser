@@ -806,6 +806,67 @@ def nse_corporate_actions():
         return jsonify([])
 
 # ── Anthropic proxy ───────────────────────────────────────────────────────────
+# ── Scanner chatbot endpoint ──────────────────────────────────────────────────
+@app.route("/chat", methods=["POST"])
+@app.route("/chat/", methods=["POST"])
+def scanner_chat():
+    """Proxy chat to Anthropic claude-haiku-4-5 with NSE Scanner system prompt embedded."""
+    import json as _jsc, urllib.request as _urc
+
+    ak = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not ak:
+        return jsonify({"error": "ANTHROPIC_API_KEY not configured on server"}), 503
+
+    body     = request.get_json(silent=True) or {}
+    messages = body.get("messages", [])
+    max_tok  = min(int(body.get("max_tokens", 1024)), 2048)
+
+    SYSTEM = (
+        "You are the NSE Intraday Scanner Assistant. Answer questions about this specific app. "
+        "App: scanner.html on GitHub Pages + Flask on Render (nse-proxy-mojx.onrender.com) v2.2.0. "
+        "SIGNALS: 30 Nifty stocks. BUY=RSI<40+above VWAP+above ORB High. SELL=RSI>60+below VWAP+below ORB Low. "
+        "CONFIDENCE: 6 factors: ORB 25%+Volume 20%+VWAP 20%+RSI 15%+RR 15%+ATR 5%. "
+        "Green>=75%(full size), Amber 55-74%(half), Red<55%(skip). "
+        "MARKET FILTERS: Nifty+-0.5% HARD BLOCK. Sector headwind -15%. Gap -10%. Day trend +-10%. "
+        "MACRO LAYERS (30min cache): "
+        "1-Calendar: high-impact event+-30min=-50%. "
+        "2-Yahoo Finance: crude/gold/USDINR/SPX/VIX/DXY sector-specific penalties. "
+        "3-FII/DII: net sellers>500Cr=-10%. "
+        "4-NewsAPI+Claude Haiku sentiment: +-5 to +-15%. "
+        "ALERTS: APScheduler every 5min 9:15-10:30 IST. 3 triggers: Green Ready/conf crossed 75%/signal reversal. "
+        "OAUTH: /auth/login->Upstox->popup auto-closes->dot turns green. "
+        "DB: Supabase PostgreSQL. Tables: token_store/session_state/trade_history/alert_log. "
+        "ADMIN: PIN-protected (ADMIN_PIN env var). Collapsible cards: System Status/Dry Scan/Database/Quick Links. "
+        "COMMON ISSUES: 403=token expired login again. Orange dot=Render sleeping. Version stuck=clear cache ?v=N. "
+        "FILES: app.py/scanner.py/signals.py/macro.py/db.py. "
+        "Use markdown formatting. Be specific with numbers and thresholds."
+    )
+
+    payload = _jsc.dumps({
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": max_tok,
+        "system": SYSTEM,
+        "messages": messages,
+    }).encode("utf-8")
+
+    req = _urc.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": ak,
+            "anthropic-version": "2023-06-01",
+        },
+        method="POST",
+    )
+    try:
+        with _urc.urlopen(req, timeout=30) as r:
+            return jsonify(_jsc.loads(r.read()))
+    except _urc.HTTPError as e:
+        return jsonify({"error": e.read().decode(errors="replace")[:200]}), e.code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/ai/<path:subpath>", methods=["GET", "POST"])
 def ai_proxy(subpath):
     target = f"{ANTHROPIC_BASE}/{subpath}"

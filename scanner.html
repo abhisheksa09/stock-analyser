@@ -1812,3 +1812,55 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
 </html      <a href="readme.html" target="_blank" class="nav-btn" title="User guide">&#128214; Docs</a>
       <a href="changelog.html" target="_blank" class="nav-btn" title="Build history">&#127959;</a>
 >
+  <!-- ── Floating chatbot button ─────────────────────────────────────────── -->
+  <div id="chatFab" onclick="openChatbot()"
+       title="Ask the NSE Scanner Assistant"
+       onmouseover="this.style.transform='scale(1.12)';this.style.boxShadow='0 6px 28px rgba(74,222,128,.6)'"
+       onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 20px rgba(74,222,128,.35)'">
+    <span style="font-size:22px;line-height:1;pointer-events:none;">🤖</span>
+  </div>
+
+  <style>
+    #chatFab{
+      position:fixed;bottom:24px;right:24px;z-index:9999;
+      width:54px;height:54px;border-radius:50%;
+      background:#27500A;border:2px solid #4ade80;
+      box-shadow:0 4px 20px rgba(74,222,128,.35);
+      display:flex;align-items:center;justify-content:center;
+      cursor:pointer;
+      transition:transform .18s ease,box-shadow .18s ease;
+      animation:fabGlow 3s ease-in-out infinite;
+    }
+    @keyframes fabGlow{
+      0%,100%{box-shadow:0 4px 20px rgba(74,222,128,.35);}
+      50%{box-shadow:0 4px 28px rgba(74,222,128,.65);}
+    }
+    /* tooltip label on hover */
+    #chatFab::after{
+      content:"Ask AI";
+      position:absolute;
+      right:62px;
+      background:#1a1a1a;
+      color:#4ade80;
+      font-size:11px;
+      font-weight:600;
+      padding:4px 9px;
+      border-radius:6px;
+      border:1px solid #2a2a2a;
+      white-space:nowrap;
+      opacity:0;
+      pointer-events:none;
+      transition:opacity .15s;
+    }
+    #chatFab:hover::after{ opacity:1; }
+  </style>
+
+  <script>
+    function openChatbot(){
+      const w=440,h=700,l=Math.max(0,screen.width-w-20),t=60;
+      var pop=window.open('chatbot.html','nse_chatbot',
+        'width='+w+',height='+h+',left='+l+',top='+t+
+        ',toolbar=no,menubar=no,scrollbars=no,resizable=yes');
+      if(!pop) window.open('chatbot.html','_blank');
+    }
+  </script>
