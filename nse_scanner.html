@@ -13,6 +13,19 @@ h1{font-size:20px;font-weight:600;}
 .chip-amber{background:#FAEEDA;color:#633806;border-color:#FAC775;}
 .chip-blue{background:#E6F1FB;color:#185FA5;border-color:#85B7EB;}
 .chip-gray{background:#f5f5f0;color:#888;border-color:#ddd;}
+.navbar{display:flex;align-items:center;justify-content:space-between;
+  gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e0e0e0;
+  margin:-20px -16px 20px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;}
+.navbar-brand{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.navbar-title{font-size:16px;font-weight:700;white-space:nowrap;}
+.navbar-centre{display:flex;align-items:center;gap:6px;flex:1;justify-content:center;flex-wrap:wrap;}
+.navbar-right{display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.nav-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;
+  border-radius:6px;border:1px solid #e0e0e0;background:#fafafa;
+  color:#555;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;
+  text-decoration:none;transition:background .15s;}
+.nav-btn:hover{background:#f0f0f0;color:#1a1a1a;}
+/* legacy kept for other uses */
 .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;}
 .topchips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 .tabs{display:flex;gap:0;border-bottom:2px solid #e0e0e0;margin-bottom:20px;}
@@ -242,16 +255,39 @@ th[data-tip]{cursor:default;}
 <body>
 <div class="page">
 
-  <div class="topbar">
-    <h1>NSE Intraday Scanner</h1>
-    <div class="topchips">
+  <div class="navbar">
+    <!-- Left: brand -->
+    <div class="navbar-brand">
+      <span class="navbar-title">NSE Scanner</span>
+      <span class="chip chip-gray" id="versionChip" title="App version">v2.0.0</span>
+    </div>
+
+    <!-- Centre: market status chips -->
+    <div class="navbar-centre">
       <span class="chip" id="mktChip">&#8212;</span>
       <span class="chip" id="dataChip">No data</span>
       <span class="chip chip-gray" id="genChip" style="display:none;" title="Time of last scan">&#8212;</span>
-      <span class="chip chip-gray" id="versionChip" title="App version">v1.9.0</span>
-      <a href="https://abhisheksa09.github.io/stock-analyser/nse_changelog.html" target="_blank" style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Build history">Journey &#8599;</a>
-      <a href="https://abhisheksa09.github.io/stock-analyser/nse_readme.html" target="_blank"
-         style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Open user guide">Docs &#8599;</a>
+    </div>
+
+    <!-- Right: action buttons -->
+    <div class="navbar-right">
+      <!-- Proxy status dot + label -->
+      <button class="nav-btn" id="proxyNavBtn" onclick="switchTab('admin')"
+              title="Cloud proxy status">
+        <span class="pdot" id="pdot" style="width:8px;height:8px;display:inline-block;vertical-align:middle;margin-right:4px;"></span>
+        <span id="proxyNavTxt" style="font-size:11px;">Proxy</span>
+      </button>
+
+      <!-- Token / login button -->
+      <button class="nav-btn" id="tokenNavBtn" onclick="handleTokenNavClick()"
+              title="Upstox login status">
+        <span id="tokenStatusDot" style="width:8px;height:8px;border-radius:50%;background:#e0e0e0;display:inline-block;vertical-align:middle;margin-right:4px;flex-shrink:0;"></span>
+        <span id="tokenNavTxt" style="font-size:11px;">Login</span>
+      </button>
+
+      <!-- Docs -->
+      <a href="nse_readme.html" target="_blank" class="nav-btn" title="User guide">&#128214; Docs</a>
+      <a href="nse_changelog.html" target="_blank" class="nav-btn" title="Build history">&#127959;</a>
     </div>
   </div>
 
@@ -263,75 +299,12 @@ th[data-tip]{cursor:default;}
   <div class="tabs">
     <div class="tab active" id="tab-scanner-btn" onclick="switchTab('scanner')">Scanner</div>
     <div class="tab" id="tab-history-btn" onclick="switchTab('history')">History <span class="tab-badge" id="histBadge">0</span></div>
+    <div class="tab" id="tab-admin-btn" onclick="switchTab('admin')">&#9881; Admin</div>
   </div>
 
   <!-- =========== SCANNER =========== -->
   <div class="tab-pane active" id="tab-scanner">
 
-    <div class="collapsible-wrap" id="proxyWrap">
-      <div class="collapsible-hdr" onclick="toggleSection('proxyBody')">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span class="pdot" id="pdot" style="width:10px;height:10px;"></span>
-          <span class="collapsible-title">Cloud proxy</span>
-          <span id="pTxt" style="font-size:12px;color:#888;">Connecting&#8230;</span>
-        </div>
-        <span class="collapsible-arrow" id="proxyBody-arrow">&#9658;</span>
-      </div>
-      <div class="collapsible-body closed" id="proxyBody" style="max-height:0;">
-        <div style="padding:12px 14px;">
-          <div class="proxy-row" style="font-size:12px;color:#555;">
-            <span style="font-family:monospace;font-size:11px;">nse-proxy-mojx.onrender.com</span>
-          </div>
-          <div class="proxyOverride" id="proxyOverride" style="margin-top:10px;">
-            <button class="btn" onclick="forceProxyOn()" style="font-size:12px;padding:5px 12px;background:#EAF3DE;color:#27500A;border-color:#C0DD97;">
-              &#10003; Proxy is up, bypass check
-            </button>
-            <span style="font-size:11px;color:#aaa;margin-left:8px;">Use if still connecting after 60s</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div cla<div class="collapsible-wrap" id="tokenWrap">
-      <div class="collapsible-hdr" onclick="toggleSection('tokenBody')" style="gap:10px;align-items:center;">
-        <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;">
-          <span id="tokenStatusDot" style="width:10px;height:10px;border-radius:50%;background:#e0e0e0;flex-shrink:0;display:inline-block;"></span>
-          <span class="collapsible-title">Upstox token</span>
-          <span id="tokenStatusTxt" style="font-size:12px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">Not set</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;" onclick="event.stopPropagation()">
-          <button id="oauthBtn" onclick="openOAuthLogin()"
-             style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;
-                    border-radius:8px;background:#27500A;color:#fff;border:none;
-                    font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
-            &#128274; Login
-          </button>
-          <span class="collapsible-arrow" id="tokenBody-arrow">&#9658;</span>
-        </div>
-      </div>
-      <div class="collapsible-body closed" id="tokenBody" style="max-height:0;">
-        <div style="padding:12px 14px;">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
-            <button class="btn" onclick="checkTokenStatus()" style="font-size:12px;padding:6px 14px;">
-              &#8635; Refresh status
-            </button>
-          </div>
-          <div>
-            <button onclick="toggleManualToken()"
-                    style="font-size:12px;color:#888;background:none;border:none;cursor:pointer;padding:0;text-decoration:underline;">
-              Or paste token manually
-            </button>
-            <div id="manualTokenWrap" style="display:none;margin-top:10px;">
-              <div class="token-row">
-                <input class="token-inp" id="tokenInput" type="password" placeholder="Paste Upstox access token&#8230;"/>
-                <button class="btn" onclick="verifyToken()">Set token</button>
-              </div>
-            </div>
-          </div>
-          <div class="tok-msg" id="tokenMsg"></div>
-        </div>
-      </div>
-    </div>
 
     <!-- AI CARD DISABLED v1.9.0 — uncomment to re-enable Anthropic AI features
     <div class="card">
@@ -366,7 +339,6 @@ th[data-tip]{cursor:default;}
     <div class="scan-row">
       <button class="scan-btn" id="scanBtn" onclick="runScan()">&#10227; &nbsp;Fetch live data &amp; scan</button>
       <button class="save-btn" id="saveBtn" onclick="saveToHistory()">Save to history</button>
-      <button class="btn" onclick="runDryScan()" style="font-size:12px;padding:6px 14px;background:#E6F1FB;color:#185FA5;border-color:#85B7EB;" title="Send a test Telegram alert now">&#9993; Test alert</button>
     </div>
     <div class="footnote" id="footnote"></div>
 
@@ -534,9 +506,101 @@ th[data-tip]{cursor:default;}
 
   </div>
 
+  <!-- =========== ADMIN =========== -->
+  <div class="tab-pane" id="tab-admin">
+
+    <!-- Admin PIN gate (hidden when unlocked) -->
+    <div id="adminPinGate" style="display:none;">
+      <div class="card" style="border-left:4px solid #185FA5;max-width:340px;margin:0 auto;">
+        <div class="card-title" style="color:#185FA5;">&#128274; Admin access</div>
+        <p style="font-size:13px;color:#666;margin-bottom:12px;">Enter your admin PIN to continue.</p>
+        <div style="display:flex;gap:8px;">
+          <input id="adminPinInput" type="password" class="token-inp"
+                 placeholder="PIN&#8230;" style="width:120px;"
+                 onkeydown="if(event.key==='Enter')verifyAdminPin()"/>
+          <button class="btn" onclick="verifyAdminPin()"
+                  style="background:#27500A;color:#fff;border-color:#27500A;">Unlock</button>
+        </div>
+        <div id="adminPinMsg" class="tok-msg" style="margin-top:8px;"></div>
+      </div>
+    </div>
+
+    <!-- Admin content (hidden until unlocked) -->
+    <div id="adminContent" style="display:none;">
+    <div class="card" style="border-left:4px solid #185FA5;">
+      <div class="card-title" style="color:#185FA5;">&#9881; Admin Panel</div>
+      <p style="font-size:13px;color:#666;margin-bottom:0;">System controls, diagnostics and testing.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Alert Testing</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+        <button class="btn" onclick="runDryScan()" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#9993; Send test Telegram alert</button>
+        <button class="btn" onclick="adminFetch('/test-alert','POST','adminAlertMsg')" style="background:#E6F1FB;color:#185FA5;border-color:#85B7EB;">&#128241; Ping bot only</button>
+      </div>
+      <div id="adminAlertMsg" class="tok-msg"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">System Status</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <button class="btn" onclick="adminLoad('alert-status','adminStatusBox')">&#128200; Alert status</button>
+        <button class="btn" onclick="adminLoad('macro-status','adminStatusBox')">&#127758; Macro status</button>
+        <button class="btn" onclick="adminLoad('db/status','adminStatusBox')">&#128451; DB status</button>
+        <button class="btn" onclick="adminLoad('auth/status','adminStatusBox')">&#128274; Auth status</button>
+        <button class="btn" onclick="adminLoad('ping','adminStatusBox')">&#128997; Ping</button>
+      </div>
+      <pre id="adminStatusBox" style="background:#1a1a1a;color:#a8ff78;padding:14px;border-radius:8px;
+           font-size:11px;line-height:1.6;overflow-x:auto;max-height:320px;overflow-y:auto;
+           white-space:pre-wrap;display:none;"></pre>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Dry Scan</div>
+      <p style="font-size:12px;color:#888;margin-bottom:10px;">Run a real scan right now ignoring the 9:15&#8211;10:30 window. Sends a Telegram alert for the best signal found.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+        <input id="dryScanSym" class="search-inp" type="text" placeholder="Symbol e.g. HDFCBANK (blank = first 5)"
+               style="width:220px;padding:7px 12px;font-size:13px;"/>
+        <button class="btn" onclick="runDryScanFull()" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#128270; Run live dry scan</button>
+        <button class="btn" onclick="runDryScanMock()" style="background:#FAEEDA;color:#633806;border-color:#FAC775;">&#127916; Mock (no token)</button>
+      </div>
+      <pre id="adminDryBox" style="background:#1a1a1a;color:#a8ff78;padding:14px;border-radius:8px;
+           font-size:11px;line-height:1.6;overflow-x:auto;max-height:300px;overflow-y:auto;
+           white-space:pre-wrap;display:none;"></pre>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Database</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+        <button class="btn" onclick="adminFetch('/db/init','GET','adminDbMsg')" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#10133; Initialise tables</button>
+        <button class="btn" onclick="adminLoad('history/stats','adminStatusBox')">&#128202; Trade stats</button>
+        <button class="btn" onclick="adminLoad('history/alerts?limit=20','adminStatusBox')">&#128276; Alert log (last 20)</button>
+      </div>
+      <div id="adminDbMsg" class="tok-msg"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Quick Links</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <a href="https://nse-proxy-mojx.onrender.com/set-token-form" target="_blank" class="btn" style="font-size:12px;">&#128274; Set token form</a>
+        <a href="https://nse-proxy-mojx.onrender.com/get-chat-id"    target="_blank" class="btn" style="font-size:12px;">&#128241; Get chat ID</a>
+        <a href="https://supabase.com"                                target="_blank" class="btn" style="font-size:12px;">&#128451; Supabase</a>
+        <a href="https://dashboard.render.com"                        target="_blank" class="btn" style="font-size:12px;">&#9729; Render</a>
+        <a href="https://uptimerobot.com"                             target="_blank" class="btn" style="font-size:12px;">&#9201; UptimeRobot</a>
+        <a href="nse_readme.html"                                     target="_blank" class="btn" style="font-size:12px;">&#128214; Readme</a>
+        <a href="nse_changelog.html"                                  target="_blank" class="btn" style="font-size:12px;">&#127959; Changelog</a>
+      </div>
+    </div>
+
+    </div><!-- /adminContent -->
+
+  </div>
+
 </div>
 
 <script>
+
+// ─── CONSTANTS ───
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const PROXY = 'https://nse-proxy-mojx.onrender.com';
@@ -766,8 +830,14 @@ function getSignalMeta(sym,currentSig){
 
 // ─── TABS ─────────────────────────────────────────────────────────────────────
 function switchTab(t){
-  ['scanner','history'].forEach(n=>{document.getElementById('tab-'+n+'-btn').classList.toggle('active',n===t);document.getElementById('tab-'+n).classList.toggle('active',n===t);});
-  if(t==='history'){renderHist();}
+  ['scanner','history','admin'].forEach(n=>{
+    const btn=document.getElementById('tab-'+n+'-btn');
+    const pane=document.getElementById('tab-'+n);
+    if(btn)  btn.classList.toggle('active',n===t);
+    if(pane) pane.classList.toggle('active',n===t);
+  });
+  if(t==='history') renderHist();
+  if(t==='admin') checkAdminAccess();
 }
 
 // ─── STOCK SELECTION ──────────────────────────────────────────────────────────
@@ -808,7 +878,8 @@ async function checkProxy(){
   catch(e1){try{const ctrl2=new AbortController(),timer2=setTimeout(()=>ctrl2.abort(),3000);await fetch(PROXY+'/ping',{mode:'no-cors',signal:ctrl2.signal});clearTimeout(timer2);ok=true;}catch(e2){ok=false;}}
   if(ok){proxyOk=true;dot.className='pdot pdot-ok';txt.textContent='Cloud proxy connected \u2014 ready to scan';document.getElementById('proxyOverride').style.display='none';fetchCorporateEvents();}
   else{proxyOk=false;dot.className='pdot pdot-fail';txt.textContent='Cloud proxy not reachable \u2014 Render may be sleeping (free tier). Try again in 30s.';
-    document.getElementById('coldStartBanner').style.display='block';document.getElementById('proxyOverride').style.display='block';}
+    document.getElementById('coldStartBanner').style.display='block';
+    updateProxyNavBtn(false);document.getElementById('proxyOverride').style.display='block';}
 }
 function forceProxyOn(){proxyOk=true;document.getElementById('pdot').className='pdot pdot-ok';document.getElementById('pTxt').textContent='Cloud proxy confirmed \u2014 ready to scan';document.getElementById('proxyOverride').style.display='none';}
 
@@ -827,6 +898,7 @@ function setTokenStatusUI(ok, name){
     dot.className=''; dot.style.background='#639922';
     txt.textContent = '\u2713 Logged in as ' + (name||'user') + ' \u2014 scanner active';
     txt.style.color = '#27500A';
+    updateTokenNavBtn(true, name||'user');
     // Update dataChip
     const dc=document.getElementById('dataChip');
     if(dc){dc.textContent='Token active';dc.className='chip chip-blue';}
@@ -846,6 +918,7 @@ function setTokenStatusUI(ok, name){
     dot.className=''; dot.style.background='#E24B4A';
     txt.textContent = '\u2717 Token invalid \u2014 login again';
     txt.style.color = '#A32D2D';
+    updateTokenNavBtn(false, '');
 
     // Restore OAuth button to primary style
     if(btn){
@@ -884,6 +957,53 @@ async function runDryScan(){
   } finally {
     btn.disabled = false;
     btn.textContent = '\u2709 Test alert';
+  }
+}
+
+// ─── NAVBAR FUNCTIONS ─────────────────────────────────────────────────────────
+function handleTokenNavClick(){
+  // If token set → go to Admin tab; if not → open OAuth login
+  const dot = document.getElementById('tokenStatusDot');
+  const bg  = dot ? dot.style.background : '';
+  if(bg === 'rgb(99, 153, 34)' || bg === '#639922'){
+    // Already logged in - go to admin
+    switchTab('admin');
+  } else {
+    openOAuthLogin();
+  }
+}
+
+function updateProxyNavBtn(ok){
+  const btn = document.getElementById('proxyNavBtn');
+  const txt = document.getElementById('proxyNavTxt');
+  const dot = document.getElementById('pdot');
+  if(!btn) return;
+  if(ok === true){
+    if(dot) dot.style.background='#639922';
+    if(txt) txt.textContent='Proxy OK';
+    btn.style.borderColor='#C0DD97';btn.style.color='#27500A';
+  } else if(ok === false){
+    if(dot) dot.style.background='#E24B4A';
+    if(txt) txt.textContent='Proxy down';
+    btn.style.borderColor='#F09595';btn.style.color='#A32D2D';
+  } else {
+    if(dot) dot.style.background='#EF9F27';
+    if(txt) txt.textContent='Checking...';
+  }
+}
+
+function updateTokenNavBtn(ok, name){
+  const btn = document.getElementById('tokenNavBtn');
+  const txt = document.getElementById('tokenNavTxt');
+  if(!btn) return;
+  if(ok){
+    txt.textContent = name ? name.split(' ')[0] : 'Logged in';
+    btn.style.borderColor='#C0DD97';btn.style.color='#27500A';
+    btn.title = 'Logged in as '+name+' — click for Admin';
+  } else {
+    txt.textContent = 'Login';
+    btn.style.borderColor='#e0e0e0';btn.style.color='#555';
+    btn.title = 'Click to login with Upstox';
   }
 }
 
@@ -1073,6 +1193,7 @@ async function runScan(){
   const gc=document.getElementById('genChip');
   if(gc){const t=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});gc.textContent='Scanned '+t+' IST';gc.style.display='';}
   document.getElementById('coldStartBanner').style.display='none';
+  updateProxyNavBtn(true);
   btn.disabled=false;btn.innerHTML='\u27f3 &nbsp;Re-scan';
 }
 
@@ -1235,6 +1356,131 @@ function saveAnthropicKey(){const k=document.getElementById('anthropicKey').valu
 async function callAI(prompt){const key=getAnthropicKey();if(!key)throw new Error('No Anthropic API key set \u2014 add it in the card above.');const res=await fetch(PROXY+'/ai/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,messages:[{role:'user',content:prompt}]})});const d=await res.json();if(!res.ok)throw new Error(d.error?.message||d.type||'API error '+res.status);return d.content.map(b=>b.text||'').join('');}
 async function deepAI(i,e){e.stopPropagation();const ll=document.getElementById('al'+i),rr=document.getElementById('ar'+i);if(aiCache[i]){rr.style.display='block';return;}const key=getAnthropicKey();if(!key){rr.textContent='Add your Anthropic API key in the card above.';rr.style.display='block';return;}ll.style.display='block';rr.style.display='none';const s=results[i];const p='NSE intraday expert. Stock: '+s.sym+' ('+s.sec+') | Signal: '+s.sig+' | Conf: '+s.conf+'%\nLTP: Rs'+s.ltp+' ('+s.chg+'%) | Entry: Rs'+s.en+' | Target: Rs'+s.tg+' | SL: Rs'+s.sl+' | R:R: '+s.rr+'\nRSI: '+s.rsi+' | VWAP: Rs'+s.vwap+' ('+(s.av?'above':'below')+') | ATR: Rs'+s.atr+'\nVol vs avg: '+Math.round(s.tV/(s.aV||1)*100)+'%\n4-5 sentences: entry timing, confirmation, key risk, position size.';try{const text=await callAI(p);aiCache[i]=text;ll.style.display='none';rr.textContent=text;rr.style.display='block';}catch(err){ll.style.display='none';rr.textContent='AI error: '+err.message;rr.style.display='block';}}
 async function genAISummary(){const box=document.getElementById('aiBox'),txt=document.getElementById('aiTxt');const key=getAnthropicKey();if(!key){txt.textContent='Add your Anthropic API key in the card above to enable AI summaries.';box.style.display='block';return;}txt.textContent='Generating summary\u2026';box.style.display='block';const rows=results.map(s=>s.sym+': '+s.sig+' | '+s.conf+'% | LTP Rs'+s.ltp+' | Entry Rs'+s.en+' | Target Rs'+s.tg+' | SL Rs'+s.sl+' | RSI '+s.rsi+' | VWAP '+(s.av?'above':'below')+' | R:R '+s.rr).join('\n');try{const text=await callAI('NSE intraday analyst:\n'+rows+'\nWrite 4-5 sentence summary: overall bias, strongest setups, sector trend, one key risk. No bullet points.');txt.textContent=text;}catch(e){txt.textContent='AI error: '+e.message;}}
+
+// ─── ADMIN PIN ───────────────────────────────────────────────────────────────
+let _adminUnlocked = false;
+const ADMIN_SESSION_KEY = 'nse_admin_session';
+
+async function checkAdminAccess(){
+  // Check if PIN is required and if we have a valid session
+  try {
+    const storedTok = localStorage.getItem(ADMIN_SESSION_KEY)||'';
+    const r = await fetch(PROXY+'/admin/check', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({session_token: storedTok})
+    });
+    const d = await r.json();
+    if(d.ok){
+      showAdminContent();
+    } else {
+      showAdminGate();
+    }
+  } catch(e){
+    showAdminContent(); // if check fails, show content (no PIN configured)
+  }
+}
+
+function showAdminGate(){
+  document.getElementById('adminPinGate').style.display='block';
+  document.getElementById('adminContent').style.display='none';
+  setTimeout(()=>{ const inp=document.getElementById('adminPinInput'); if(inp)inp.focus(); },100);
+}
+
+function showAdminContent(){
+  _adminUnlocked = true;
+  document.getElementById('adminPinGate').style.display='none';
+  document.getElementById('adminContent').style.display='block';
+}
+
+async function verifyAdminPin(){
+  const pin = document.getElementById('adminPinInput').value.trim();
+  const msg = document.getElementById('adminPinMsg');
+  if(!pin){ msg.textContent='Enter your PIN'; msg.style.color='#A32D2D'; return; }
+  msg.textContent='Checking\u2026'; msg.style.color='#888';
+  try {
+    const r = await fetch(PROXY+'/admin/verify',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({pin})
+    });
+    const d = await r.json();
+    if(d.ok){
+      localStorage.setItem(ADMIN_SESSION_KEY, d.session_token||'');
+      document.getElementById('adminPinInput').value='';
+      showAdminContent();
+    } else {
+      msg.textContent='\u2717 Incorrect PIN';
+      msg.style.color='#A32D2D';
+    }
+  } catch(e){
+    msg.textContent='\u2717 '+e.message;
+    msg.style.color='#A32D2D';
+  }
+}
+
+// ─── ADMIN TAB FUNCTIONS ─────────────────────────────────────────────────────
+async function adminLoad(endpoint, boxId){
+  const box=document.getElementById(boxId);
+  if(!box)return;
+  box.style.display='block';
+  box.textContent='Loading '+endpoint+'…';
+  try{
+    const r=await fetch(PROXY+'/'+endpoint);
+    const d=await r.json();
+    box.textContent=JSON.stringify(d,null,2);
+  }catch(e){box.textContent='Error: '+e.message;}
+}
+
+async function adminFetch(endpoint,method,msgId){
+  const msg=msgId?document.getElementById(msgId):null;
+  if(msg){msg.textContent='Sending…';msg.style.color='#888';}
+  try{
+    const r=await fetch(PROXY+endpoint,{method:method||'GET'});
+    const d=await r.json();
+    if(msg){
+      msg.textContent=r.ok?'✓ '+(d.message||d.status||JSON.stringify(d)):'✗ '+(d.error||JSON.stringify(d));
+      msg.style.color=r.ok?'#27500A':'#A32D2D';
+    }
+  }catch(e){if(msg){msg.textContent='✗ '+e.message;msg.style.color='#A32D2D';}}
+}
+
+async function runDryScanFull(){
+  const box=document.getElementById('adminDryBox');
+  const sym=(document.getElementById('dryScanSym')||{}).value||'';
+  box.style.display='block';box.textContent='Running dry scan…';
+  try{
+    const url=PROXY+'/dry-scan'+(sym?'?sym='+encodeURIComponent(sym.trim().toUpperCase()):'');
+    const headers={'Content-Type':'application/json'};
+    if(token)headers['Authorization']='Bearer '+token;
+    const r=await fetch(url,{headers});
+    const d=await r.json();
+    box.textContent=JSON.stringify(d,null,2);
+  }catch(e){box.textContent='Error: '+e.message;}
+}
+
+async function runDryScanMock(){
+  const box=document.getElementById('adminDryBox');
+  box.style.display='block';box.textContent='Running mock dry scan…';
+  try{
+    const r=await fetch(PROXY+'/dry-scan?mock=1');
+    const d=await r.json();
+    box.textContent=JSON.stringify(d,null,2);
+  }catch(e){box.textContent='Error: '+e.message;}
+}
+
+async function runDryScan(){
+  await runDryScanFull();
+  const box=document.getElementById('adminDryBox');
+  if(!box)return;
+  try{
+    const d=JSON.parse(box.textContent);
+    const sent=d.alert_sent&&d.alert_sent.telegram_sent;
+    const sym=d.alert_sent&&d.alert_sent.sym;
+    if(sent)showOk('✓ Test alert sent for '+(sym||'stock')+' — check Telegram');
+    else showErr('Alert not sent — open Admin tab for details');
+  }catch(e){}
+}
 
 // ─── HISTORY STORAGE ──────────────────────────────────────────────────────────
 function loadH(){try{return JSON.parse(localStorage.getItem(SK)||'[]');}catch(e){return[];}}

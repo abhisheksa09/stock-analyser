@@ -65,6 +65,45 @@ def options_handler(path): return cors(Response(status=204))
 def ping():
     return jsonify({"status": "ok", "proxy": "upstox-render", "alerts": "active", "version": "v2.0.0"})
 
+# ── Admin PIN authentication ──────────────────────────────────────────────────
+import hashlib as _hashlib, secrets as _secrets
+
+# Simple in-memory session tokens (cleared on restart — acceptable for personal use)
+_admin_sessions = set()
+
+def _check_pin(pin: str) -> bool:
+    """Verify PIN against ADMIN_PIN env var. Returns True if correct."""
+    correct = os.environ.get("ADMIN_PIN", "").strip()
+    if not correct:
+        return True   # no PIN set = open access (dev mode)
+    return _secrets.compare_digest(pin.strip(), correct)
+
+@app.route("/admin/verify", methods=["POST"])
+@app.route("/admin/verify/", methods=["POST"])
+def admin_verify():
+    """
+    Verify admin PIN. Returns a session token on success.
+    Body: {"pin": "1234"}
+    """
+    data = request.get_json(silent=True) or {}
+    pin  = data.get("pin", "")
+    if not _check_pin(pin):
+        return jsonify({"ok": False, "error": "Incorrect PIN"}), 401
+    # Generate a session token
+    tok = _secrets.token_hex(16)
+    _admin_sessions.add(tok)
+    return jsonify({"ok": True, "session_token": tok})
+
+@app.route("/admin/check", methods=["GET", "POST"])
+@app.route("/admin/check/", methods=["GET", "POST"])
+def admin_check():
+    """Check if a session token is still valid."""
+    tok = (request.headers.get("X-Admin-Token") or
+           (request.get_json(silent=True) or {}).get("session_token", ""))
+    no_pin = not os.environ.get("ADMIN_PIN", "").strip()
+    valid  = no_pin or tok in _admin_sessions
+    return jsonify({"ok": valid, "pin_required": not no_pin})
+
 # ── Database endpoints ───────────────────────────────────────────────────────
 @app.route("/db/init")
 @app.route("/db/init/")
