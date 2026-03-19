@@ -14,8 +14,8 @@ h1{font-size:20px;font-weight:600;}
 .chip-blue{background:#E6F1FB;color:#185FA5;border-color:#85B7EB;}
 .chip-gray{background:#f5f5f0;color:#888;border-color:#ddd;}
 .navbar{display:flex;align-items:center;justify-content:space-between;
-  gap:12px;padding:10px 0;background:#fff;border-bottom:1px solid #e0e0e0;
-  margin-bottom:20px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;}
+  gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e0e0e0;
+  margin:-20px -16px 20px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;}
 .navbar-brand{display:flex;align-items:center;gap:8px;flex-shrink:0;}
 .navbar-title{font-size:16px;font-weight:700;white-space:nowrap;}
 .navbar-centre{display:flex;align-items:center;gap:6px;flex:1;justify-content:center;flex-wrap:wrap;}
@@ -250,16 +250,115 @@ th[data-tip]{cursor:default;}
   .hist-toolbar-left .btn,.hist-toolbar-left label{flex:1;text-align:center;}
   .hist-toolbar > .btn{width:100%;}
 }
+
+/* ── Login screen ──────────────────────────────────────────────────────────── */
+#loginScreen{ animation:lsFadeIn .35s ease; }
+@keyframes lsFadeIn{ from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:none} }
+#loginScreen .ls-card{
+  background:#fff;border:1px solid #e0e0e0;border-radius:16px;
+  padding:32px 28px;box-shadow:0 4px 24px rgba(0,0,0,.07);
+}
+#loginOAuthBtn{ transition:background .15s,transform .12s; }
+#loginOAuthBtn:hover{ background:#1a3d07!important; transform:translateY(-1px); }
+#loginEnterBtn:hover{ background:#d4edbc!important; }
 </style>
 </head>
 <body>
 <div class="page">
 
-  <div class="navbar">
+  
+  <!-- ══════ LOGIN SCREEN ══════ -->
+  <div id="loginScreen">
+
+    <!-- Slim top bar: only Docs + Changelog visible -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0 0;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:18px;">&#128200;</span>
+        <span style="font-size:16px;font-weight:700;letter-spacing:-.02em;">NSE Scanner</span>
+        <span class="chip chip-gray" style="font-size:10px;">v2.2.0</span>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <a href="readme.html" target="_blank" class="nav-btn">&#128214; Docs</a>
+        <a href="changelog.html" target="_blank" class="nav-btn">&#127959; Changelog</a>
+      </div>
+    </div>
+
+    <!-- Hero + card -->
+    <div style="max-width:400px;margin:56px auto 0;text-align:center;">
+
+      <div style="margin-bottom:28px;">
+        <div style="width:68px;height:68px;border-radius:20px;
+                    background:#EAF3DE;border:2px solid #C0DD97;
+                    margin:0 auto 16px;display:flex;align-items:center;
+                    justify-content:center;font-size:30px;">&#128200;</div>
+        <h1 style="font-size:24px;font-weight:700;letter-spacing:-.03em;margin-bottom:8px;">
+          NSE Intraday Scanner
+        </h1>
+        <p style="font-size:13px;color:#666;line-height:1.6;">
+          Real-time signals &#183; Macro intelligence &#183; Telegram alerts
+        </p>
+      </div>
+
+      <div class="ls-card">
+        <!-- Status indicator -->
+        <div style="display:flex;align-items:center;justify-content:center;gap:8px;
+                    margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid #f0f0f0;">
+          <span id="lsDot" style="width:8px;height:8px;border-radius:50%;
+                 background:#e0e0e0;display:inline-block;transition:background .3s;"></span>
+          <span id="lsTxt" style="font-size:13px;color:#888;">Checking login status&#8230;</span>
+        </div>
+
+        <!-- Login button -->
+        <button id="loginOAuthBtn" onclick="doLogin()"
+                style="width:100%;display:flex;align-items:center;justify-content:center;
+                       gap:10px;padding:13px 20px;border-radius:12px;border:none;
+                       background:#27500A;color:#fff;font-size:14px;font-weight:600;
+                       cursor:pointer;margin-bottom:10px;letter-spacing:-.01em;">
+          &#128274; Login with Upstox
+        </button>
+
+        <!-- Enter button (shown when already logged in) -->
+        <button id="loginEnterBtn" onclick="enterApp()"
+                style="display:none;width:100%;padding:13px 20px;border-radius:12px;
+                       border:1px solid #C0DD97;background:#EAF3DE;color:#27500A;
+                       font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;">
+          &#10003; Enter Scanner
+        </button>
+
+        <div id="lsMsg" style="font-size:12px;color:#888;min-height:16px;margin-bottom:12px;"></div>
+
+        <button onclick="document.getElementById('lsManual').style.display=document.getElementById('lsManual').style.display==='none'?'block':'none'"
+                style="font-size:12px;color:#bbb;background:none;border:none;cursor:pointer;text-decoration:underline;">
+          Or paste token manually
+        </button>
+        <div id="lsManual" style="display:none;margin-top:12px;text-align:left;">
+          <div style="display:flex;gap:8px;">
+            <input id="lsTokenInp" type="password" class="token-inp"
+                   placeholder="Paste Upstox access token&#8230;" style="flex:1;font-size:13px;"/>
+            <button class="btn" onclick="doManualLogin()">Set</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:center;gap:8px;margin-top:18px;flex-wrap:wrap;">
+        <span class="chip">30 Nifty stocks</span>
+        <span class="chip">Telegram alerts</span>
+        <span class="chip">Macro intelligence</span>
+      </div>
+      <p style="font-size:11px;color:#ccc;margin-top:16px;line-height:1.6;">
+        Connects via official Upstox OAuth.<br>No credentials stored.
+      </p>
+    </div>
+  </div>
+  <!-- ══════ END LOGIN SCREEN ══════ -->
+
+  <!-- App shell (hidden until login) -->
+  <div id="appShell" style="display:none;">
+<div class="navbar">
     <!-- Left: brand -->
     <div class="navbar-brand">
       <span class="navbar-title">NSE Scanner</span>
-      <span class="chip chip-gray" id="versionChip" title="App version">v2.2.0</span>
+      <span class="chip chip-gray" id="versionChip" title="App version">v2.0.0</span>
     </div>
 
     <!-- Centre: market status chips -->
@@ -274,6 +373,13 @@ th[data-tip]{cursor:default;}
 
     <!-- Right: action buttons -->
     <div class="navbar-right">
+      <!-- Proxy status dot + label -->
+      <button class="nav-btn" id="proxyNavBtn" onclick="switchTab('admin')"
+              title="Cloud proxy status">
+        <span class="pdot" id="pdot" style="width:8px;height:8px;display:inline-block;vertical-align:middle;margin-right:4px;"></span>
+        <span id="proxyNavTxt" style="font-size:11px;">Proxy</span>
+      </button>
+
       <!-- Token / login button -->
       <button class="nav-btn" id="tokenNavBtn" onclick="handleTokenNavClick()"
               title="Upstox login status">
@@ -533,83 +639,70 @@ to see the specific analysis and reason.">Signal</th>
 
     <!-- Admin content (hidden until PIN entered) -->
     <div id="adminContent" style="display:none;">
-
-
-
-    <div class="collapsible-wrap">
-      <div class="collapsible-hdr" onclick="toggleSection('adminSysBody')">
-        <span class="collapsible-title">&#128200; System Status</span>
-        <span class="collapsible-arrow" id="adminSysBody-arrow">&#9658;</span>
-      </div>
-      <div class="collapsible-body closed" id="adminSysBody" style="max-height:0;">
-        <div style="padding:12px 14px;">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
-            <button class="btn" onclick="checkProxyAdmin()" style="display:inline-flex;align-items:center;gap:6px;"><span class="pdot" id="pdot" style="width:8px;height:8px;display:inline-block;"></span><span id="proxyNavTxt">Proxy</span></button>
-            <button class="btn" onclick="adminLoad('alert-status','adminStatusBox')">&#128200; Alert status</button>
-            <button class="btn" onclick="adminLoad('macro-status','adminStatusBox')">&#127758; Macro status</button>
-            <button class="btn" onclick="adminLoad('db/status','adminStatusBox')">&#128451; DB status</button>
-            <button class="btn" onclick="adminLoad('ping','adminStatusBox')">&#128997; Ping</button>
-          </div>
-          <pre id="adminStatusBox" style="background:#1a1a1a;color:#a8ff78;padding:12px;border-radius:8px;font-size:11px;line-height:1.6;overflow-x:auto;max-height:280px;overflow-y:auto;white-space:pre-wrap;display:none;"></pre>
-        </div>
-      </div>
+    <div class="card" style="border-left:4px solid #185FA5;">
+      <div class="card-title" style="color:#185FA5;">&#9881; Admin Panel</div>
+      <p style="font-size:13px;color:#666;margin-bottom:0;">System controls, diagnostics and testing.</p>
     </div>
 
-    <div class="collapsible-wrap">
-      <div class="collapsible-hdr" onclick="toggleSection('adminDryBody')">
-        <span class="collapsible-title">&#128270; Dry Scan</span>
-        <span class="collapsible-arrow" id="adminDryBody-arrow">&#9658;</span>
+
+
+    <div class="card">
+      <div class="card-title">System Status</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <button class="btn" onclick="adminLoad('alert-status','adminStatusBox')">&#128200; Alert status</button>
+        <button class="btn" onclick="adminLoad('macro-status','adminStatusBox')">&#127758; Macro status</button>
+        <button class="btn" onclick="adminLoad('db/status','adminStatusBox')">&#128451; DB status</button>
+        <button class="btn" onclick="adminLoad('auth/status','adminStatusBox')">&#128274; Auth status</button>
+        <button class="btn" onclick="adminLoad('ping','adminStatusBox')">&#128997; Ping</button>
       </div>
-      <div class="collapsible-body closed" id="adminDryBody" style="max-height:0;">
-        <div style="padding:12px 14px;">
-          <p style="font-size:12px;color:#888;margin-bottom:10px;">Run a scan now bypassing the 9:15–10:30 window. Sends a Telegram alert for the best signal found.</p>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
-            <div style="position:relative;display:inline-block;">
-              <input id="dryScanSym" class="search-inp" type="text"
-                     placeholder="Symbol e.g. HDFCBANK" autocomplete="off"
-                     oninput="dryScanAutocomplete(this.value)"
-                     onkeydown="dryScanKeydown(event)"
-                     style="width:180px;padding:7px 12px;font-size:13px;"/>
-              <div id="dryScanDrop" style="display:none;position:absolute;top:100%;left:0;width:200px;background:#fff;border:1px solid #ddd;border-radius:6px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:999;max-height:220px;overflow-y:auto;"></div>
-            </div>
-            <button class="btn" onclick="runDryScanFull()" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#9654; Live scan</button>
-            <button class="btn" onclick="runDryScanMock()" style="background:#FAEEDA;color:#633806;border-color:#FAC775;">&#127916; Mock</button>
-          </div>
-          <pre id="adminDryBox" style="background:#1a1a1a;color:#a8ff78;padding:12px;border-radius:8px;font-size:11px;line-height:1.6;overflow-x:auto;max-height:280px;overflow-y:auto;white-space:pre-wrap;display:none;"></pre>
-        </div>
-      </div>
+      <pre id="adminStatusBox" style="background:#1a1a1a;color:#a8ff78;padding:14px;border-radius:8px;
+           font-size:11px;line-height:1.6;overflow-x:auto;max-height:320px;overflow-y:auto;
+           white-space:pre-wrap;display:none;"></pre>
     </div>
 
-    <div class="collapsible-wrap">
-      <div class="collapsible-hdr" onclick="toggleSection('adminDbBody')">
-        <span class="collapsible-title">&#128451; Database</span>
-        <span class="collapsible-arrow" id="adminDbBody-arrow">&#9658;</span>
-      </div>
-      <div class="collapsible-body closed" id="adminDbBody" style="max-height:0;">
-        <div style="padding:12px 14px;">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-            <button class="btn" onclick="adminFetch('/db/init','GET','adminDbMsg')" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#10133; Init tables</button>
-            <button class="btn" onclick="adminLoad('history/stats','adminStatusBox')">&#128202; Trade stats</button>
-            <button class="btn" onclick="adminLoad('history/alerts?limit=20','adminStatusBox')">&#128276; Alert log</button>
-          </div>
-          <div id="adminDbMsg" class="tok-msg"></div>
+    <div class="card">
+      <div class="card-title">Dry Scan</div>
+      <p style="font-size:12px;color:#888;margin-bottom:10px;">Run a real scan right now ignoring the 9:15&#8211;10:30 window. Sends a Telegram alert for the best signal found.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+        <div style="position:relative;display:inline-block;">
+          <input id="dryScanSym" class="search-inp" type="text"
+                 placeholder="Symbol e.g. HDFCBANK"
+                 autocomplete="off"
+                 oninput="dryScanAutocomplete(this.value)"
+                 onkeydown="dryScanKeydown(event)"
+                 style="width:200px;padding:7px 12px;font-size:13px;"/>
+          <div id="dryScanDrop" style="display:none;position:absolute;top:100%;left:0;
+               width:200px;background:#fff;border:1px solid #ddd;border-radius:6px;
+               box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:999;max-height:220px;overflow-y:auto;"></div>
         </div>
+        <button class="btn" onclick="runDryScanFull()" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#128270; Run live dry scan</button>
+        <button class="btn" onclick="runDryScanMock()" style="background:#FAEEDA;color:#633806;border-color:#FAC775;">&#127916; Mock (no token)</button>
       </div>
+      <pre id="adminDryBox" style="background:#1a1a1a;color:#a8ff78;padding:14px;border-radius:8px;
+           font-size:11px;line-height:1.6;overflow-x:auto;max-height:300px;overflow-y:auto;
+           white-space:pre-wrap;display:none;"></pre>
     </div>
 
-    <div class="collapsible-wrap">
-      <div class="collapsible-hdr" onclick="toggleSection('adminQlBody')">
-        <span class="collapsible-title">&#128279; Quick Links</span>
-        <span class="collapsible-arrow" id="adminQlBody-arrow">&#9658;</span>
+    <div class="card">
+      <div class="card-title">Database</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+        <button class="btn" onclick="adminFetch('/db/init','GET','adminDbMsg')" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#10133; Initialise tables</button>
+        <button class="btn" onclick="adminLoad('history/stats','adminStatusBox')">&#128202; Trade stats</button>
+        <button class="btn" onclick="adminLoad('history/alerts?limit=20','adminStatusBox')">&#128276; Alert log (last 20)</button>
       </div>
-      <div class="collapsible-body closed" id="adminQlBody" style="max-height:0;">
-        <div style="padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px;">
-          <a href="https://nse-proxy-mojx.onrender.com/set-token-form" target="_blank" class="btn" style="font-size:12px;">&#128274; Set token form</a>
-          <a href="https://nse-proxy-mojx.onrender.com/get-chat-id"    target="_blank" class="btn" style="font-size:12px;">&#128241; Get chat ID</a>
-          <a href="https://supabase.com"                                target="_blank" class="btn" style="font-size:12px;">&#128451; Supabase</a>
-          <a href="https://dashboard.render.com"                        target="_blank" class="btn" style="font-size:12px;">&#9729; Render</a>
-          <a href="https://uptimerobot.com"                             target="_blank" class="btn" style="font-size:12px;">&#9201; UptimeRobot</a>
-        </div>
+      <div id="adminDbMsg" class="tok-msg"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Quick Links</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <a href="https://nse-proxy-mojx.onrender.com/set-token-form" target="_blank" class="btn" style="font-size:12px;">&#128274; Set token form</a>
+        <a href="https://nse-proxy-mojx.onrender.com/get-chat-id"    target="_blank" class="btn" style="font-size:12px;">&#128241; Get chat ID</a>
+        <a href="https://supabase.com"                                target="_blank" class="btn" style="font-size:12px;">&#128451; Supabase</a>
+        <a href="https://dashboard.render.com"                        target="_blank" class="btn" style="font-size:12px;">&#9729; Render</a>
+        <a href="https://uptimerobot.com"                             target="_blank" class="btn" style="font-size:12px;">&#9201; UptimeRobot</a>
+        <a href="readme.html"                                     target="_blank" class="btn" style="font-size:12px;">&#128214; Readme</a>
+        <a href="changelog.html"                                  target="_blank" class="btn" style="font-size:12px;">&#127959; Changelog</a>
       </div>
     </div>
 
@@ -625,7 +718,7 @@ to see the specific analysis and reason.">Signal</th>
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const PROXY = 'https://nse-proxy-mojx.onrender.com';
-const APP_VERSION = 'v2.2.0';
+const APP_VERSION = 'v1.9.0';
 const SK = 'nse_v2';
 
 const STOCKS = [
@@ -819,7 +912,8 @@ function getSignalMeta(sym,currentSig){
 }
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
-(function init(){
+(
+function init(){
   const now=new Date(),utcM=now.getUTCHours()*60+now.getUTCMinutes(),istM=(utcM+330)%1440;
   const mc=document.getElementById('mktChip');
   if(istM>=555&&istM<570){mc.textContent='Pre-open (IST)';mc.className='chip chip-amber';}
@@ -829,9 +923,10 @@ function getSignalMeta(sym,currentSig){
   STOCKS.forEach(s=>{const el=document.createElement('span');el.className='qpill';el.id='qp_'+s.sym;el.textContent=s.sym;el.title=s.name;el.onclick=()=>sel.has(s.sym)?removeSel(s.sym):addSel(s);g.appendChild(el);});
   checkProxy();
   renderHistBadge();
-  // Version set in HTML directly
-  // Check if token already set on server (e.g. via OAuth)
-  setTimeout(checkTokenStatus, 1500);
+  // Show version chip
+  const vc = document.getElementById('versionChip');
+  if(vc) vc.textContent = APP_VERSION;
+  // Token check handled by login screen
   // Listen for OAuth success message from the popup tab
   window.addEventListener('message', function(e){
     if(e.data && e.data.type === 'upstox_auth_success'){
@@ -845,6 +940,8 @@ function getSignalMeta(sym,currentSig){
   // File storage disabled on cloud deployment
   const savedKey=localStorage.getItem('anthropic_key');
   if(savedKey){const el=document.getElementById('anthropicKey');if(el)el.value=savedKey;const msg=document.getElementById('anthropicMsg');if(msg){msg.textContent='\u2713 Key loaded \u2014 AI features enabled.';msg.style.color='#3B6D11';}}
+  // Show login screen on startup
+  showLoginScreen();
 })();
 
 // ─── TABS ─────────────────────────────────────────────────────────────────────
@@ -1124,25 +1221,6 @@ function vwap(c){let tv=0,v=0;c.forEach(x=>{const tp=(x[2]+x[3]+x[4])/3;tv+=tp*x
 function atr14(c){if(c.length<2)return 0;const t=[];for(let i=1;i<c.length;i++){const h=c[i][2],l=c[i][3],p=c[i-1][4];t.push(Math.max(h-l,Math.abs(h-p),Math.abs(l-p)));}const s=t.slice(-14);return +(s.reduce((a,b)=>a+b,0)/s.length).toFixed(2);}
 
 // ─── BUILD SETUP ──────────────────────────────────────────────────────────────
-function confTip(s){
-  var lines=[];
-  lines.push('Confidence: '+s.conf+'%');
-  lines.push('');
-  if(s.confBD&&s.confBD.length){
-    lines.push('Factor breakdown:');
-    s.confBD.forEach(function(b){lines.push('  '+b);});
-    lines.push('');
-  }
-  var pen=s.ctxWarnings?s.ctxWarnings.slice():[];
-  if(s.marketBlocked)pen.unshift('Market filter blocked signal (Nifty ±0.5%)');
-  if(pen.length){lines.push('Adjustments:');pen.forEach(function(p){lines.push('  '+p);});lines.push('');}
-  if(s.macroImpact&&s.macroImpact.trim()){lines.push('Macro/news: '+s.macroImpact.trim());lines.push('');}
-  if(s.confirmCount!==undefined)lines.push('Candles: '+s.confirmCount+'/3'+(s.confirmCount<3?' (−20% penalty)':''));
-  lines.push('');
-  lines.push('Verdict: '+(s.conf>=75?'✓ Green — full size':s.conf>=55?'◑ Amber — half size':'✗ Red — skip'));
-  return lines.join('|NEWLINE|');
-}
-
 function sigTip(s){
   // Rich tooltip explaining exactly why this signal was inferred
   var lines = [];
@@ -1168,13 +1246,8 @@ function sigTip(s){
   }
   if(s.marketBlocked){
     lines.push('');
-    lines.push('\u26a0 Market filter blocked original signal');
+    lines.push('Market filter blocked original signal');
   }
-  if(s.macroImpact && s.macroImpact.trim()){
-    lines.push('');
-    lines.push('Macro/news: ' + s.macroImpact.trim());
-  }
-  if(s.macroImpact&&s.macroImpact.trim()){lines.push('');lines.push('Macro/news: '+s.macroImpact.trim());}
   return lines.join('|NEWLINE|');
 }
 
@@ -1377,7 +1450,7 @@ function renderScanTable(){
       '<td class="r" data-tip="Last traded price.\n% change vs yesterday close.\nGreen = up, Red = down."><div class="ltp">\u20b9'+fc(s.ltp)+'</div><div class="'+(s.chg>=0?'pos':'neg')+'">'+(s.chg>=0?'+':'')+s.chg+'%</div></td>'+
       '<td class="r"><div class="ev">\u2197 \u20b9'+fc(s.en)+'</div><div class="tgt">\u2713 \u20b9'+fc(s.tg)+'</div><div class="slv">\u2717 \u20b9'+fc(s.sl)+'</div></td>'+
       '<td class="r hm" data-tip="Risk:Reward ratio.\nHow much you gain vs how much you risk.\n>=2:1 Good (green)\n1.5-2:1 Acceptable (amber)\n<1.5 Skip (red)\nAlways aim for 2:1 minimum."><span class="rr '+rrC+'">'+(isNaN(s.rr)?'N/A':s.rr+':1')+'</span></td>'+
-      '<td class="r" data-tip="'+confTip(s).replace(/"/g,'&quot;')+'"><div class="conf-cell"><span class="conf-n '+cm.cls+'">'+s.conf+'%</span><div class="conf-bar"><div class="conf-fill" style="width:'+s.conf+'%;background:'+cm.color+';"></div></div><span class="conf-lbl '+cm.cls+'">'+cm.label+'</span></div></td>'+
+      '<td class="r" data-tip="Confidence score 0-100%.\n>=75% Green: full position size\n55-74% Amber: half position size\n<55% Red: skip this trade\n\nWeighted from 6 factors:\nORB 25% + Volume 20% + VWAP 20%\nRSI 15% + R:R 15% + ATR 5%\n\nReduced by market/macro penalties."><div class="conf-cell"><span class="conf-n '+cm.cls+'">'+s.conf+'%</span><div class="conf-bar"><div class="conf-fill" style="width:'+s.conf+'%;background:'+cm.color+';"></div></div><span class="conf-lbl '+cm.cls+'">'+cm.label+'</span></div></td>'+
       '<td class="hm" data-tip="RSI(14): 14-day momentum.\n>70 Overbought (expect pullback)\n<30 Oversold (expect bounce)\n40-60 Neutral (best for entries)\n\nVWAP: Volume Weighted Avg Price.\nUp arrow = price above VWAP (bullish)\nDown arrow = below VWAP (bearish)\n\nATR: Avg daily range in rupees.\nSets stop loss width + target distance."><div class="ibar">'+
         '<div class="irow"><span class="iname">RSI</span><div class="ibg"><div class="ifill" style="width:'+s.rsi+'%;background:'+rc+';"></div></div><span class="ival" style="color:'+rc+';">'+s.rsi+'</span></div>'+
         '<div class="irow"><span class="iname">VWAP</span><div class="ibg"><div class="ifill" style="width:'+(s.av?70:30)+'%;background:'+vc2+';"></div></div><span class="ival" style="color:'+vc2+';">'+(s.av?'\u2191':'\u2193')+'</span></div>'+
@@ -1397,12 +1470,12 @@ function renderScanTable(){
     dp.innerHTML='<td colspan="10" style="padding:0;"><div class="dp" id="panel'+i+'">'+
       '<div class="cb-box"><div class="cb-hdr"><span class="cb-title">Confidence breakdown \u2014 how '+s.conf+'% was calculated</span><span class="cb-score '+cm2.cls+'">'+s.conf+'%</span></div><div class="cb-rows">'+cbHtml+'</div><div class="cb-note">'+(s.conf<55?'<strong>Warning:</strong> Below 55% \u2014 skip this trade.':'Above 55%. Click Save to History to log this prediction.')+'</div></div>'+
       '<div class="dcards">'+
-        '<div class="dcard"><div class="dcard-l">Entry</div><div class="dcard-v" style="color:#185FA5;">\u20b9'+fc(s.en)+'</div><div class="dcard-s" style="color:#888;">'+(s.sig==='BUY'?'Entry above ORB High':'Entry below ORB Low')+'</div></div>'+
-        '<div class="dcard"><div class="dcard-l">Target</div><div class="dcard-v" style="color:#3B6D11;">\u20b9'+fc(s.tg)+'</div><div class="dcard-s" style="color:#3B6D11;">+\\u20b9'+fc(Math.abs(s.tg-s.en))+'\u00a0\u00b7\u00a0ATR\u00d72 away</div></div>'+
-        '<div class="dcard"><div class="dcard-l">Stop loss</div><div class="dcard-v" style="color:#A32D2D;">\u20b9'+fc(s.sl)+'</div><div class="dcard-s" style="color:#A32D2D;">-\\u20b9'+fc(Math.abs(s.sl-s.en))+'\u00a0\u00b7\u00a0below ORB Low</div></div>'+
-        '<div class="dcard"><div class="dcard-l">RSI (14)</div><div class="dcard-v" style="color:'+rc3+';">'+s.rsi+'</div><div class="dcard-s" style="color:'+rc3+';">'+(s.rsi>70?'Overbought — caution':s.rsi<30?'Oversold — good for BUY':(s.rsi>=40&&s.rsi<=60)?'Neutral — ideal zone':'Elevated')+'</div></div>'+
-        '<div class="dcard"><div class="dcard-l">VWAP</div><div class="dcard-v">\u20b9'+fc(s.vwap)+'</div><div class="dcard-s" style="color:'+vc3+';">'+(s.av?'LTP above \\u2191 bullish':'LTP below \\u2193 bearish')+(s.sig==='BUY'&&s.av?' \u2713':s.sig==='SELL'&&!s.av?' \u2713':' \u26a0')+'</div></div>'+
-        '<div class="dcard"><div class="dcard-l">ATR (daily range)</div><div class="dcard-v">\u20b9'+fc(s.atr)+'</div><div class="dcard-s" style="color:#888;">Range used for SL & target</div></div>'+
+        '<div class="dcard"><div class="dcard-l">Entry</div><div class="dcard-v" style="color:#185FA5;">\u20b9'+fc(s.en)+'</div><div class="dcard-s" style="color:#888;">Place limit order</div></div>'+
+        '<div class="dcard"><div class="dcard-l">Target</div><div class="dcard-v" style="color:#3B6D11;">\u20b9'+fc(s.tg)+'</div><div class="dcard-s" style="color:#3B6D11;">+\u20b9'+fc(Math.abs(s.tg-s.en))+'</div></div>'+
+        '<div class="dcard"><div class="dcard-l">Stop loss</div><div class="dcard-v" style="color:#A32D2D;">\u20b9'+fc(s.sl)+'</div><div class="dcard-s" style="color:#A32D2D;">-\u20b9'+fc(Math.abs(s.sl-s.en))+'</div></div>'+
+        '<div class="dcard"><div class="dcard-l">RSI (14)</div><div class="dcard-v" style="color:'+rc3+';">'+s.rsi+'</div><div class="dcard-s" style="color:'+rc3+';">'+(s.rsi>70?'Overbought':s.rsi<30?'Oversold':'Neutral')+'</div></div>'+
+        '<div class="dcard"><div class="dcard-l">VWAP</div><div class="dcard-v">\u20b9'+fc(s.vwap)+'</div><div class="dcard-s" style="color:'+vc3+';">Price '+(s.av?'above \u2191':'below \u2193')+'</div></div>'+
+        '<div class="dcard"><div class="dcard-l">ATR</div><div class="dcard-v">\u20b9'+fc(s.atr)+'</div><div class="dcard-s" style="color:#888;">'+(s.atr/s.ltp*100).toFixed(1)+'% of price</div></div>'+
       '</div>'+
       histBlock+
       '<div class="setup-box"><strong>Setup:</strong> '+s.reason+'</div>'+
@@ -1433,17 +1506,7 @@ const ADMIN_SESSION_KEY = 'nse_admin_session';
 async function checkAdminAccess(){
   // Always verify with server — never auto-unlock from localStorage alone
   const storedTok = localStorage.getItem(ADMIN_SESSION_KEY)||'';
-  // Optimistic: if stored token, show content immediately (avoids gate flash)
-  // Server will correct it if token is invalid
-  var ac=document.getElementById('adminContent');
-  var ag=document.getElementById('adminPinGate');
-  if(storedTok){
-    if(ac) ac.style.display='block';
-    if(ag) ag.style.display='none';
-  } else {
-    if(ac) ac.style.display='none';
-    if(ag) ag.style.display='none';
-  }
+  showAdminGate(); // show gate immediately while we check
   try{
     const r = await fetch(PROXY+'/admin/check',{
       method:'POST',
@@ -1507,8 +1570,6 @@ async function verifyAdminPin(){
 }
 
 // ─── ADMIN TAB FUNCTIONS ─────────────────────────────────────────────────────
-function checkProxyAdmin(){var box=document.getElementById('adminStatusBox');if(box){box.style.display='block';box.textContent='Checking...';}checkProxy().then(function(){var dot=document.getElementById('pdot');var ok=dot&&dot.style.background==='rgb(99, 153, 34)';if(box)box.textContent=ok?'Proxy OK — server reachable':'Proxy down — server sleeping. Wait 30s.';});}
-
 async function adminLoad(endpoint, boxId){
   const box=document.getElementById(boxId);
   if(!box)return;
@@ -1759,8 +1820,8 @@ function showFileErr(msg){console.warn('File storage:', msg);}
 function updateFileUI(){}
 
 // ─── EXPORT / IMPORT CSV ──────────────────────────────────────────────────────
-function exportCSV(){const h=loadH();if(!h.length){alert('No history to export.');return;}const cols=['date','time','sym','sec','sig','conf','ltp','en','tg','sl','rr','rsi','reason','aEn','aEx','outcome','pnl','notes'];const hdrs=['Date','Time','Stock','Sector','Signal','Confidence(%)','LTP','Pred Entry','Target','Stop Loss','R:R','RSI','Signal Reason','Actual Entry','Actual Exit','Outcome','PnL per Share','Notes'];function esc(v){if(v===null||v===undefined)return '';const s=String(v);const has=s.indexOf(',')>=0||s.indexOf('"')>=0||s.indexOf('\r')>=0||s.indexOf('\n')>=0;if(has)return '"'+s.replace(/"/g,'""')+'"';return s;}const lines=[hdrs.join(',')];h.forEach(row=>lines.push(cols.map(c=>esc(row[c])).join(',')));const csv=lines.join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='nse_history_'+new Date().toISOString().split('T')[0]+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);}
-function importCSV(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=function(e){try{const lines=e.target.result.split(/\r?\n/).filter(l=>l.trim());if(lines.length<2){alert('CSV appears empty.');return;}const hdrs=parseCsvRow(lines[0]);const ci={};hdrs.forEach((h,i)=>ci[h.trim()]=i);const fmap={'Date':'date','Time':'time','Stock':'sym','Sector':'sec','Signal':'sig','Confidence(%)':'conf','LTP':'ltp','Pred Entry':'en','Target':'tg','Stop Loss':'sl','R:R':'rr','RSI':'rsi','Signal Reason':'reason','Actual Entry':'aEn','Actual Exit':'aEx','Outcome':'outcome','PnL per Share':'pnl','Notes':'notes'};const numFields=new Set(['conf','ltp','en','tg','sl','rr','rsi','aEn','aEx','pnl']);const existing=loadH();const seen=new Set(existing.map(x=>x.sym+'_'+x.date));let added=0,skipped=0;for(let i=1;i<lines.length;i++){const vals=parseCsvRow(lines[i]);if(!vals.length)continue;const row={id:Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2)};Object.entries(fmap).forEach(function(pair){const csvH=pair[0],field=pair[1];const idx=ci[csvH];const v=(idx!==undefined&&vals[idx]!==undefined)?vals[idx].trim():'';row[field]=numFields.has(field)?(v===''?null:+parseFloat(v).toFixed(2)):(v===''?null:v);});const key=row.sym+'_'+row.date;if(seen.has(key)){skipped++;continue;}seen.add(key);row.outcome=row.outcome||'pending';row.notes=row.notes||'';existing.push(row);added++;}saveH(existing);renderHist();alert('Import complete: '+added+' rows added, '+skipped+' skipped (duplicates).');}catch(err){alert('Import failed: '+err.message);}event.target.value='';};reader.readAsText(file);}
+function exportCSV(){const h=loadH();if(!h.length){alert('No history to export.');return;}const cols=['date','time','sym','sec','sig','conf','ltp','en','tg','sl','rr','rsi','reason','aEn','aEx','outcome','pnl','notes'];const hdrs=['Date','Time','Stock','Sector','Signal','Confidence(%)','LTP','Pred Entry','Target','Stop Loss','R:R','RSI','Setup Reason','Actual Entry','Actual Exit','Outcome','PnL per Share','Notes'];function esc(v){if(v===null||v===undefined)return '';const s=String(v);const has=s.indexOf(',')>=0||s.indexOf('"')>=0||s.indexOf('\r')>=0||s.indexOf('\n')>=0;if(has)return '"'+s.replace(/"/g,'""')+'"';return s;}const lines=[hdrs.join(',')];h.forEach(row=>lines.push(cols.map(c=>esc(row[c])).join(',')));const csv=lines.join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='nse_history_'+new Date().toISOString().split('T')[0]+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);}
+function importCSV(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=function(e){try{const lines=e.target.result.split(/\r?\n/).filter(l=>l.trim());if(lines.length<2){alert('CSV appears empty.');return;}const hdrs=parseCsvRow(lines[0]);const ci={};hdrs.forEach((h,i)=>ci[h.trim()]=i);const fmap={'Date':'date','Time':'time','Stock':'sym','Sector':'sec','Signal':'sig','Confidence(%)':'conf','LTP':'ltp','Pred Entry':'en','Target':'tg','Stop Loss':'sl','R:R':'rr','RSI':'rsi','Setup Reason':'reason','Actual Entry':'aEn','Actual Exit':'aEx','Outcome':'outcome','PnL per Share':'pnl','Notes':'notes'};const numFields=new Set(['conf','ltp','en','tg','sl','rr','rsi','aEn','aEx','pnl']);const existing=loadH();const seen=new Set(existing.map(x=>x.sym+'_'+x.date));let added=0,skipped=0;for(let i=1;i<lines.length;i++){const vals=parseCsvRow(lines[i]);if(!vals.length)continue;const row={id:Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2)};Object.entries(fmap).forEach(function(pair){const csvH=pair[0],field=pair[1];const idx=ci[csvH];const v=(idx!==undefined&&vals[idx]!==undefined)?vals[idx].trim():'';row[field]=numFields.has(field)?(v===''?null:+parseFloat(v).toFixed(2)):(v===''?null:v);});const key=row.sym+'_'+row.date;if(seen.has(key)){skipped++;continue;}seen.add(key);row.outcome=row.outcome||'pending';row.notes=row.notes||'';existing.push(row);added++;}saveH(existing);renderHist();alert('Import complete: '+added+' rows added, '+skipped+' skipped (duplicates).');}catch(err){alert('Import failed: '+err.message);}event.target.value='';};reader.readAsText(file);}
 function parseCsvRow(line){const out=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}else if(ch===','&&!inQ){out.push(cur);cur='';}else cur+=ch;}out.push(cur);return out;}
 
 // ─── CORPORATE EVENTS ────────────────────────────────────────────────────────
@@ -1780,6 +1841,129 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
 <div id="floatTip" style="display:none;position:fixed;background:#1a1a1a;color:#fff;font-size:12px;line-height:1.6;padding:8px 12px;border-radius:8px;white-space:pre-wrap;max-width:280px;pointer-events:none;z-index:99999;box-shadow:0 3px 14px rgba(0,0,0,.4);text-align:left;"></div>
 <script>
 // Tooltip engine — in its own script tag AFTER the floatTip div
+// ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
+var _loginChecked = false;
+
+function showLoginScreen(){
+  document.getElementById('loginScreen').style.display = 'block';
+  document.getElementById('appShell').style.display    = 'none';
+  if(!_loginChecked){ checkLoginStatus(); _loginChecked=true; }
+}
+
+function hideLoginScreen(){
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appShell').style.display    = 'block';
+}
+
+async function checkLoginStatus(){
+  var dot=document.getElementById('lsDot');
+  var txt=document.getElementById('lsTxt');
+  var enterBtn=document.getElementById('loginEnterBtn');
+  var loginBtn=document.getElementById('loginOAuthBtn');
+  if(dot) dot.style.background='#EF9F27';
+  if(txt) txt.textContent='Checking…';
+  try{
+    var r=await fetch(PROXY+'/get-token');
+    if(r.ok){
+      var d=await r.json();
+      if(d.status==='ok'&&d.token){
+        token=d.token;
+        try{
+          var prof=await api('/v2/user/profile');
+          if(prof&&prof.data){
+            var name=prof.data.full_name||prof.data.user_name||prof.data.name||'user';
+            if(dot) dot.style.background='#639922';
+            if(txt){ txt.textContent='✓ Logged in as '+name; txt.style.color='#27500A'; }
+            if(loginBtn){
+              loginBtn.innerHTML='&#128274; Re-login with Upstox';
+              loginBtn.style.background='#EAF3DE';
+              loginBtn.style.color='#27500A';
+              loginBtn.style.border='1px solid #C0DD97';
+            }
+            if(enterBtn) enterBtn.style.display='block';
+            // Auto-enter after brief pause
+            setTimeout(enterApp, 1400);
+            return;
+          }
+        }catch(e2){}
+      }
+    }
+    // Not logged in
+    if(dot) dot.style.background='#e0e0e0';
+    if(txt){ txt.textContent='Connect your Upstox account to continue'; txt.style.color='#888'; }
+    if(enterBtn) enterBtn.style.display='none';
+    if(loginBtn){
+      loginBtn.innerHTML='&#128274; Login with Upstox';
+      loginBtn.style.background='#27500A';
+      loginBtn.style.color='#fff';
+      loginBtn.style.border='none';
+    }
+  }catch(e){
+    if(txt){ txt.textContent='Could not reach server'; txt.style.color='#A32D2D'; }
+  }
+}
+
+function doLogin(){
+  var msg=document.getElementById('lsMsg');
+  if(msg) msg.textContent='Opening Upstox login…';
+  openOAuthLogin();
+  var handler=function(e){
+    if(e.data&&e.data.type==='upstox_auth_success'){
+      window.removeEventListener('message',handler);
+      if(msg) msg.textContent='Login successful — syncing…';
+      setTimeout(checkLoginStatus, 900);
+    }
+  };
+  window.addEventListener('message',handler);
+}
+
+function enterApp(){
+  hideLoginScreen();
+  // Sync token to main app UI
+  if(token){
+    api('/v2/user/profile').then(function(prof){
+      if(prof&&prof.data){
+        var name=prof.data.full_name||prof.data.user_name||'user';
+        setTokenStatusUI(true,name);
+        updateTokenNavBtn(true,name);
+      }
+    }).catch(function(){
+      setTokenStatusUI(true,'user');
+    });
+  }
+  checkProxy();
+  renderHistBadge();
+}
+
+function doManualLogin(){
+  var inp=document.getElementById('lsTokenInp');
+  var msg=document.getElementById('lsMsg');
+  var t=inp?inp.value.trim():'';
+  if(!t){ if(msg){msg.textContent='Paste your token first';msg.style.color='#A32D2D';} return; }
+  token=t;
+  if(msg) msg.textContent='Verifying…';
+  api('/v2/user/profile').then(function(prof){
+    if(prof&&prof.data){
+      var name=prof.data.full_name||prof.data.user_name||'user';
+      var dot=document.getElementById('lsDot');
+      var txt=document.getElementById('lsTxt');
+      if(dot) dot.style.background='#639922';
+      if(txt){ txt.textContent='✓ Logged in as '+name; txt.style.color='#27500A'; }
+      if(msg) msg.textContent='';
+      var eb=document.getElementById('loginEnterBtn');
+      if(eb) eb.style.display='block';
+      setTimeout(enterApp,700);
+    }else{
+      token='';
+      if(msg){ msg.textContent='✗ Invalid token'; msg.style.color='#A32D2D'; }
+    }
+  }).catch(function(e){
+    token='';
+    if(msg){ msg.textContent='✗ '+e.message; msg.style.color='#A32D2D'; }
+  });
+}
+
+
 (function(){
   var tip = document.getElementById('floatTip');
   function show(el, e) {
@@ -1809,58 +1993,6 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
 })();
 </script>
 </body>
-</html      <a href="readme.html" target="_blank" class="nav-btn" title="User guide">&#128214; Docs</a>
-      <a href="changelog.html" target="_blank" class="nav-btn" title="Build history">&#127959;</a>
+</html
+
 >
-  <!-- ── Floating chatbot button ─────────────────────────────────────────── -->
-  <div id="chatFab" onclick="openChatbot()"
-       title="Ask the NSE Scanner Assistant"
-       onmouseover="this.style.transform='scale(1.12)';this.style.boxShadow='0 6px 28px rgba(74,222,128,.6)'"
-       onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 20px rgba(74,222,128,.35)'">
-    <span style="font-size:22px;line-height:1;pointer-events:none;">🤖</span>
-  </div>
-
-  <style>
-    #chatFab{
-      position:fixed;bottom:24px;right:24px;z-index:9999;
-      width:54px;height:54px;border-radius:50%;
-      background:#27500A;border:2px solid #4ade80;
-      box-shadow:0 4px 20px rgba(74,222,128,.35);
-      display:flex;align-items:center;justify-content:center;
-      cursor:pointer;
-      transition:transform .18s ease,box-shadow .18s ease;
-      animation:fabGlow 3s ease-in-out infinite;
-    }
-    @keyframes fabGlow{
-      0%,100%{box-shadow:0 4px 20px rgba(74,222,128,.35);}
-      50%{box-shadow:0 4px 28px rgba(74,222,128,.65);}
-    }
-    /* tooltip label on hover */
-    #chatFab::after{
-      content:"Ask AI";
-      position:absolute;
-      right:62px;
-      background:#1a1a1a;
-      color:#4ade80;
-      font-size:11px;
-      font-weight:600;
-      padding:4px 9px;
-      border-radius:6px;
-      border:1px solid #2a2a2a;
-      white-space:nowrap;
-      opacity:0;
-      pointer-events:none;
-      transition:opacity .15s;
-    }
-    #chatFab:hover::after{ opacity:1; }
-  </style>
-
-  <script>
-    function openChatbot(){
-      const w=440,h=700,l=Math.max(0,screen.width-w-20),t=60;
-      var pop=window.open('chatbot.html','nse_chatbot',
-        'width='+w+',height='+h+',left='+l+',top='+t+
-        ',toolbar=no,menubar=no,scrollbars=no,resizable=yes');
-      if(!pop) window.open('chatbot.html','_blank');
-    }
-  </script>
