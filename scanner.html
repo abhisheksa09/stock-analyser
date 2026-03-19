@@ -367,7 +367,9 @@ th[data-tip]{cursor:default;}
       <table>
         <thead><tr>
           <th data-tip="Stock symbol and sector. Signal history dots show previous scans. Lock = first signal of session.">Stock</th>
-          <th data-tip="BUY / SELL = directional signal. WATCH = mixed, no trade. Reversed badge = signal flipped since first scan.">Signal</th>
+          <th data-tip="Signal direction for this stock.
+Hover any BUY/SELL cell in the rows below
+to see the specific analysis and reason.">Signal</th>
           <th class="r" data-tip="Last traded price and % change vs yesterday's close.">LTP</th>
           <th class="r" data-tip="Entry: limit order price. Target: profit exit (ATR x2). Stop loss: max loss exit.">Entry / Target / SL</th>
           <th class="r hm" data-tip="Risk:Reward. Target gain / stop loss risk. >=2:1 good, >=1.5 ok, below 1.5 skip.">R:R</th>
@@ -513,7 +515,7 @@ th[data-tip]{cursor:default;}
   <div class="tab-pane" id="tab-admin">
 
     <!-- Admin PIN gate -->
-    <div id="adminPinGate">
+    <div id="adminPinGate" style="display:none;">
       <div style="max-width:340px;margin:40px auto;">
         <div class="card" style="border-left:4px solid #185FA5;text-align:center;">
           <div style="font-size:32px;margin-bottom:12px;">&#128274;</div>
@@ -1163,7 +1165,7 @@ function sigTip(s){
     lines.push('');
     lines.push('Market filter blocked original signal');
   }
-  return lines.join('\n');
+  return lines.join('|NEWLINE|');
 }
 
 function buildSetup(sym,sec,intra,daily,ltp){
@@ -1419,8 +1421,9 @@ let _adminUnlocked = false;
 const ADMIN_SESSION_KEY = 'nse_admin_session';
 
 async function checkAdminAccess(){
-  // Check stored session token first
+  // Always verify with server — never auto-unlock from localStorage alone
   const storedTok = localStorage.getItem(ADMIN_SESSION_KEY)||'';
+  showAdminGate(); // show gate immediately while we check
   try{
     const r = await fetch(PROXY+'/admin/check',{
       method:'POST',
@@ -1434,12 +1437,8 @@ async function checkAdminAccess(){
       showAdminGate();
     }
   } catch(e){
-    // If server unreachable and no PIN configured locally, show content
-    if(!storedTok){
-      showAdminGate();
-    } else {
-      showAdminContent();
-    }
+    // On any error, show gate — never bypass PIN silently
+    showAdminGate();
   }
 }
 
@@ -1476,6 +1475,7 @@ async function verifyAdminPin(){
     } else {
       msg.textContent='✗ Incorrect PIN';
       msg.style.color='#A32D2D';
+      localStorage.removeItem(ADMIN_SESSION_KEY); // clear stale token
       const inp=document.getElementById('adminPinInput');
       inp.style.borderColor='#E24B4A';
       setTimeout(()=>{inp.style.borderColor='';},1000);
@@ -1718,7 +1718,7 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
   function show(el, e) {
     var text = el.getAttribute('data-tip');
     if(!text || !text.trim()) return;
-    tip.innerHTML = text.replace(/\\n|\n/g,'<br>');
+    tip.innerHTML = text.replace(/\|NEWLINE\|/g,'<br>').replace(/\\n|\n/g,'<br>');
     tip.style.display = 'block';
     move(e);
   }
