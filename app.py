@@ -29,6 +29,7 @@ log = logging.getLogger("app")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [app] %(message)s")
 
 app = Flask(__name__)
+app.url_map.strict_slashes = False  # prevent /path -> /path/ redirects
 
 UPSTOX_BASE    = "https://api.upstox.com"
 ANTHROPIC_BASE = "https://api.anthropic.com"
@@ -80,7 +81,6 @@ def set_token():
     })
 
 @app.route("/set-token-form")
-@app.route("/set-token-form/")
 def set_token_form():
     wp_ok      = bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
     news_ok    = bool(os.environ.get("NEWS_API_KEY"))
@@ -136,7 +136,6 @@ async function submit(){{
 
 # ── Alert status ──────────────────────────────────────────────────────────────
 @app.route("/alert-status")
-@app.route("/alert-status/")
 def alert_status():
     return jsonify({
         "session_date":      scanner.STATE.date,
@@ -153,7 +152,6 @@ def alert_status():
 
 # ── Macro status ─────────────────────────────────────────────────────────────
 @app.route("/macro-status")
-@app.route("/macro-status/")
 def macro_status():
     """Shows current macro context — economic calendar, proxies, FII/DII, news sentiment."""
     ctx = scanner.STATE.macro_ctx
@@ -196,7 +194,6 @@ def test_alert():
 
 # ── Get Telegram Chat ID (setup helper) ──────────────────────────────────────
 @app.route("/get-chat-id")
-@app.route("/get-chat-id/")
 def get_chat_id():
     """
     Visit this URL after sending /start to your bot.
@@ -235,8 +232,7 @@ def get_chat_id():
     })
 
 # ── Dry run test scan ────────────────────────────────────────────────────────
-@app.route("/dry-scan",  methods=["GET", "POST"])
-@app.route("/dry-scan/", methods=["GET", "POST"])
+@app.route("/dry-scan", methods=["GET", "POST"])
 def dry_scan():
     """
     Trigger a one-shot test scan right now, ignoring the time window.
@@ -388,7 +384,6 @@ OAUTH_REDIRECT    = RENDER_BASE_URL + "/auth/callback"
 _last_oauth = {"status": "never attempted", "detail": "", "time": ""}
 
 @app.route("/auth/login")
-@app.route("/auth/login/")
 def auth_login():
     """
     Step 1: Open this on your phone every morning.
@@ -416,7 +411,6 @@ def auth_login():
 
 
 @app.route("/auth/callback")
-@app.route("/auth/callback/")
 def auth_callback():
     """
     Step 2: Upstox redirects here after login with ?code=xxxxx
@@ -592,7 +586,6 @@ def _auth_page(success: bool, title: str, message: str) -> str:
 
 # ── OAuth debug status ───────────────────────────────────────────────────────
 @app.route("/auth/status")
-@app.route("/auth/status/")
 def auth_status():
     """Shows the result of the last OAuth login attempt. Useful for debugging."""
     api_key    = os.environ.get("UPSTOX_API_KEY", "")
