@@ -1,6 +1,6 @@
 """
 NSE Intraday Scanner — Cloud Proxy + Alert Engine
-Version : v1.8.0
+Version : v1.9.0
 Hosted on Render.com at: https://nse-proxy-mojx.onrender.com
 Frontend at: https://abhisheksa09.github.io/stock-analyser/nse_scanner.html
 
@@ -63,7 +63,7 @@ def options_handler(path): return cors(Response(status=204))
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.route("/ping")
 def ping():
-    return jsonify({"status": "ok", "proxy": "upstox-render", "alerts": "active", "version": "v1.8.0"})
+    return jsonify({"status": "ok", "proxy": "upstox-render", "alerts": "active", "version": "v1.9.0"})
 
 # ── Token management ──────────────────────────────────────────────────────────
 @app.route("/set-token", methods=["POST"])
