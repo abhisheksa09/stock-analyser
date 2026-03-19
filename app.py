@@ -230,6 +230,319 @@ def get_chat_id():
         "next_step": "Copy the chat_id value and set it as TELEGRAM_CHAT_ID in Render env vars"
     })
 
+# ── Dry run test scan ────────────────────────────────────────────────────────
+@app.route("/dry-scan", methods=["GET", "POST"])
+def dry_scan():
+    """
+    Trigger a one-shot test scan right now, ignoring the time window.
+    Uses live Upstox data if token is set, otherwise uses mock data.
+    Sends a real Telegram alert for the first stock that qualifies
+    (or the best available if none are fully green).
+
+    Query params:
+      sym   — specific symbol to test, e.g. /dry-scan?sym=HDFCBANK
+      mock  — use mock data instead of live API, e.g. /dry-scan?mock=1
+    """
+    import time as _time
+
+    token    = scanner.get_token()
+    sym_req  = request.args.get("sym", "").upper().strip()
+    use_mock = request.args.get("mock", "0") == "1" or not token
+
+    from signals import STOCKS, build_setup, is_ready
+    from scanner import send_telegram, format_alert, STATE, apply_macro_penalties_to_setup
+
+    # Pick stock(s) to test
+    if sym_req:
+        stocks = [s for s in STOCKS if s["sym"] == sym_req]
+        if not stocks:
+            return jsonify({"error": f"Symbol {sym_req} not found. Try HDFCBANK, INFY etc."}), 400
+    else:
+        # Default: test first 5 stocks
+        stocks = STOCKS[:5]
+
+    results = []
+    alert_sent = None
+
+    for stock in stocks:
+        sym = stock["sym"]
+        try:
+            if use_mock:
+                # Build a synthetic green setup for testing
+                ltp = 1000.0
+                s = {
+                    "sym": sym, "sec": stock["sec"],
+                    "ltp": ltp, "chg": 0.8,
+                    "orbH": 1005.0, "orbL": 995.0,
+                    "rsi": 52.0, "vwap": 998.0,
+                    "atr": 12.0, "tV": 1500000, "aV": 1000000,
+                    "sig": "BUY", "en": 1005.05,
+                    "tg": round(1005.05 + 12*2, 2),
+                    "sl": round(995.0 - 12*0.3, 2),
+                    "reason": "DRY RUN — mock data (ORB breakout + above VWAP + oversold RSI)",
+                    "rr": 2.1, "av": True, "bo": True, "bd": False,
+                    "confirmed": True, "confirmCount": 3,
+                    "gapPct": 0.3, "conf": 78,
+                    "ctxWarnings": [], "marketBlocked": False,
+                    "market_ctx": {}, "cBd": [],
+                }
+            else:
+                from signals import get_ltp, get_intraday, get_daily, get_market_context
+                ltp   = get_ltp(stock["ikey"], token)
+                intra = get_intraday(stock["ikey"], token)
+                daily = get_daily(stock["ikey"], token)
+                ctx   = get_market_context(stock["sec"], token)
+                s     = build_setup(sym, stock["sec"], intra, daily, ltp, market_ctx=ctx)
+
+            # Force IST minutes to 9:50 (prime window) for readiness check
+            verdict, gates_ok = is_ready(s, ist_mins=590)
+
+            results.append({
+                "sym":     sym,
+                "sig":     s["sig"],
+                "conf":    s["conf"],
+                "verdict": verdict,
+                "ltp":     s["ltp"],
+                "entry":   s["en"],
+                "target":  s["tg"],
+                "sl":      s["sl"],
+                "reason":  s["reason"],
+                "mock":    use_mock,
+            })
+
+            # Send Telegram for first green/amber result
+            if alert_sent is None and verdict in ("green", "amber"):
+                msg = format_alert("green_ready", s)
+                msg = msg.replace(
+                    "NSE SCANNER — READY TO TRADE",
+                    "DRY RUN — READY TO TRADE (TEST)"
+                )
+                ok = send_telegram(msg)
+                alert_sent = {"sym": sym, "telegram_sent": ok, "verdict": verdict}
+                _time.sleep(1)
+
+        except Exception as e:
+            results.append({"sym": sym, "error": str(e)})
+
+    # If nothing was green, force send an alert for the highest confidence result
+    if alert_sent is None and results:
+        best = max(
+            [r for r in results if "conf" in r],
+            key=lambda r: r["conf"],
+            default=None
+        )
+        if best:
+            # Build minimal message
+            msg = (
+                "<b>DRY RUN — BEST AVAILABLE (no green signals)</b>\n\n"
+                + "<b>" + best["sym"] + "</b>  Conf: <b>" + str(best["conf"]) + "%</b>\n"
+                + "Signal: " + best["sig"] + "  |  Verdict: " + best["verdict"] + "\n"
+                + "Entry: Rs " + str(best["entry"]) + "  |  SL: Rs " + str(best["sl"]) + "\n"
+                + "<i>" + best["reason"][:80] + "</i>"
+            )
+            ok = send_telegram(msg)
+            alert_sent = {"sym": best["sym"], "telegram_sent": ok,
+                          "note": "No green signals found — sent best available"}
+
+    return jsonify({
+        "mode":        "mock" if use_mock else "live",
+        "stocks_tested": len(results),
+        "results":     results,
+        "alert_sent":  alert_sent,
+        "tip": (
+            "No token set — used mock data. Call POST /set-token first for live data."
+            if use_mock and not token else
+            "Live data used. Check your Telegram for the alert."
+            if not use_mock else
+            "Mock data used. Check your Telegram for the alert."
+        ),
+    })
+
+# ── Upstox OAuth (mobile-friendly token flow) ────────────────────────────────
+#
+# How it works:
+#   1. User opens /auth/login on phone browser
+#   2. Redirected to Upstox login page
+#   3. After login, Upstox redirects to /auth/callback?code=xxxxx
+#   4. Render exchanges code for token automatically
+#   5. Token is set in scanner and user sees success page
+#
+# ONE-TIME SETUP in Upstox developer portal:
+#   developer.upstox.com -> your app -> Redirect URI:
+#   https://nse-proxy-mojx.onrender.com/auth/callback
+#
+# Then set env vars in Render:
+#   UPSTOX_API_KEY    = your app's API key
+#   UPSTOX_API_SECRET = your app's API secret
+
+UPSTOX_AUTH_BASE  = "https://api.upstox.com/v2/login/authorization"
+RENDER_BASE_URL   = "https://nse-proxy-mojx.onrender.com"
+OAUTH_REDIRECT    = RENDER_BASE_URL + "/auth/callback"
+
+@app.route("/auth/login")
+def auth_login():
+    """
+    Step 1: Open this on your phone every morning.
+    Redirects to Upstox login page.
+    After login Upstox sends you back to /auth/callback automatically.
+    """
+    api_key = os.environ.get("UPSTOX_API_KEY", "")
+    if not api_key:
+        return (
+            "<h2 style='font-family:sans-serif;color:#A32D2D;padding:24px'>"
+            "UPSTOX_API_KEY not set in Render environment variables.</h2>"
+            "<p style='font-family:sans-serif;padding:0 24px'>"
+            "Add it in Render dashboard &#8594; Environment &#8594; UPSTOX_API_KEY</p>"
+        ), 400
+
+    login_url = (
+        f"{UPSTOX_AUTH_BASE}/dialog"
+        f"?response_type=code"
+        f"&client_id={urllib.parse.quote(api_key)}"
+        f"&redirect_uri={urllib.parse.quote(OAUTH_REDIRECT)}"
+    )
+    from flask import redirect as flask_redirect
+    return flask_redirect(login_url)
+
+
+@app.route("/auth/callback")
+def auth_callback():
+    """
+    Step 2: Upstox redirects here after login with ?code=xxxxx
+    We exchange the code for a token and set it automatically.
+    User sees a success or error page — no copy-pasting needed.
+    """
+    code  = request.args.get("code", "")
+    error = request.args.get("error", "")
+
+    if error or not code:
+        return _auth_page(
+            success=False,
+            title="Login cancelled",
+            message=f"Upstox returned an error: {error or 'no code received'}",
+        )
+
+    api_key    = os.environ.get("UPSTOX_API_KEY", "")
+    api_secret = os.environ.get("UPSTOX_API_SECRET", "")
+
+    if not api_key or not api_secret:
+        return _auth_page(
+            success=False,
+            title="Configuration error",
+            message="UPSTOX_API_KEY or UPSTOX_API_SECRET not set in Render env vars.",
+        )
+
+    # Exchange auth code for access token
+    try:
+        payload = urllib.parse.urlencode({
+            "code":          code,
+            "client_id":     api_key,
+            "client_secret": api_secret,
+            "redirect_uri":  OAUTH_REDIRECT,
+            "grant_type":    "authorization_code",
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            f"{UPSTOX_AUTH_BASE}/token",
+            data=payload,
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept":       "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=15) as r:
+            resp = json.loads(r.read())
+
+        token = resp.get("access_token", "")
+        if not token:
+            return _auth_page(
+                success=False,
+                title="Token exchange failed",
+                message=f"Upstox response: {json.dumps(resp)[:200]}",
+            )
+
+        # Set token in scanner automatically
+        scanner.set_token(token)
+        scanner.STATE.check_date()
+
+        # Show preview (first 40 chars only for security)
+        preview = token[:40] + "..." if len(token) > 40 else token
+        ist_time = datetime.now(IST).strftime("%H:%M IST")
+
+        return _auth_page(
+            success=True,
+            title="Token set successfully",
+            message=(
+                f"Logged in at {ist_time}.<br>"
+                f"Scanner is now active and will run every 5 min "
+                f"from {os.environ.get('ALERT_START_IST','09:15')} to "
+                f"{os.environ.get('ALERT_STOP_IST','10:30')} IST.<br><br>"
+                f"<small style='color:#888'>Token preview: {preview}</small>"
+            ),
+        )
+
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        return _auth_page(
+            success=False,
+            title=f"Upstox API error (HTTP {e.code})",
+            message=body[:300],
+        )
+    except Exception as e:
+        return _auth_page(
+            success=False,
+            title="Unexpected error",
+            message=str(e),
+        )
+
+
+def _auth_page(success: bool, title: str, message: str) -> str:
+    """Render a clean mobile-friendly result page."""
+    color  = "#27500A" if success else "#A32D2D"
+    bg     = "#EAF3DE" if success else "#FCEBEB"
+    border = "#C0DD97" if success else "#F09595"
+    icon   = "&#10003;" if success else "&#10007;"
+    status_url = RENDER_BASE_URL + "/alert-status"
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NSE Scanner &#8212; {title}</title>
+<style>
+  body{{font-family:-apple-system,sans-serif;background:#f5f5f0;
+       display:flex;align-items:center;justify-content:center;
+       min-height:100vh;margin:0;padding:16px;box-sizing:border-box;}}
+  .card{{background:#fff;border:1px solid #e0e0e0;border-radius:16px;
+         padding:32px 28px;max-width:420px;width:100%;text-align:center;
+         box-shadow:0 4px 24px rgba(0,0,0,.08);}}
+  .icon{{font-size:48px;margin-bottom:16px;background:{bg};
+         border:2px solid {border};border-radius:50%;width:72px;height:72px;
+         display:flex;align-items:center;justify-content:center;
+         margin:0 auto 20px;color:{color};font-weight:700;}}
+  h2{{font-size:20px;color:{color};margin-bottom:12px;}}
+  p{{font-size:14px;color:#555;line-height:1.6;margin-bottom:20px;}}
+  .btn{{display:inline-block;padding:12px 24px;border-radius:10px;
+        background:#27500A;color:#fff;text-decoration:none;font-size:15px;
+        font-weight:600;margin:6px;}}
+  .btn-sec{{background:#E6F1FB;color:#185FA5;}}
+  .tip{{font-size:12px;color:#aaa;margin-top:16px;}}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">{icon}</div>
+  <h2>{title}</h2>
+  <p>{message}</p>
+  {'<a href="/auth/login" class="btn">Login again</a>' if not success else ''}
+  <a href="{status_url}" class="btn btn-sec">Check alert status</a>
+  <p class="tip">NSE Intraday Scanner &#183; Render.com</p>
+</div>
+</body>
+</html>"""
+
 # ── NSE corporate actions ─────────────────────────────────────────────────────
 @app.route("/nse/corporate-actions")
 def nse_corporate_actions():
