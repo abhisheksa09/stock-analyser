@@ -403,6 +403,7 @@ def auth_login():
         f"?response_type=code"
         f"&client_id={urllib.parse.quote(api_key)}"
         f"&redirect_uri={urllib.parse.quote(OAUTH_REDIRECT)}"
+        f"&state=nse_scanner"
     )
     from flask import redirect as flask_redirect
     return flask_redirect(login_url)
@@ -451,6 +452,8 @@ def auth_callback():
             headers={
                 "Content-Type": "application/x-www-form-urlencoded",
                 "Accept":       "application/json",
+                "User-Agent":   "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36",
+                "Api-Version":  "2.0",
             },
             method="POST",
         )
