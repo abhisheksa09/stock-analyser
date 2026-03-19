@@ -129,31 +129,242 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;border-top:1px
 <!-- 1. OVERVIEW -->
 <div class="section" id="overview">
   <h2 class="sec-title">1. Overview &amp; Architecture</h2>
-  <p>The NSE Intraday Scanner is a cloud-hosted trading assistant. The frontend runs on GitHub Pages. The backend runs on Render.com and handles Upstox API proxying, Anthropic AI, macro data fetching, and automatic Telegram alerts.</p>
+  <p>The NSE Intraday Scanner is a cloud-hosted trading assistant split across two deployments. The frontend runs on GitHub Pages (free, static). The backend runs on Render.com and handles all live data, signal computation, macro intelligence, OAuth, and Telegram alerts.</p>
+
+  <h3 class="sub-title">File Map</h3>
   <div class="card-grid">
-    <div class="card"><div class="card-icon">&#128214;</div><div class="card-title">nse_scanner.html</div><div class="card-desc">Frontend on GitHub Pages. Scanner UI, history tab, tooltips, market context display.</div></div>
-    <div class="card"><div class="card-icon">&#128013;</div><div class="card-title">app.py</div><div class="card-desc">Flask web server on Render. Proxies Upstox + Anthropic. Starts the background scanner scheduler.</div></div>
-    <div class="card"><div class="card-icon">&#128270;</div><div class="card-title">scanner.py</div><div class="card-desc">Background alert engine. Runs every 5 min during 9:15&#8211;10:30 IST. Sends Telegram on triggers.</div></div>
-    <div class="card"><div class="card-icon">&#128200;</div><div class="card-title">signals.py</div><div class="card-desc">Signal computation: ORB, VWAP, RSI, ATR, market context filters. Shared by scanner and app.</div></div>
-    <div class="card"><div class="card-icon">&#127758;</div><div class="card-title">macro.py</div><div class="card-desc">4-layer macro intelligence: economic calendar, proxy prices, FII/DII flows, Claude news sentiment.</div></div>
-    <div class="card"><div class="card-icon">&#128241;</div><div class="card-title">Telegram Bot</div><div class="card-desc">Native Bot API alerts. Green Ready, confidence crossed 75%, signal reversal. Once per stock per session.</div></div>
+    <div class="card"><div class="card-icon">&#128214;</div><div class="card-title">nse_scanner.html</div><div class="card-desc">Frontend on GitHub Pages. Scanner UI, history tab, market context display, floating tooltips, AI trade plans.</div></div>
+    <div class="card"><div class="card-icon">&#128013;</div><div class="card-title">app.py</div><div class="card-desc">Flask web server on Render. All HTTP routes. Upstox + Anthropic proxy. OAuth login flow. Starts APScheduler on boot.</div></div>
+    <div class="card"><div class="card-icon">&#128270;</div><div class="card-title">scanner.py</div><div class="card-desc">Background alert engine. Runs every 5 min via APScheduler. Manages session state. Sends Telegram via Bot API.</div></div>
+    <div class="card"><div class="card-icon">&#128200;</div><div class="card-title">signals.py</div><div class="card-desc">Signal computation: ORB, VWAP, RSI(14), ATR(14), confidence scoring, 4-filter market context (Nifty, sector, gap, day trend).</div></div>
+    <div class="card"><div class="card-icon">&#127758;</div><div class="card-title">macro.py</div><div class="card-desc">4-layer macro intelligence: economic calendar, Yahoo Finance proxies, NSE FII/DII flows, NewsAPI + Claude Haiku sentiment.</div></div>
+    <div class="card"><div class="card-icon">&#128241;</div><div class="card-title">Telegram Bot</div><div class="card-desc">Native Bot API. Alerts fire once per stock per session for: Green Ready, conf crossed 75%, signal reversal.</div></div>
   </div>
 
-  <h3 class="sub-title">Data flow</h3>
-  <div class="code">Browser (GitHub Pages)
-  fetch() → app.py /v2/...  → Upstox API   (live prices)
-           → app.py /ai/... → Anthropic     (trade plans)
-           → app.py /nse/.. → NSE India     (corporate events)
+  <h3 class="sub-title">Full Architecture Diagram</h3>
+  <div class="code" style="font-size:12px;line-height:1.8;">
+&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;     &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+&#9474;   BROWSER (GitHub Pages)  &#9474;     &#9474;      PHONE BROWSER        &#9474;
+&#9474;   nse_scanner.html         &#9474;     &#9474;                             &#9474;
+&#9474;                             &#9474;     &#9474;  1. Open /auth/login       &#9474;
+&#9474;  - Scanner tab              &#9474;     &#9474;  2. Upstox login page      &#9474;
+&#9474;  - History tab              &#9474;     &#9474;  3. Tap Authorize          &#9474;
+&#9474;  - Market context banner    &#9474;     &#9474;  4. See success page       &#9474;
+&#9474;  - AI trade plans           &#9474;     &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+&#9474;  - Floating tooltips        &#9474;                         &#9474;
+&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;                         &#9474;
+          &#9474; fetch() calls         &#9474; OAuth redirect            &#9474;
+          &#9474; /v2/... /ai/...       &#9474;                           &#9474;
+          &#9474;                       &#9474;                           &#9474;
+          &#9474;        &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;     &#9474;
+          &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&gt;&#9474;       RENDER.COM BACKEND        &#9474;&lt;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9518;
+                   &#9474;   app.py  (Flask + Gunicorn)   &#9474;
+                   &#9474;                                  &#9474;
+                   &#9474;  HTTP Routes:                    &#9474;
+                   &#9474;  GET  /ping                      &#9474;
+                   &#9474;  GET  /auth/login                &#9474;
+                   &#9474;  GET  /auth/callback             &#9474;
+                   &#9474;  GET  /auth/status               &#9474;
+                   &#9474;  POST /set-token                 &#9474;
+                   &#9474;  GET  /set-token-form            &#9474;
+                   &#9474;  GET  /alert-status              &#9474;
+                   &#9474;  GET  /macro-status              &#9474;
+                   &#9474;  GET  /test-alert                &#9474;
+                   &#9474;  GET  /get-chat-id               &#9474;
+                   &#9474;  GET  /dry-scan                  &#9474;
+                   &#9474;  GET  /v2/... (Upstox proxy)     &#9474;
+                   &#9474;  POST /ai/... (Anthropic proxy)  &#9474;
+                   &#9474;  GET  /nse/corporate-actions     &#9474;
+                   &#9474;                                  &#9474;
+                   &#9474;  On startup:                     &#9474;
+                   &#9474;  APScheduler.start()             &#9474;
+                   &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+                            &#9474;                         &#9474;
+                   imports  &#9474;                imports  &#9474;
+                            &#9474;                         &#9474;
+          &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;          &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+          &#9474;                                         &#9474;
+&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;    &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+&#9474;     scanner.py          &#9474;    &#9474;      signals.py          &#9474;
+&#9474;                          &#9474;    &#9474;                          &#9474;
+&#9474;  APScheduler thread       &#9474;    &#9474;  get_ltp()              &#9474;
+&#9474;  Runs every 5 min         &#9474;    &#9474;  get_intraday()         &#9474;
+&#9474;  9:15-10:30 IST           &#9474;    &#9474;  get_daily()            &#9474;
+&#9474;                          &#9474;    &#9474;  get_index_change()     &#9474;
+&#9474;  SessionState:            &#9474;    &#9474;  get_market_context()   &#9474;
+&#9474;  - locked_sig per stock   &#9474;    &#9474;                          &#9474;
+&#9474;  - prev_conf per stock    &#9474;    &#9474;  rsi14()  vwap()        &#9474;
+&#9474;  - alerted set            &#9474;    &#9474;  atr14()  conf_score()  &#9474;
+&#9474;  - macro_ctx (30min TTL)  &#9474;    &#9474;                          &#9474;
+&#9474;  - resets midnight IST    &#9474;    &#9474;  build_setup()          &#9474;
+&#9474;                          &#9474;    &#9474;  &#9500;&#9472; base signal logic    &#9474;
+&#9474;  Alert triggers:          &#9474;    &#9474;  &#9500;&#9472; market context       &#9474;
+&#9474;  1. Green Ready (1st)     &#9474;    &#9474;     Nifty &#177;0.5% block   &#9474;
+&#9474;  2. Conf crossed 75%      &#9474;    &#9474;     Sector &#177;0.5%        &#9474;
+&#9474;  3. Signal reversal       &#9474;    &#9474;     Gap filter           &#9474;
+&#9474;                          &#9474;    &#9474;     Day trend            &#9474;
+&#9474;  send_telegram()          &#9474;    &#9474;  &#9492;&#9472; confidence score      &#9474;
+&#9474;  get_telegram_chat_id()   &#9474;    &#9474;                          &#9474;
+&#9474;  format_alert()           &#9474;    &#9474;  is_ready()             &#9474;
+&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;    &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9492;
+          &#9474; imports                    &#9474; API calls
+          &#9474;                            &#9474;
+&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;    &#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+&#9474;      macro.py            &#9474;    &#9474;   EXTERNAL APIs         &#9474;
+&#9474;                          &#9474;    &#9474;                          &#9474;
+&#9474;  Layer 1: Calendar       &#9474;    &#9474;  Upstox API             &#9474;
+&#9474;  &#9492;&#9472; Investing.com        &#9474;    &#9474;  /v2/market-quote/ltp  &#9474;
+&#9474;  &#9492;&#9472; suppress in 30min    &#9474;    &#9474;  /v2/historical-candle &#9474;
+&#9474;    window of event       &#9474;    &#9474;                          &#9474;
+&#9474;                          &#9474;    &#9474;  Anthropic API          &#9474;
+&#9474;  Layer 2: Proxies        &#9474;    &#9474;  claude-haiku-4-5       &#9474;
+&#9474;  &#9492;&#9472; Yahoo Finance        &#9474;    &#9474;  (news classification)  &#9474;
+&#9474;     Brent crude BZ=F     &#9474;    &#9474;  claude-sonnet-4-6      &#9474;
+&#9474;     Gold GC=F            &#9474;    &#9474;  (trade plans in UI)    &#9474;
+&#9474;     USD/INR USDINR=X     &#9474;    &#9474;                          &#9474;
+&#9474;     S&amp;P ES=F             &#9474;    &#9474;  Telegram Bot API       &#9474;
+&#9474;     VIX ^VIX             &#9474;    &#9474;  /bot{token}/sendMessage&#9474;
+&#9474;     DXY DX-Y.NYB         &#9474;    &#9474;                          &#9474;
+&#9474;                          &#9474;    &#9474;  NSE India API          &#9474;
+&#9474;  Layer 3: FII/DII        &#9474;    &#9474;  corporate-actions      &#9474;
+&#9474;  &#9492;&#9472; NSE India API        &#9474;    &#9474;  fiidiiTradeReact       &#9474;
+&#9474;     net &gt;500Cr threshold &#9474;    &#9474;                          &#9474;
+&#9474;                          &#9474;    &#9474;  NewsAPI.org            &#9474;
+&#9474;  Layer 4: News           &#9474;    &#9474;  /v2/everything         &#9474;
+&#9474;  &#9492;&#9472; NewsAPI headlines     &#9474;    &#9474;  (last 6 hrs, India)    &#9474;
+&#9474;  &#9492;&#9472; Claude Haiku          &#9474;    &#9474;                          &#9474;
+&#9474;     classifies sentiment  &#9474;    &#9474;  Yahoo Finance          &#9474;
+&#9474;     per sector            &#9474;    &#9474;  /v8/finance/chart      &#9474;
+&#9474;     refreshes 30min       &#9474;    &#9474;  (proxy prices)         &#9474;
+&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9492;    &#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9492;</div>
 
-Background (Render, every 5 min 9:15-10:30 IST)
-  scanner.py
-    → macro.py → Yahoo Finance   (crude, gold, USDINR, SPX, VIX)
-               → NSE India       (FII/DII flows)
-               → Investing.com   (economic calendar)
-               → NewsAPI         (headlines)
-               → Claude Haiku    (sentiment classification)
-    → signals.py → Upstox API   (per-stock data)
-    → Telegram Bot API           (alert messages)</div>
+  <h3 class="sub-title">Request Flow — Browser Scan</h3>
+  <div class="code" style="font-size:12px;line-height:1.8;">
+User clicks "Fetch live data &amp; scan" in browser
+  &#9474;
+  &#9500;&#9472; fetchMarketContext()
+  &#9474;    &#9500;&#9472; GET /v2/market-quote/ltp?instrument_key=NSE_INDEX|Nifty+50
+  &#9474;    &#9500;&#9472; GET /v2/historical-candle/NSE_INDEX|Nifty+Bank/day/...
+  &#9474;    &#9500;&#9472; GET /v2/historical-candle/NSE_INDEX|Nifty+IT/day/...
+  &#9474;    &#9492;&#9472; builds marketCtx = {niftyChg, niftyBias, sectorChg, sectorBias}
+  &#9474;
+  &#9500;&#9472; for each selected stock:
+  &#9474;    &#9500;&#9472; GET /v2/market-quote/ltp
+  &#9474;    &#9500;&#9472; GET /v2/historical-candle/.../1minute  (intraday candles)
+  &#9474;    &#9500;&#9472; GET /v2/historical-candle/.../day      (daily candles)
+  &#9474;    &#9500;&#9472; buildSetup(sym, sec, intra, daily, ltp)
+  &#9474;    &#9474;    &#9500;&#9472; ORB high/low from first 15 candles
+  &#9474;    &#9474;    &#9500;&#9472; VWAP from all intraday candles
+  &#9474;    &#9474;    &#9500;&#9472; RSI(14) from daily closes
+  &#9474;    &#9474;    &#9500;&#9472; ATR(14) from daily candles
+  &#9474;    &#9474;    &#9500;&#9472; signal logic &#8594; BUY / SELL / WATCH
+  &#9474;    &#9474;    &#9492;&#9472; confidence score (6 factors)
+  &#9474;    &#9492;&#9472; applyMarketContext(setup)
+  &#9474;         &#9500;&#9472; Nifty &#177;0.5% hard block
+  &#9474;         &#9500;&#9472; Sector headwind/tailwind &#177;5-15%
+  &#9474;         &#9500;&#9472; Gap filter &#177;10%
+  &#9474;         &#9492;&#9472; Day trend &#177;5-10%
+  &#9474;
+  &#9492;&#9472; renderScanTable(results)
+       &#9500;&#9472; signal badge + history dots + reversal detection
+       &#9500;&#9472; confidence bar + colour coding
+       &#9500;&#9472; 6-gate readiness check (hover tooltips)
+       &#9492;&#9472; market context warnings inline</div>
+
+  <h3 class="sub-title">Request Flow — Background Alert Scanner</h3>
+  <div class="code" style="font-size:12px;line-height:1.8;">
+APScheduler fires every 5 min (9:15-10:30 IST)
+  &#9474;
+  &#9500;&#9472; STATE.check_date()  &#8594; reset if new day (midnight IST)
+  &#9474;
+  &#9500;&#9472; check token set?  &#8594; skip if not set
+  &#9474;
+  &#9500;&#9472; check time window?  &#8594; skip if outside 09:15-10:30
+  &#9474;
+  &#9500;&#9472; macro_stale? (older than 30 min)
+  &#9474;    &#9492;&#9472; get_full_macro_context()
+  &#9474;         &#9500;&#9472; Layer 1: get_economic_calendar()   &#8594; Investing.com
+  &#9474;         &#9500;&#9472; Layer 2: get_macro_proxies()        &#8594; Yahoo Finance
+  &#9474;         &#9474;          crude / gold / USDINR / SPX / VIX / DXY
+  &#9474;         &#9500;&#9472; Layer 3: get_fii_dii_flows()        &#8594; NSE India
+  &#9474;         &#9500;&#9472; Layer 4: fetch_market_headlines()   &#8594; NewsAPI
+  &#9474;         &#9492;&#9472;          classify_news_with_claude()  &#8594; Claude Haiku
+  &#9474;
+  &#9500;&#9472; for each watched stock:
+  &#9474;    &#9500;&#9472; get_ltp() + get_intraday() + get_daily()  &#8594; Upstox API
+  &#9474;    &#9500;&#9472; get_market_context(sector)               &#8594; Upstox (index LTP)
+  &#9474;    &#9500;&#9472; build_setup()                            &#8594; signals.py
+  &#9474;    &#9500;&#9472; apply_all_macro_penalties()              &#8594; macro.py
+  &#9474;    &#9474;
+  &#9474;    &#9500;&#9472; TRIGGER 1: verdict==green &amp; not alerted?
+  &#9474;    &#9474;    &#9492;&#9472; send_telegram("READY TO TRADE")
+  &#9474;    &#9500;&#9472; TRIGGER 2: prev_conf&lt;75 &amp; conf&gt;=75?
+  &#9474;    &#9474;    &#9492;&#9472; send_telegram("CONFIDENCE CROSSED 75%")
+  &#9474;    &#9492;&#9472; TRIGGER 3: locked_sig != current_sig?
+  &#9474;         &#9492;&#9472; send_telegram("SIGNAL REVERSAL")
+  &#9474;
+  &#9492;&#9472; STATE.prev_conf[sym] = conf  (for next scan comparison)</div>
+
+  <h3 class="sub-title">OAuth Token Flow (Mobile)</h3>
+  <div class="code" style="font-size:12px;line-height:1.8;">
+Phone browser opens /auth/login
+  &#9474;
+  &#9492;&#9472; app.py redirects to Upstox login page
+       https://api.upstox.com/v2/login/authorization/dialog
+       ?response_type=code
+       &amp;client_id={UPSTOX_API_KEY}
+       &amp;redirect_uri=https://nse-proxy-mojx.onrender.com/auth/callback
+       &#9474;
+       User enters mobile + OTP + taps Authorize
+       &#9474;
+       &#9492;&#9472; Upstox redirects to /auth/callback?code=AbCdEf123
+            &#9474;
+            &#9492;&#9472; app.py: POST to Upstox token endpoint
+                 body: code + client_id + client_secret + redirect_uri
+                 &#9474;
+                 &#9492;&#9472; Upstox returns access_token
+                      &#9474;
+                      &#9492;&#9472; scanner.set_token(access_token)
+                           &#9474;
+                           &#9492;&#9472; Show success page on phone
+                                "Token set. Scanner active 09:15-10:30 IST"</div>
+
+  <h3 class="sub-title">Confidence Score Pipeline</h3>
+  <div class="code" style="font-size:12px;line-height:1.8;">
+base_conf = conf_score(setup)   [0-100%]
+  &#9500;&#9472; ORB breakout       25% weight
+  &#9500;&#9472; Volume vs avg      20% weight
+  &#9500;&#9472; VWAP alignment     20% weight
+  &#9500;&#9472; RSI alignment      15% weight
+  &#9500;&#9472; Risk:Reward        15% weight
+  &#9492;&#9472; ATR/volatility      5% weight
+
+Market context adjustments (signals.py)
+  &#9500;&#9472; Nifty hard block (&#177;0.5%)         &#8594; force WATCH (not a penalty)
+  &#9500;&#9472; Sector headwind                   &#8594; -15%
+  &#9500;&#9472; Sector tailwind                   &#8594; +5%
+  &#9500;&#9472; Gap-down BUY / gap-up SELL        &#8594; -10%
+  &#9492;&#9472; Day trend against signal           &#8594; -10% or +5%
+
+Macro penalties (macro.py, refreshed 30 min)
+  &#9500;&#9472; Calendar event window (30 min)    &#8594; -50%
+  &#9500;&#9472; S&amp;P futures &lt;-1.5%               &#8594; -15%
+  &#9500;&#9472; VIX &gt; 25                          &#8594; -10% to -20%
+  &#9500;&#9472; Brent crude spike (&gt;+2%)          &#8594; -12% (sector-specific)
+  &#9500;&#9472; USD/INR weakening (&gt;+0.5%)        &#8594; -10% (sector-specific)
+  &#9500;&#9472; FII net sellers (&gt;&#8377;500 Cr)       &#8594; -10%
+  &#9492;&#9472; News sentiment (Claude Haiku)      &#8594; &#177;5% to &#177;15%
+
+Candle confirmation (signals.py)
+  &#9492;&#9472; 3/3 candles wrong side of VWAP    &#8594; -20%
+
+final_conf = max(5, min(100, base_conf + all_adjustments))
+
+Readiness verdict:
+  final_conf &gt;= 75%  + all 6 gates pass  &#8594; Green Ready
+  final_conf 55-74%  + no hard fails     &#8594; Amber (half size)
+  anything else                          &#8594; Red (no trade)</div>
+
 </div>
 
 <!-- 2. DAILY SETUP -->
