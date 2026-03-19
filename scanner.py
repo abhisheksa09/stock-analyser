@@ -26,7 +26,8 @@ import urllib.parse
 import urllib.error
 from datetime import datetime, timezone, timedelta
 
-from signals import STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready
+from signals import STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context
+from macro import get_full_macro_context, apply_all_macro_penalties
 
 log = logging.getLogger("scanner")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [scanner] %(message)s")
@@ -39,8 +40,12 @@ class SessionState:
     def __init__(self):
         self.date       = None
         self.locked_sig = {}   # sym -> first signal of session
+        self.macro_ctx  = None  # refreshed every 30 min
+        self.macro_fetched_at = None  # IST datetime of last macro fetch
         self.prev_conf  = {}   # sym -> confidence at previous scan
         self.alerted    = set()
+        self.macro_ctx  = None
+        self.macro_fetched_at = None
         self._reset()
 
     def _reset(self):
@@ -153,6 +158,11 @@ def format_alert(kind: str, s: dict, extra: str = "") -> str:
 
     if kind == "green_ready":
         sig_emoji = "🟢" if s["sig"] == "BUY" else "🔴"
+        ctx       = s.get("market_ctx", {})
+        warnings  = s.get("ctx_warnings", [])
+        nifty_str = (f"Nifty: {ctx['nifty_chg']:+.1f}%  "
+                     f"Sector: {ctx['sector_chg']:+.1f}%")  if ctx else ""
+        warn_str  = ("\n⚠️ " + "  |  ".join(warnings)) if warnings else ""
         return (
             f"{sig_emoji} <b>NSE SCANNER — READY TO TRADE</b>\n"
             f"\n"
@@ -165,7 +175,9 @@ def format_alert(kind: str, s: dict, extra: str = "") -> str:
             f"R:R     : <b>{s['rr']}:1</b>\n"
             f"\n"
             f"LTP     : Rs {s['ltp']} ({chg_str})\n"
+            f"Market  : {nifty_str}\n"
             f"Setup   : {s['reason']}\n"
+            f"{warn_str}\n"
             f"\n"
             f"⏰ {ist_time}"
         )
@@ -236,7 +248,28 @@ def run_scan():
     syms  = [s for s in STOCKS if (not watch or s["sym"] in watch)]
 
     log.info("Scanning %d symbols at %02d:%02d IST", len(syms), mins // 60, mins % 60)
+
+    # Refresh macro context every 30 min (expensive: news API + Claude call)
+    macro_stale = (
+        STATE.macro_fetched_at is None or
+        (datetime.now(IST) - STATE.macro_fetched_at).total_seconds() > 1800
+    )
+    if macro_stale:
+        log.info("Refreshing macro context...")
+        STATE.macro_ctx = get_full_macro_context()
+        STATE.macro_fetched_at = datetime.now(IST)
+    macro_ctx = STATE.macro_ctx
     sent = 0
+
+    # Fetch market context ONCE per scan cycle (not per stock — saves API calls)
+    # We use HDFCBANK's sector as proxy to get Nifty50; sector context per stock below
+    try:
+        nifty_ctx = get_market_context("Banking", token)
+        log.info("Nifty50: %+.1f%%  (market bias: %s)",
+                 nifty_ctx["nifty_chg"], nifty_ctx["market_bias"])
+    except Exception as e:
+        log.warning("Market context fetch failed: %s — proceeding without filters", e)
+        nifty_ctx = None
 
     for stock in syms:
         sym = stock["sym"]
@@ -244,7 +277,20 @@ def run_scan():
             ltp   = get_ltp(stock["ikey"], token)
             intra = get_intraday(stock["ikey"], token)
             daily = get_daily(stock["ikey"], token)
-            s     = build_setup(sym, stock["sec"], intra, daily, ltp)
+
+            # Get sector-specific context (reuses nifty_chg, fetches sector index)
+            if nifty_ctx is not None:
+                try:
+                    ctx = get_market_context(stock["sec"], token)
+                    # Reuse already-fetched nifty_chg to avoid duplicate call
+                    ctx["nifty_chg"]   = nifty_ctx["nifty_chg"]
+                    ctx["market_bias"] = nifty_ctx["market_bias"]
+                except Exception:
+                    ctx = nifty_ctx   # fallback to broad market
+            else:
+                ctx = None
+
+            s = build_setup(sym, stock["sec"], intra, daily, ltp, market_ctx=ctx)
         except Exception as e:
             log.warning("Fetch error %s: %s", sym, e)
             continue

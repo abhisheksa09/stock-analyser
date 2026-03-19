@@ -23,6 +23,7 @@ from flask import Flask, request, Response, jsonify
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import scanner
+import macro as macro_module
 
 log = logging.getLogger("app")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [app] %(message)s")
@@ -80,9 +81,11 @@ def set_token():
 
 @app.route("/set-token-form")
 def set_token_form():
-    wp_ok   = bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
+    wp_ok      = bool(os.environ.get("TELEGRAM_BOT_TOKEN") and os.environ.get("TELEGRAM_CHAT_ID"))
+    news_ok    = bool(os.environ.get("NEWS_API_KEY"))
     sc      = "#27500A" if wp_ok else "#A32D2D"
     st      = "Telegram configured" if wp_ok else "Telegram NOT configured - set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in Render env vars"
+    nst     = "NewsAPI configured" if news_ok else "NewsAPI not set (optional) - set NEWS_API_KEY for news sentiment"
     start   = os.environ.get("ALERT_START_IST","09:15")
     stop    = os.environ.get("ALERT_STOP_IST","10:30")
     return f"""<!DOCTYPE html>
@@ -111,6 +114,7 @@ button:hover{{background:#1e3d07;}}
   <textarea id="tok" placeholder="Paste Upstox access token here..."></textarea>
   <button onclick="submit()">Set token and activate alerts</button>
   <div class="status">{st}</div>
+  <div class="status" style="margin-top:4px;font-size:11px;color:#888;">{nst}</div>
   <div class="window">Alert window: {start} - {stop} IST | Every 5 minutes</div>
   <div class="result" id="res"></div>
 </div>
@@ -143,6 +147,33 @@ def alert_status():
         "scan_symbols":      os.environ.get("SCAN_SYMBOLS", "all 30"),
         "alert_window":      f"{os.environ.get('ALERT_START_IST','09:15')} - {os.environ.get('ALERT_STOP_IST','10:30')} IST",
         "ist_now":           datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
+    })
+
+# ── Macro status ─────────────────────────────────────────────────────────────
+@app.route("/macro-status")
+def macro_status():
+    """Shows current macro context — economic calendar, proxies, FII/DII, news sentiment."""
+    ctx = scanner.STATE.macro_ctx
+    if not ctx:
+        return jsonify({
+            "status": "not fetched yet",
+            "note": "Macro context is fetched at first scan. Set token and wait for 09:15 IST.",
+        })
+    # Simplify proxies for display
+    proxies_summary = {}
+    for k, v in (ctx.get("proxies") or {}).items():
+        if v:
+            proxies_summary[k] = {"price": v["price"], "chg_pct": v["chg_pct"]}
+    return jsonify({
+        "fetched_at":       ctx.get("fetched_at"),
+        "in_event_window":  ctx.get("in_event_window"),
+        "event_desc":       ctx.get("event_desc"),
+        "calendar_events":  len(ctx.get("calendar") or []),
+        "proxies":          proxies_summary,
+        "fii_dii":          ctx.get("fii_dii"),
+        "news_headlines":   len(ctx.get("news_headlines") or []),
+        "news_sentiment":   ctx.get("news_sentiment"),
+        "ist_now":          datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
     })
 
 # ── Test alert ────────────────────────────────────────────────────────────────
