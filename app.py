@@ -500,7 +500,9 @@ def dry_scan():
                 _time.sleep(1)
 
         except Exception as e:
-            results.append({"sym": sym, "error": str(e)})
+            err = str(e)
+            hint = " — Token may be expired. Login again via OAuth." if "403" in err or "401" in err else ""
+            results.append({"sym": sym, "error": err + hint})
 
     # If nothing was green, force send an alert for the highest confidence result
     if alert_sent is None and results:

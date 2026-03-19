@@ -226,6 +226,20 @@ def conf_score(s):
     pct = round(tot / max_w * 100)
     return min(pct, 45) if s["sig"] == "WATCH" else pct
 
+def conf_score_with_breakdown(s):
+    """Returns (total_conf, breakdown_list) for tooltip display."""
+    tot = max_w = 0.0
+    breakdown = []
+    for name, w, fn in CF:
+        sc     = fn(s)
+        earned = round(sc * w)
+        tot   += sc * w
+        max_w += w
+        breakdown.append(f"{name}: {earned}/{w}")
+    pct = round(tot / max_w * 100)
+    final = min(pct, 45) if s["sig"] == "WATCH" else pct
+    return final, breakdown
+
 # ─── Build setup with market context ─────────────────────────────────────────
 
 def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
@@ -289,7 +303,8 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
 
     # ── Market context filters ───────────────────────────────────────────────
     ctx_warnings   = []   # human-readable list of what was overridden
-    conf_penalties = 0    # total % to subtract from confidence
+    conf_penalties = 0
+    ctx_penalties  = []    # total % to subtract from confidence
     market_blocked = False
 
     if market_ctx and sig != "WATCH":
@@ -415,7 +430,7 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
     )
 
     # Base confidence
-    conf = conf_score(s)
+    conf, conf_bd = conf_score_with_breakdown(s)
 
     # Apply market context penalties/bonuses
     if not market_blocked:
@@ -426,7 +441,13 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
         conf = max(5, conf - 20)
         s["reason"] += f" ⚠ ({confirm_count}/{CONFIRM_CANDLES} candles confirm)"
 
-    s["conf"] = conf
+    s["conf"]        = conf
+    s["confBD"]       = conf_bd     # factor breakdown list
+    # Build macro impact summary string for tooltip
+    if s.get("ctxWarnings"):
+        s["macroImpact"] = " | ".join(s["ctxWarnings"][:3])
+    else:
+        s["macroImpact"] = ""
     return s
 
 # ─── Readiness check ──────────────────────────────────────────────────────────
