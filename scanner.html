@@ -512,8 +512,32 @@ th[data-tip]{cursor:default;}
   <!-- =========== ADMIN =========== -->
   <div class="tab-pane" id="tab-admin">
 
-    <!-- Admin content -->
-    <div id="adminContent">
+    <!-- Admin PIN gate -->
+    <div id="adminPinGate">
+      <div style="max-width:340px;margin:40px auto;">
+        <div class="card" style="border-left:4px solid #185FA5;text-align:center;">
+          <div style="font-size:32px;margin-bottom:12px;">&#128274;</div>
+          <div class="card-title" style="color:#185FA5;">Admin access</div>
+          <p style="font-size:13px;color:#666;margin-bottom:16px;">Enter your admin PIN to continue.</p>
+          <div style="display:flex;gap:8px;justify-content:center;">
+            <input id="adminPinInput" type="password" class="token-inp"
+                   placeholder="PIN" style="width:110px;text-align:center;letter-spacing:4px;font-size:18px;"
+                   onkeydown="if(event.key==='Enter')verifyAdminPin()"/>
+            <button class="btn" onclick="verifyAdminPin()"
+                    style="background:#27500A;color:#fff;border-color:#27500A;padding:8px 18px;">
+              Unlock
+            </button>
+          </div>
+          <div id="adminPinMsg" class="tok-msg" style="margin-top:10px;text-align:center;"></div>
+          <p style="font-size:11px;color:#aaa;margin-top:12px;">
+            Set <code>ADMIN_PIN</code> in Render env vars to change PIN.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin content (hidden until PIN entered) -->
+    <div id="adminContent" style="display:none;">
     <div class="card" style="border-left:4px solid #185FA5;">
       <div class="card-title" style="color:#185FA5;">&#9881; Admin Panel</div>
       <p style="font-size:13px;color:#666;margin-bottom:0;">System controls, diagnostics and testing.</p>
@@ -1112,6 +1136,36 @@ function vwap(c){let tv=0,v=0;c.forEach(x=>{const tp=(x[2]+x[3]+x[4])/3;tv+=tp*x
 function atr14(c){if(c.length<2)return 0;const t=[];for(let i=1;i<c.length;i++){const h=c[i][2],l=c[i][3],p=c[i-1][4];t.push(Math.max(h-l,Math.abs(h-p),Math.abs(l-p)));}const s=t.slice(-14);return +(s.reduce((a,b)=>a+b,0)/s.length).toFixed(2);}
 
 // ─── BUILD SETUP ──────────────────────────────────────────────────────────────
+function sigTip(s){
+  // Rich tooltip explaining exactly why this signal was inferred
+  var lines = [];
+  lines.push('Signal: ' + s.sig);
+  lines.push('');
+  lines.push('Why: ' + (s.reason || 'No reason'));
+  lines.push('');
+  var vwapPos = s.av ? 'above VWAP (bullish)' : 'below VWAP (bearish)';
+  var rsiDesc = s.rsi > 70 ? 'overbought (' + s.rsi + ')' :
+                s.rsi < 30 ? 'oversold ('  + s.rsi + ')' :
+                'neutral (' + s.rsi + ')';
+  var orbDesc = s.bo ? 'above ORB High (breakout)' :
+                s.bd ? 'below ORB Low (breakdown)' : 'inside ORB range';
+  lines.push('RSI: ' + rsiDesc);
+  lines.push('VWAP: ' + vwapPos);
+  lines.push('ORB: ' + orbDesc);
+  var volPct = (s.tV && s.aV) ? Math.round(s.tV / s.aV * 100) : null;
+  if(volPct) lines.push('Volume: ' + volPct + '% of avg');
+  if(s.ctxWarnings && s.ctxWarnings.length){
+    lines.push('');
+    lines.push('Filters:');
+    s.ctxWarnings.slice(0,3).forEach(function(w){ lines.push('  ' + w); });
+  }
+  if(s.marketBlocked){
+    lines.push('');
+    lines.push('Market filter blocked original signal');
+  }
+  return lines.join('\n');
+}
+
 function buildSetup(sym,sec,intra,daily,ltp){
   const orb=intra.slice(0,15);
   const orbH=orb.length?+Math.max(...orb.map(c=>c[2])).toFixed(2):+(ltp*1.005).toFixed(2);
@@ -1307,7 +1361,7 @@ function renderScanTable(){
     tr.className='drow'+(_meta.reversed?' evt-row-flag':'');tr.id='sr'+i;
     tr.innerHTML=
       '<td><div class="sym">'+s.sym+evtBadgeHTML(s.sym)+'</div><div class="sec">'+s.sec+'</div>'+sigHistoryHTML(s.sym,s.sig)+lockedSigHTML(s.sym,s.sig)+'</td>'+
-      '<td data-tip="Signal: '+s.sig+'\\nReason: '+s.reason+'\\n\\nBUY = go long (expect rise)\\nSELL = go short (expect fall)\\nWATCH = mixed signals, skip\\n\\n3/3 = candles confirmed\\nReversed badge = flipped today, skip">'+(function(){const _n=new Date();const _um=_n.getUTCHours()*60+_n.getUTCMinutes();const _im=(_um+330)%1440;const _ah=_im<555||_im>=930;return _ah?'<span style="font-size:10px;color:#aaa;background:#f5f5f0;border:1px solid #e0e0e0;border-radius:4px;padding:1px 6px;margin-right:4px;">After hours</span>':'';})()+' <span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+confirmBadgeHTML(s)+'</td>'+
+      '<td data-tip="'+sigTip(s).replace(/"/g,'&quot;')+'">'+(function(){const _n=new Date();const _um=_n.getUTCHours()*60+_n.getUTCMinutes();const _im=(_um+330)%1440;const _ah=_im<555||_im>=930;return _ah?'<span style="font-size:10px;color:#aaa;background:#f5f5f0;border:1px solid #e0e0e0;border-radius:4px;padding:1px 6px;margin-right:4px;">After hours</span>':'';})()+' <span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+confirmBadgeHTML(s)+'</td>'+
       '<td class="r" data-tip="Last traded price.\n% change vs yesterday close.\nGreen = up, Red = down."><div class="ltp">\u20b9'+fc(s.ltp)+'</div><div class="'+(s.chg>=0?'pos':'neg')+'">'+(s.chg>=0?'+':'')+s.chg+'%</div></td>'+
       '<td class="r"><div class="ev">\u2197 \u20b9'+fc(s.en)+'</div><div class="tgt">\u2713 \u20b9'+fc(s.tg)+'</div><div class="slv">\u2717 \u20b9'+fc(s.sl)+'</div></td>'+
       '<td class="r hm" data-tip="Risk:Reward ratio.\nHow much you gain vs how much you risk.\n>=2:1 Good (green)\n1.5-2:1 Acceptable (amber)\n<1.5 Skip (red)\nAlways aim for 2:1 minimum."><span class="rr '+rrC+'">'+(isNaN(s.rr)?'N/A':s.rr+':1')+'</span></td>'+
@@ -1365,16 +1419,72 @@ let _adminUnlocked = false;
 const ADMIN_SESSION_KEY = 'nse_admin_session';
 
 async function checkAdminAccess(){
-  showAdminContent(); // PIN gate disabled — open access
+  // Check stored session token first
+  const storedTok = localStorage.getItem(ADMIN_SESSION_KEY)||'';
+  try{
+    const r = await fetch(PROXY+'/admin/check',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_token: storedTok})
+    });
+    const d = await r.json();
+    if(d.ok || !d.pin_required){
+      showAdminContent();
+    } else {
+      showAdminGate();
+    }
+  } catch(e){
+    // If server unreachable and no PIN configured locally, show content
+    if(!storedTok){
+      showAdminGate();
+    } else {
+      showAdminContent();
+    }
+  }
 }
 
-function showAdminGate(){ showAdminContent(); } // PIN disabled
+function showAdminGate(){
+  const gate=document.getElementById('adminPinGate');
+  const content=document.getElementById('adminContent');
+  if(gate) gate.style.display='block';
+  if(content) content.style.display='none';
+  setTimeout(()=>{ const inp=document.getElementById('adminPinInput'); if(inp) inp.focus(); },100);
+}
 
 function showAdminContent(){
-  const el=document.getElementById('adminContent'); if(el) el.style.display='block';
+  const gate=document.getElementById('adminPinGate');
+  const content=document.getElementById('adminContent');
+  if(gate) gate.style.display='none';
+  if(content) content.style.display='block';
 }
 
-async function verifyAdminPin(){} // PIN disabled
+async function verifyAdminPin(){
+  const pin=document.getElementById('adminPinInput').value.trim();
+  const msg=document.getElementById('adminPinMsg');
+  if(!pin){ msg.textContent='Enter your PIN'; msg.style.color='#A32D2D'; return; }
+  msg.textContent='Checking…'; msg.style.color='#888';
+  try{
+    const r=await fetch(PROXY+'/admin/verify',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pin})});
+    const d=await r.json();
+    if(d.ok){
+      localStorage.setItem(ADMIN_SESSION_KEY, d.session_token||'');
+      document.getElementById('adminPinInput').value='';
+      msg.textContent='';
+      showAdminContent();
+    } else {
+      msg.textContent='✗ Incorrect PIN';
+      msg.style.color='#A32D2D';
+      const inp=document.getElementById('adminPinInput');
+      inp.style.borderColor='#E24B4A';
+      setTimeout(()=>{inp.style.borderColor='';},1000);
+    }
+  } catch(e){
+    msg.textContent='✗ '+e.message;
+    msg.style.color='#A32D2D';
+  }
+}
 
 // ─── ADMIN TAB FUNCTIONS ─────────────────────────────────────────────────────
 async function adminLoad(endpoint, boxId){
@@ -1409,7 +1519,15 @@ async function runDryScanFull(){
   try{
     const url=PROXY+'/dry-scan'+(sym?'?sym='+encodeURIComponent(sym.trim().toUpperCase()):'');
     const headers={'Content-Type':'application/json'};
-    if(token)headers['Authorization']='Bearer '+token;
+    // Use browser token; if empty fetch from server (set via OAuth)
+    var activeToken=token;
+    if(!activeToken){
+      try{
+        var tr=await fetch(PROXY+'/get-token');
+        if(tr.ok){var td2=await tr.json();activeToken=td2.token||'';token=activeToken;}
+      }catch(e2){}
+    }
+    if(activeToken)headers['Authorization']='Bearer '+activeToken;
     const r=await fetch(url,{headers});
     const d=await r.json();
     box.textContent=JSON.stringify(d,null,2);
@@ -1600,7 +1718,7 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
   function show(el, e) {
     var text = el.getAttribute('data-tip');
     if(!text || !text.trim()) return;
-    tip.innerHTML = text.replace(/\n/g,'<br>');
+    tip.innerHTML = text.replace(/\\n|\n/g,'<br>');
     tip.style.display = 'block';
     move(e);
   }
