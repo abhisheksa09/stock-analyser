@@ -1,5 +1,6 @@
 """
 signals.py — NSE signal computation with market context filters
+Version : v1.8.0
 Shared between app.py (proxy) and scanner.py (alert engine)
 
 Filters added:

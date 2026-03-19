@@ -1,5 +1,6 @@
 """
 macro.py — Macro intelligence layers for NSE Scanner
+Version : v1.8.0
 Fetches economic calendar, macro proxies, FII/DII flows, and news sentiment.
 All functions are safe to call — they return neutral/empty data on failure
 so a broken data source never blocks the scan.
