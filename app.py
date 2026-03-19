@@ -861,11 +861,21 @@ def scanner_chat():
     )
     try:
         with _urc.urlopen(req, timeout=30) as r:
-            return jsonify(_jsc.loads(r.read()))
+            resp_body = r.read()
+            resp_data = _jsc.loads(resp_body)
+            return jsonify(resp_data)
     except _urc.HTTPError as e:
-        return jsonify({"error": e.read().decode(errors="replace")[:200]}), e.code
+        body = e.read().decode(errors="replace")
+        log.error("Anthropic API error %d: %s", e.code, body[:200])
+        try:
+            err_data = _jsc.loads(body)
+            msg = err_data.get("error", {}).get("message", body[:100])
+        except Exception:
+            msg = body[:100]
+        return jsonify({"error": {"type": "api_error", "message": msg}}), e.code
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        log.error("Chat endpoint error: %s", e)
+        return jsonify({"error": {"type": "server_error", "message": str(e)}}), 500
 
 @app.route("/ai/<path:subpath>", methods=["GET", "POST"])
 def ai_proxy(subpath):
