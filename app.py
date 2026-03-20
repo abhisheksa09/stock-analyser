@@ -38,14 +38,15 @@ ALLOWED_ORIGIN = "https://abhisheksa09.github.io"
 IST            = timezone(timedelta(hours=5, minutes=30))
 
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin":  ALLOWED_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PATCH, DELETE",
-    "Access-Control-Allow-Headers": (
+    "Access-Control-Allow-Origin":       ALLOWED_ORIGIN,
+    "Access-Control-Allow-Methods":      "GET, POST, OPTIONS, PATCH, DELETE",
+    "Access-Control-Allow-Headers":      (
         "Authorization, Content-Type, Accept, "
         "x-api-key, anthropic-version, "
         "anthropic-dangerous-direct-browser-access"
     ),
-    "Access-Control-Max-Age": "86400",
+    "Access-Control-Allow-Credentials":  "true",   # needed for session cookies
+    "Access-Control-Max-Age":            "86400",
 }
 
 def cors(r):
@@ -61,6 +62,51 @@ def add_cors(r): return cors(r)
 def options_handler(path): return cors(Response(status=204))
 
 # ── Health ────────────────────────────────────────────────────────────────────
+# ─── App session helpers ──────────────────────────────────────────────────────
+SESSION_COOKIE  = "nse_session"
+SESSION_TTL_SEC = 30 * 24 * 3600    # 30 days
+
+def _get_session(request) -> dict | None:
+    """Extract and validate the browser session token from cookie or header."""
+    token = (request.cookies.get(SESSION_COOKIE) or
+             request.headers.get("X-Session-Token", ""))
+    if not token:
+        return None
+    import db as _db
+    return _db.validate_app_session(token)
+
+def _require_session(request):
+    """Returns (session_dict, None) or (None, error_response)."""
+    sess = _get_session(request)
+    if not sess:
+        return None, (jsonify({"error": "Not authenticated", "code": "AUTH_REQUIRED"}), 401)
+    return sess, None
+
+def _require_admin(request):
+    """Returns (session_dict, None) or (None, error_response). Admin role required."""
+    sess, err = _require_session(request)
+    if err:
+        return None, err
+    if sess.get("role") != "admin":
+        return None, (jsonify({"error": "Admin role required", "code": "FORBIDDEN"}), 403)
+    return sess, None
+
+def _set_session_cookie(response, token: str):
+    """Attach session cookie to a Flask response."""
+    response.set_cookie(
+        SESSION_COOKIE, token,
+        max_age=SESSION_TTL_SEC,
+        httponly=True,
+        secure=True,            # HTTPS only (Render always uses HTTPS)
+        samesite="None",        # cross-site (GitHub Pages → Render)
+        path="/"
+    )
+    return response
+
+def _clear_session_cookie(response):
+    response.delete_cookie(SESSION_COOKIE, path="/", samesite="None", secure=True)
+    return response
+
 @app.route("/ping")
 def ping():
     return jsonify({"status": "ok", "proxy": "upstox-render", "alerts": "active", "version": "v2.0.0"})
@@ -595,6 +641,176 @@ OAUTH_REDIRECT    = RENDER_BASE_URL + "/auth/callback"
 # Store last OAuth attempt result for debugging
 _last_oauth = {"status": "never attempted", "detail": "", "time": ""}
 
+# ─── App authentication (username + password) ─────────────────────────────────
+
+@app.route("/app/login", methods=["POST"])
+def app_login():
+    """
+    Login with username + password.
+    Returns a session cookie valid for 30 days.
+    Body: {"username": "...", "password": "..."}
+    """
+    import db as _db
+    data     = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+
+    if not username or not password:
+        return jsonify({"error": "username and password required"}), 400
+
+    user = _db.authenticate_user(username, password)
+    if not user:
+        return jsonify({"error": "Invalid username or password"}), 401
+
+    token = _db.create_app_session(user)
+    if not token:
+        return jsonify({"error": "Could not create session"}), 500
+
+    resp = jsonify({
+        "status":   "ok",
+        "username": user["username"],
+        "role":     user["role"],
+    })
+    return _set_session_cookie(resp, token)
+
+
+@app.route("/app/logout", methods=["POST"])
+def app_logout():
+    """Revoke current session cookie."""
+    import db as _db
+    token = request.cookies.get(SESSION_COOKIE, "")
+    if token:
+        _db.revoke_app_session(token)
+    resp = jsonify({"status": "ok"})
+    return _clear_session_cookie(resp)
+
+
+@app.route("/app/me")
+def app_me():
+    """
+    Returns current session info.
+    Used by scanner.html on load to check if user is logged in.
+    """
+    sess = _get_session(request)
+    if not sess:
+        return jsonify({"authenticated": False}), 401
+    return jsonify({
+        "authenticated": True,
+        "username":      sess["username"],
+        "role":          sess["role"],
+    })
+
+
+@app.route("/app/change-password", methods=["POST"])
+def app_change_password():
+    """Change own password. Body: {"current": "...", "new": "..."}"""
+    import db as _db
+    sess, err = _require_session(request)
+    if err:
+        return err
+
+    data     = request.get_json(silent=True) or {}
+    current  = data.get("current") or ""
+    new_pwd  = data.get("new") or ""
+
+    if len(new_pwd) < 8:
+        return jsonify({"error": "New password must be at least 8 characters"}), 400
+
+    # Verify current password
+    user = _db.authenticate_user(sess["username"], current)
+    if not user:
+        return jsonify({"error": "Current password incorrect"}), 401
+
+    # Update
+    conn = _db.db()
+    if not conn:
+        return jsonify({"error": "No DB connection"}), 503
+    try:
+        pwd_hash = _db.hash_password(new_pwd)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET pwd_hash=%s WHERE username=%s",
+                        (pwd_hash, sess["username"]))
+        # Revoke all other sessions (force re-login on other devices)
+        _db.revoke_all_sessions(sess["username"])
+        # Re-issue a fresh session for current device
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM users WHERE username=%s", (sess["username"],))
+            user = dict(cur.fetchone())
+        new_token = _db.create_app_session(user)
+        resp = jsonify({"status": "ok", "message": "Password changed. Other sessions revoked."})
+        return _set_session_cookie(resp, new_token)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── Admin user management ─────────────────────────────────────────────────────
+
+@app.route("/admin/users", methods=["GET"])
+def admin_list_users():
+    """List all users. Admin only."""
+    import db as _db
+    sess, err = _require_admin(request)
+    if err: return err
+    return jsonify({"users": _db.get_users()})
+
+
+@app.route("/admin/users/create", methods=["POST"])
+def admin_create_user():
+    """Create a new user. Admin only.
+    Body: {"username": "...", "password": "...", "role": "viewer|admin"}
+    """
+    import db as _db
+    sess, err = _require_admin(request)
+    if err: return err
+
+    data     = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    role     = data.get("role", "viewer")
+
+    if not username or len(password) < 8:
+        return jsonify({"error": "username required and password >= 8 chars"}), 400
+    if role not in ("admin", "viewer"):
+        return jsonify({"error": "role must be admin or viewer"}), 400
+
+    result = _db.create_user(username, password, role)
+    if "error" in result:
+        return jsonify(result), 409
+    return jsonify(result)
+
+
+@app.route("/admin/users/<username>/deactivate", methods=["POST"])
+def admin_deactivate_user(username):
+    """Deactivate a user account. Admin only."""
+    import db as _db
+    sess, err = _require_admin(request)
+    if err: return err
+    _db.set_user_active(username, False)
+    _db.revoke_all_sessions(username)
+    return jsonify({"status": "ok", "username": username, "active": False})
+
+
+@app.route("/admin/users/<username>/activate", methods=["POST"])
+def admin_activate_user(username):
+    """Re-activate a user account. Admin only."""
+    import db as _db
+    sess, err = _require_admin(request)
+    if err: return err
+    _db.set_user_active(username, True)
+    return jsonify({"status": "ok", "username": username, "active": True})
+
+
+@app.route("/admin/sessions/cleanup", methods=["POST"])
+def admin_cleanup_sessions():
+    """Remove expired sessions. Admin only."""
+    import db as _db
+    sess, err = _require_admin(request)
+    if err: return err
+    removed = _db.cleanup_expired_sessions()
+    return jsonify({"status": "ok", "removed": removed})
+
+
+# ─── Upstox OAuth (admin only — token refresh) ─────────────────────────────
 @app.route("/auth/login")
 def auth_login():
     """

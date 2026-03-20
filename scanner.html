@@ -15,7 +15,7 @@ h1{font-size:20px;font-weight:600;}
 .chip-gray{background:#f5f5f0;color:#888;border-color:#ddd;}
 .navbar{display:flex;align-items:center;justify-content:space-between;
   gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e0e0e0;
-  margin:-20px -16px 20px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;position:relative;}
+  margin:-20px -16px 20px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;position:relative;position:relative;}
 .navbar-brand{display:flex;align-items:center;gap:8px;flex-shrink:0;}
 .navbar-title{font-size:16px;font-weight:700;white-space:nowrap;}
 .navbar-centre{display:flex;align-items:center;gap:6px;flex:1;justify-content:center;flex-wrap:wrap;}
@@ -260,42 +260,27 @@ html,body{max-width:100%;overflow-x:hidden;}
 @media(max-width:600px){
   .nav-desktop{display:none!important;}
   .nav-mobile{display:inline-flex!important;}
-  .navbar{padding:8px 12px;gap:6px;position:relative;}
+  /* Navbar: compact, no wrap, clips to screen */
+  .navbar{padding:8px 12px;gap:6px;}
+  .navbar-brand{gap:6px;flex-shrink:0;}
   .navbar-title{font-size:13px;}
-  .navbar-centre{gap:4px;flex-shrink:1;min-width:0;overflow:hidden;}
-  .navbar-centre .chip{font-size:10px;padding:2px 5px;}
+  /* Centre chips: shrink to fit, hide overflow */
+  .navbar-centre{gap:4px;flex:1 1 0;min-width:0;overflow:hidden;}
+  .navbar-centre .chip{font-size:10px;padding:2px 4px;white-space:nowrap;}
   #versionChip{display:none;}
+  /* Page: no horizontal scroll */
   .page{padding:0 10px 80px;overflow-x:hidden;}
+  /* Tabs */
   .tab-btn{font-size:11px;padding:6px 8px;}
+  /* Scanner table: scroll within wrapper */
   .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-  .scan-row{flex-wrap:wrap;}
+  /* Scan row */
+  .scan-row{flex-wrap:wrap;gap:8px;}
+  /* Chatbot */
   #chatPanel{width:calc(100vw - 8px)!important;right:4px!important;bottom:76px!important;height:70dvh!important;}
   #chatFab{bottom:16px!important;right:16px!important;width:46px!important;height:46px!important;}
   #chatFab::after{display:none!important;}
 }
-
-#chatPanel{position:fixed;bottom:88px;right:24px;width:370px;height:540px;background:#fff;border:1px solid #e0e0e0;border-radius:16px;box-shadow:0 8px 40px rgba(0,0,0,.14);display:flex;flex-direction:column;z-index:9998;transform:scale(.92) translateY(20px);opacity:0;pointer-events:none;transition:transform .22s cubic-bezier(.34,1.56,.64,1),opacity .18s ease;}
-#chatPanel.cp-open{transform:scale(1) translateY(0);opacity:1;pointer-events:all;}
-.cp-hdr{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-bottom:1px solid #f0f0f0;background:#EAF3DE;border-radius:16px 16px 0 0;flex-shrink:0;}
-.cp-title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#27500A;}
-.cp-x{width:26px;height:26px;border-radius:6px;border:none;background:rgba(0,0,0,.07);color:#27500A;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
-.cp-x:hover{background:rgba(0,0,0,.15);}
-.cp-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;scrollbar-width:thin;}
-.cp-u{align-self:flex-end;max-width:86%;background:#EAF3DE;border:1px solid #C0DD97;border-radius:12px 4px 12px 12px;padding:8px 11px;font-size:13px;line-height:1.5;}
-.cp-b{align-self:flex-start;max-width:92%;background:#f8f8f6;border:1px solid #ebebeb;border-radius:4px 12px 12px 12px;padding:8px 11px;font-size:13px;line-height:1.55;}
-.cp-b strong{font-weight:600;}.cp-b ul{padding-left:14px;margin:4px 0;}.cp-b li{margin-bottom:2px;}
-.cp-sugs{display:flex;flex-wrap:nowrap;gap:6px;padding:0 12px 8px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;}
-.cp-sugs::-webkit-scrollbar{display:none;}
-.cp-sug{font-size:11px;padding:4px 9px;border-radius:16px;border:1px solid #ddd;background:#f9f9f7;color:#555;cursor:pointer;white-space:nowrap;}
-.cp-sug:hover{border-color:#27500A;color:#27500A;background:#EAF3DE;}
-.cp-foot{display:flex;gap:8px;padding:9px 12px;border-top:1px solid #f0f0f0;flex-shrink:0;background:#fff;border-radius:0 0 16px 16px;}
-.cp-inp{flex:1;border:1px solid #ddd;border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;outline:none;resize:none;max-height:72px;min-height:32px;}
-.cp-inp:focus{border-color:#27500A;}
-.cp-btn{width:32px;height:32px;border-radius:8px;border:none;background:#27500A;color:#fff;cursor:pointer;font-size:14px;font-weight:700;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
-.cp-btn:hover{background:#1a3d07;}
-.cp-btn:disabled{background:#ccc;cursor:not-allowed;}
-#chatFab{position:fixed;bottom:24px;right:24px;z-index:9999;width:52px;height:52px;border-radius:50%;background:#27500A;border:2px solid #4ade80;box-shadow:0 4px 20px rgba(74,222,128,.35);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:transform .18s,box-shadow .18s;animation:fabGl 3s ease-in-out infinite;}
-#chatFab:hover{transform:scale(1.1);box-shadow:0 6px 28px rgba(74,222,128,.6);}
 @keyframes fabGl{0%,100%{box-shadow:0 4px 20px rgba(74,222,128,.35);}50%{box-shadow:0 4px 28px rgba(74,222,128,.65);}}
 #chatFab::after{content:"Ask AI";position:absolute;right:60px;background:#1a1a1a;color:#4ade80;font-size:11px;font-weight:600;padding:4px 9px;border-radius:6px;border:1px solid #2a2a2a;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;}
 #chatFab:hover::after{opacity:1;}
@@ -337,14 +322,14 @@ html,body{max-width:100%;overflow-x:hidden;}
       <!-- Hamburger (mobile only) -->
       <button class="nav-btn nav-mobile" id="burgerBtn" onclick="toggleMobileMenu()" style="font-size:18px;padding:4px 10px;">&#9776;</button>
     </div>
-  </div>
-  <!-- Mobile dropdown -->
-  <div id="mobileMenu" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:300;
-       background:#fff;border-bottom:2px solid #e0e0e0;padding:10px 16px;
-       box-shadow:0 4px 16px rgba(0,0,0,.1);">
-    <a href="readme.html" target="_blank" class="nav-btn" style="display:block;margin-bottom:6px;">&#128214; Docs</a>
-    <a href="changelog.html" target="_blank" class="nav-btn" style="display:block;margin-bottom:6px;">&#127959; Changelog</a>
-    <button class="nav-btn" onclick="doLogout()" style="display:block;width:100%;text-align:left;color:#A32D2D;border-color:#F09595;margin-bottom:4px;">&#x23FB; Logout</button>
+    <!-- Mobile dropdown — inside navbar so position:absolute works correctly -->
+    <div id="mobileMenu" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:300;
+         background:#fff;border-bottom:2px solid #e0e0e0;padding:10px 16px;
+         box-shadow:0 4px 16px rgba(0,0,0,.12);">
+      <a href="readme.html" target="_blank" class="nav-btn" style="display:flex;margin-bottom:8px;">&#128214; Docs</a>
+      <a href="changelog.html" target="_blank" class="nav-btn" style="display:flex;margin-bottom:8px;">&#127959; Changelog</a>
+      <button class="nav-btn" onclick="doLogout()" style="display:flex;width:100%;color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
+    </div>
   </div>
 
   <div id="coldStartBanner" style="background:#FFF8E1;border:1px solid #FAC775;border-radius:8px;padding:10px 16px;margin-bottom:12px;font-size:12px;color:#633806;display:none;">
@@ -675,6 +660,15 @@ document.addEventListener('click',function(e){
   if(m&&b&&!m.contains(e.target)&&!b.contains(e.target)&&m.style.display!=='none')
     m.style.display='none';
 });
+
+// ── Logout ──────────────────────────────────────────────────────────────────────
+function doLogout(){
+  if(typeof token !== 'undefined') token='';
+  fetch(PROXY+'/app/logout',{method:'POST',credentials:'include'}).catch(function(){});
+  setTimeout(function(){window.location.replace('login.html');},350);
+}
+
+
 // ─── CONSTANTS ───
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
@@ -1032,17 +1026,22 @@ async function runDryScan(btnEl){
 // ── Auth guard ─────────────────────────────────────────────────────────────────
 (async function authGuard(){
   try{
-    var r=await fetch(PROXY+'/get-token');
+    // Check app session (cookie-based, not Upstox token)
+    var r=await fetch(PROXY+'/app/me',{credentials:'include'});
     if(!r.ok){window.location.replace('login.html');return;}
     var d=await r.json();
-    if(!d.token||!d.token.trim()){window.location.replace('login.html');return;}
-    token=d.token;
+    if(!d.authenticated){window.location.replace('login.html');return;}
+    // Show user's name in navbar
+    updateTokenNavBtn(true, d.username);
+    // Also fetch the Upstox token from server for data calls
     try{
-      var pr=await fetch(PROXY+'/v2/user/profile',{headers:{'Authorization':'Bearer '+d.token,'Accept':'application/json'}});
-      var pd=await pr.json();
-      if(pd.data){var name=pd.data.full_name||pd.data.user_name||pd.data.name||'user';updateTokenNavBtn(true,name);setTokenStatusUI(true,name);}
-    }catch(e2){updateTokenNavBtn(true,'Logged in');}
-  }catch(e){console.warn('Auth guard: server unreachable');}
+      var tr=await fetch(PROXY+'/get-token',{credentials:'include'});
+      if(tr.ok){var td=await tr.json();if(td.token)token=td.token;}
+    }catch(e2){}
+  }catch(e){
+    // Server unreachable — let through (Render cold start), but warn
+    console.warn('Auth guard: server unreachable', e.message);
+  }
 })();
 function handleTokenNavClick(){
   // If token set → go to Admin tab; if not → open OAuth login
@@ -1825,14 +1824,6 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
 
 
 // ── Logout ──────────────────────────────────────────────────────────────────────
-
-// ── Logout ──────────────────────────────────────────────────────────────────────
-function doLogout(){
-  if(typeof token !== 'undefined') token='';
-  fetch('https://nse-proxy-mojx.onrender.com/auth/logout',{method:'POST'}).catch(function(){});
-  setTimeout(function(){window.location.replace('login.html');},350);
-}
-
 </script>
 <script>
 function doLogout(){

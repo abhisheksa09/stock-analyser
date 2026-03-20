@@ -6,175 +6,46 @@
 <title>Login — NSE Scanner</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{
-  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  background:#f5f5f0;color:#1a1a1a;min-height:100dvh;
-  display:flex;flex-direction:column;
-}
-
-/* ── Top bar ── */
-.topbar{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:14px 24px;border-bottom:1px solid #e0e0e0;background:#fff;
-}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  background:#f5f5f0;color:#1a1a1a;min-height:100dvh;display:flex;flex-direction:column;}
+.topbar{display:flex;align-items:center;justify-content:space-between;
+  padding:14px 24px;border-bottom:1px solid #e0e0e0;background:#fff;}
 .brand{display:flex;align-items:center;gap:10px;}
-.brand-icon{font-size:20px;}
-.brand-name{font-size:15px;font-weight:700;letter-spacing:-.02em;}
-.brand-ver{font-size:10px;color:#aaa;border:1px solid #e0e0e0;
-  border-radius:20px;padding:2px 8px;background:#fafafa;}
+.brand-icon{font-size:20px;}.brand-name{font-size:15px;font-weight:700;letter-spacing:-.02em;}
+.brand-ver{font-size:10px;color:#aaa;border:1px solid #e0e0e0;border-radius:20px;padding:2px 8px;background:#fafafa;}
 .top-links{display:flex;gap:8px;}
-.top-link{
-  font-size:12px;color:#666;text-decoration:none;
-  padding:5px 12px;border:1px solid #ddd;border-radius:20px;
-  background:#fff;transition:all .15s;
-}
+.top-link{font-size:12px;color:#666;text-decoration:none;padding:5px 12px;border:1px solid #ddd;
+  border-radius:20px;background:#fff;transition:all .15s;}
 .top-link:hover{border-color:#27500A;color:#27500A;background:#EAF3DE;}
-
-/* ── Main ── */
-.main{
-  flex:1;display:flex;align-items:center;justify-content:center;
-  padding:40px 24px;
-}
-
-/* ── Login card ── */
-.card{
-  width:100%;max-width:400px;
-  background:#fff;border:1px solid #e0e0e0;border-radius:20px;
-  padding:40px 36px;
-  box-shadow:0 4px 32px rgba(0,0,0,.07);
-  animation:fadeUp .3s ease;
-}
-@keyframes fadeUp{
-  from{opacity:0;transform:translateY(16px)}
-  to{opacity:1;transform:none}
-}
-
-/* ── Hero ── */
-.hero{text-align:center;margin-bottom:32px;}
-.hero-icon{
-  width:72px;height:72px;border-radius:20px;
-  background:#EAF3DE;border:2px solid #C0DD97;
-  margin:0 auto 18px;display:flex;align-items:center;
-  justify-content:center;font-size:32px;
-}
+.main{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 24px;}
+.card{width:100%;max-width:380px;background:#fff;border:1px solid #e0e0e0;border-radius:20px;
+  padding:40px 36px;box-shadow:0 4px 32px rgba(0,0,0,.07);animation:fadeUp .3s ease;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.hero{text-align:center;margin-bottom:28px;}
+.hero-icon{width:68px;height:68px;border-radius:20px;background:#EAF3DE;border:2px solid #C0DD97;
+  margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-size:30px;}
 .hero h1{font-size:22px;font-weight:700;letter-spacing:-.03em;margin-bottom:6px;}
 .hero p{font-size:13px;color:#888;line-height:1.5;}
-
-/* ── Divider ── */
-.divider{height:1px;background:#f0f0f0;margin:0 0 24px;}
-
-/* ── Status pill ── */
-.status-row{
-  display:flex;align-items:center;gap:8px;
-  justify-content:center;margin-bottom:20px;
-  min-height:20px;
-}
-.status-dot{
-  width:8px;height:8px;border-radius:50%;
-  background:#e0e0e0;flex-shrink:0;
-  transition:background .3s;
-}
-.status-dot.green{background:#639922;}
-.status-dot.amber{background:#EF9F27;}
-.status-dot.red{background:#E24B4A;}
-.status-txt{font-size:13px;color:#888;}
-
-/* ── Buttons ── */
-.btn-primary{
-  width:100%;display:flex;align-items:center;justify-content:center;
-  gap:10px;padding:14px 20px;border-radius:12px;border:none;
-  background:#27500A;color:#fff;font-size:14px;font-weight:600;
-  cursor:pointer;letter-spacing:-.01em;margin-bottom:10px;
-  transition:background .15s,transform .12s;font-family:inherit;
-}
-.btn-primary:hover{background:#1a3d07;transform:translateY(-1px);}
-.btn-primary:active{transform:translateY(0);}
-
-.btn-enter{
-  width:100%;padding:13px 20px;border-radius:12px;
-  border:1px solid #C0DD97;background:#EAF3DE;color:#27500A;
-  font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;
-  transition:background .15s;font-family:inherit;
-  display:none;
-}
-.btn-enter:hover{background:#d4edbc;}
-
-/* ── Chips ── */
+.divider{height:1px;background:#f0f0f0;margin:0 0 22px;}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:12px;font-weight:600;color:#666;
+  text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
+.field input{width:100%;border:1px solid #e0e0e0;border-radius:10px;padding:10px 14px;
+  font-size:14px;font-family:inherit;outline:none;transition:border-color .15s;background:#fafafa;}
+.field input:focus{border-color:#27500A;background:#fff;}
+.btn-login{width:100%;padding:13px 20px;border-radius:12px;border:none;
+  background:#27500A;color:#fff;font-size:14px;font-weight:600;cursor:pointer;
+  margin-top:8px;transition:background .15s,transform .12s;font-family:inherit;}
+.btn-login:hover{background:#1a3d07;transform:translateY(-1px);}
+.btn-login:disabled{background:#aaa;transform:none;cursor:not-allowed;}
+.msg{font-size:13px;min-height:18px;margin-top:10px;text-align:center;}
+.msg.err{color:#A32D2D;}.msg.ok{color:#27500A;}
 .chips{display:flex;justify-content:center;gap:8px;margin-top:20px;flex-wrap:wrap;}
-.chip{
-  font-size:11px;padding:4px 11px;border-radius:20px;
-  border:1px solid #e0e0e0;color:#888;background:#fafafa;
-}
-
-/* ── Embedded chatbot ─────────────────────────────────────────────────────── */
-#chatPanel{position:fixed;bottom:88px;right:24px;width:370px;height:540px;
-  background:#fff;border:1px solid #e0e0e0;border-radius:16px;
-  box-shadow:0 8px 40px rgba(0,0,0,.14);display:flex;flex-direction:column;
-  z-index:9998;transform:scale(.92) translateY(20px);opacity:0;pointer-events:none;
-  transition:transform .22s cubic-bezier(.34,1.56,.64,1),opacity .18s ease;}
-#chatPanel.cp-open{transform:scale(1) translateY(0);opacity:1;pointer-events:all;}
-.cp-hdr{display:flex;align-items:center;justify-content:space-between;
-  padding:11px 14px;border-bottom:1px solid #f0f0f0;background:#EAF3DE;
-  border-radius:16px 16px 0 0;flex-shrink:0;}
-.cp-title{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:#27500A;}
-.cp-x{width:26px;height:26px;border-radius:6px;border:none;background:rgba(0,0,0,.07);
-  color:#27500A;font-size:13px;cursor:pointer;display:flex;align-items:center;
-  justify-content:center;transition:background .15s;}
-.cp-x:hover{background:rgba(0,0,0,.15);}
-.cp-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;
-  gap:10px;scrollbar-width:thin;scrollbar-color:#e0e0e0 transparent;}
-.cp-msgs::-webkit-scrollbar{width:3px;}
-.cp-msgs::-webkit-scrollbar-thumb{background:#ddd;border-radius:3px;}
-.cp-u{align-self:flex-end;max-width:86%;background:#EAF3DE;border:1px solid #C0DD97;
-  border-radius:12px 4px 12px 12px;padding:8px 11px;font-size:13px;line-height:1.5;
-  animation:cpUp .18s ease;}
-.cp-b{align-self:flex-start;max-width:92%;background:#f8f8f6;border:1px solid #ebebeb;
-  border-radius:4px 12px 12px 12px;padding:8px 11px;font-size:13px;line-height:1.55;
-  animation:cpUp .18s ease;}
-.cp-b code{font-family:monospace;font-size:11px;background:rgba(0,0,0,.06);padding:1px 4px;border-radius:3px;}
-.cp-b strong{font-weight:600;}
-.cp-b ul{padding-left:14px;margin:4px 0;}
-.cp-b li{margin-bottom:2px;}
-.cp-b p{margin-bottom:5px;}
-.cp-b p:last-child{margin-bottom:0;}
-@keyframes cpUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-.cp-dots{display:flex;gap:4px;align-items:center;padding:4px 0;}
-.cp-dots span{width:5px;height:5px;border-radius:50%;background:#bbb;animation:cpDt 1.2s ease-in-out infinite;}
-.cp-dots span:nth-child(2){animation-delay:.2s;}
-.cp-dots span:nth-child(3){animation-delay:.4s;}
-@keyframes cpDt{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1.1)}}
-.cp-sugs{display:flex;flex-wrap:nowrap;gap:6px;padding:0 12px 8px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;}
-.cp-sugs::-webkit-scrollbar{display:none;}
-.cp-sug{font-size:11px;padding:4px 9px;border-radius:16px;border:1px solid #ddd;
-  background:#f9f9f7;color:#555;cursor:pointer;white-space:nowrap;transition:all .15s;}
-.cp-sug:hover{border-color:#27500A;color:#27500A;background:#EAF3DE;}
-.cp-foot{display:flex;gap:8px;padding:9px 12px;border-top:1px solid #f0f0f0;
-  flex-shrink:0;background:#fff;border-radius:0 0 16px 16px;}
-.cp-inp{flex:1;border:1px solid #ddd;border-radius:8px;padding:7px 10px;
-  font-size:13px;font-family:inherit;outline:none;resize:none;max-height:72px;min-height:32px;transition:border-color .15s;}
-.cp-inp:focus{border-color:#27500A;}
-.cp-btn{width:32px;height:32px;border-radius:8px;border:none;background:#27500A;
-  color:#fff;cursor:pointer;font-size:14px;font-weight:700;flex-shrink:0;
-  transition:background .15s,transform .1s;display:flex;align-items:center;justify-content:center;}
-.cp-btn:hover{background:#1a3d07;transform:scale(1.05);}
-.cp-btn:disabled{background:#ccc;transform:none;cursor:not-allowed;}
-#chatFab{position:fixed;bottom:24px;right:24px;z-index:9999;width:52px;height:52px;
-  border-radius:50%;background:#27500A;border:2px solid #4ade80;
-  box-shadow:0 4px 20px rgba(74,222,128,.35);display:flex;align-items:center;
-  justify-content:center;cursor:pointer;transition:transform .18s,box-shadow .18s;
-  animation:fabGl 3s ease-in-out infinite;}
-#chatFab:hover{transform:scale(1.1);box-shadow:0 6px 28px rgba(74,222,128,.6);}
-@keyframes fabGl{0%,100%{box-shadow:0 4px 20px rgba(74,222,128,.35);}
-  50%{box-shadow:0 4px 28px rgba(74,222,128,.65);}}
-#chatFab::after{content:"Ask AI";position:absolute;right:60px;background:#1a1a1a;
-  color:#4ade80;font-size:11px;font-weight:600;padding:4px 9px;border-radius:6px;
-  border:1px solid #2a2a2a;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;}
-#chatFab:hover::after{opacity:1;}
-@media(max-width:440px){#chatPanel{width:calc(100vw - 16px);right:8px;bottom:78px;height:65dvh;}}
+.chip{font-size:11px;padding:4px 11px;border-radius:20px;border:1px solid #e0e0e0;
+  color:#888;background:#fafafa;}
 </style>
 </head>
 <body>
-
 <div class="topbar">
   <div class="brand">
     <span class="brand-icon">&#128200;</span>
@@ -186,563 +57,64 @@ body{
     <a href="changelog.html" class="top-link">&#127959; Changelog</a>
   </div>
 </div>
-
 <div class="main">
   <div class="card">
-
     <div class="hero">
       <div class="hero-icon">&#128200;</div>
       <h1>NSE Intraday Scanner</h1>
       <p>Real-time signals &middot; Macro intelligence &middot; Telegram alerts</p>
     </div>
-
     <div class="divider"></div>
-
-    <div class="status-row">
-      <span class="status-dot" id="sDot"></span>
-      <span class="status-txt" id="sTxt">&nbsp;</span>
+    <div class="field">
+      <label>Username</label>
+      <input id="username" type="text" autocomplete="username" placeholder="Enter username"
+             autofocus onkeydown="if(event.key==='Enter')document.getElementById('password').focus()"/>
     </div>
-
-    <button class="btn-primary" id="loginBtn" onclick="doLogin()">
-      &#128274;&nbsp; Login
-    </button>
-
-    <button class="btn-enter" id="enterBtn" onclick="goToScanner()">
-      &#10003;&nbsp; Enter Scanner
-    </button>
-
+    <div class="field">
+      <label>Password</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="Enter password"
+             onkeydown="if(event.key==='Enter')doLogin()"/>
+    </div>
+    <button class="btn-login" id="loginBtn" onclick="doLogin()">Sign in</button>
+    <div class="msg" id="msg"></div>
     <div class="chips">
       <span class="chip">30 Nifty stocks</span>
       <span class="chip">Telegram alerts</span>
       <span class="chip">4-layer macro</span>
     </div>
-
-    <div style="margin-top:14px;text-align:center;">
-      <button onclick="document.getElementById('manualWrap').style.display=document.getElementById('manualWrap').style.display==='none'?'block':'none'"
-              style="font-size:12px;color:#aaa;background:none;border:none;cursor:pointer;text-decoration:underline;">
-        Paste token manually
-      </button>
-      <div id="manualWrap" style="display:none;margin-top:10px;text-align:left;">
-        <div style="display:flex;gap:8px;">
-          <input id="manualToken" type="password"
-                 style="flex:1;border:1px solid #e0e0e0;border-radius:8px;padding:8px 10px;
-                        font-size:13px;outline:none;"
-                 placeholder="Paste Upstox access token&#8230;"/>
-          <button onclick="doManualToken()"
-                  style="padding:8px 14px;border-radius:8px;border:none;background:#27500A;
-                         color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Set</button>
-        </div>
-        <div id="manualMsg" style="font-size:12px;color:#888;margin-top:6px;min-height:16px;"></div>
-      </div>
-    </div>
-
   </div>
 </div>
-
 <script>
-const PROXY = 'https://nse-proxy-mojx.onrender.com';
-
-// ── Check if already logged in ────────────────────────────────────────────────
-async function checkLogin(){
-  setDot('amber', 'Checking\u2026');
+const PROXY='https://nse-proxy-mojx.onrender.com';
+async function checkSession(){
+  try{var r=await fetch(PROXY+'/app/me',{credentials:'include'});
+  if(r.ok){var d=await r.json();if(d.authenticated){window.location.replace('scanner.html');return;}}}catch(e){}
+}
+async function doLogin(){
+  var u=document.getElementById('username').value.trim();
+  var p=document.getElementById('password').value;
+  var msg=document.getElementById('msg');
+  var btn=document.getElementById('loginBtn');
+  if(!u||!p){msg.textContent='Enter username and password';msg.className='msg err';return;}
+  btn.disabled=true;btn.textContent='Signing in\u2026';msg.textContent='';msg.className='msg';
   try{
-    var r = await fetch(PROXY + '/get-token');
-    if(!r.ok){ setDot('', 'Login to continue'); return; }
-    var d = await r.json();
-    if(d.status === 'ok' && d.token){
-      // Token on server — verify it's still valid
-      try{
-        var pr = await fetch(PROXY + '/v2/user/profile', {
-          headers: { 'Authorization': 'Bearer ' + d.token, 'Accept': 'application/json' }
-        });
-        var pd = await pr.json();
-        if(pd.data){
-          var name = pd.data.full_name || pd.data.user_name || pd.data.name || 'user';
-          setDot('green', '\u2713 Logged in as ' + name);
-          styleLoginBtn(true);
-          document.getElementById('enterBtn').style.display = 'block';
-          // Auto-redirect after brief pause
-          setTimeout(goToScanner, 1500);
-          return;
-        }
-      } catch(e2){}
-    }
-    setDot('', 'Login to continue');
-  } catch(e){
-    setDot('red', 'Cannot reach server');
-  }
-}
-
-function setDot(cls, txt){
-  var dot = document.getElementById('sDot');
-  var t   = document.getElementById('sTxt');
-  dot.className = 'status-dot' + (cls ? ' ' + cls : '');
-  t.textContent = txt;
-  t.style.color = cls === 'green' ? '#27500A' : cls === 'red' ? '#A32D2D' : '#888';
-}
-
-function styleLoginBtn(loggedIn){
-  var btn = document.getElementById('loginBtn');
-  if(loggedIn){
-    btn.innerHTML = '&#128274;&nbsp; Re-login with Upstox';
-    btn.style.background = '#EAF3DE';
-    btn.style.color = '#27500A';
-    btn.style.border = '1px solid #C0DD97';
-  } else {
-    btn.innerHTML = '&#128274;&nbsp; Login';
-    btn.style.background = '#27500A';
-    btn.style.color = '#fff';
-    btn.style.border = 'none';
-  }
-}
-
-// ── OAuth login ───────────────────────────────────────────────────────────────
-function doLogin(){
-  var w = 520, h = 640;
-  var left = Math.round(screen.width/2 - w/2);
-  var top  = Math.round(screen.height/2 - h/2);
-  var pop  = window.open(
-    PROXY + '/auth/login', 'upstox_login',
-    'width='+w+',height='+h+',left='+left+',top='+top+
-    ',toolbar=no,menubar=no,scrollbars=yes,resizable=yes'
-  );
-  if(!pop){ window.location.href = PROXY + '/auth/login'; return; }
-
-  // Listen for success postMessage from popup
-  var handler = function(e){
-    if(e.data && e.data.type === 'upstox_auth_success'){
-      window.removeEventListener('message', handler);
-      setDot('amber', 'Login successful \u2014 syncing\u2026');
-      setTimeout(checkLogin, 900);
-    }
-  };
-  window.addEventListener('message', handler);
-}
-
-// ── Go to scanner ─────────────────────────────────────────────────────────────
-function doManualToken(){
-  var t=(document.getElementById('manualToken').value||'').trim();
-  var msg=document.getElementById('manualMsg');
-  if(!t){msg.textContent='Paste your token first';msg.style.color='#A32D2D';return;}
-  msg.textContent='Setting…';msg.style.color='#888';
-  fetch(PROXY+'/set-token',{method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({token:t})
-  }).then(function(r){return r.json();}).then(function(d){
-    if(d.status==='ok'||d.message){
-      msg.textContent='✓ Token set';msg.style.color='#27500A';
-      setTimeout(goToScanner,600);
+    var r=await fetch(PROXY+'/app/login',{method:'POST',headers:{'Content-Type':'application/json'},
+      credentials:'include',body:JSON.stringify({username:u,password:p})});
+    var d=await r.json();
+    if(r.ok&&d.status==='ok'){
+      msg.textContent='\u2713 Welcome, '+d.username+'!';msg.className='msg ok';
+      setTimeout(function(){window.location.replace('scanner.html');},600);
     } else {
-      msg.textContent='Failed: '+(d.error||'unknown');msg.style.color='#A32D2D';
+      msg.textContent=d.error||'Login failed';msg.className='msg err';
+      btn.disabled=false;btn.textContent='Sign in';
+      document.getElementById('password').select();
     }
-  }).catch(function(e){msg.textContent='Error: '+e.message;msg.style.color='#A32D2D';});
+  }catch(e){
+    msg.textContent='Cannot reach server — check connection';msg.className='msg err';
+    btn.disabled=false;btn.textContent='Sign in';
+  }
 }
-
-function goToScanner(){
-  window.location.href = 'scanner.html';
-}
-
-// ── Init ──────────────────────────────────────────────────────────────────────
-checkLogin();
-</script>
-
-  <!-- Chatbot FAB + Panel -->
-  <div id="chatPanel">
-    <div class="cp-hdr">
-      <div class="cp-title"><span>&#129302;</span><span>Scanner Assistant</span></div>
-      <button class="cp-x" onclick="cpToggle()" title="Close (Esc)">&#10005;</button>
-    </div>
-    <div class="cp-msgs" id="cpMsgs"></div>
-    <div class="cp-sugs" id="cpSugs">
-      <button class="cp-sug" onclick="cpAsk('How does confidence score work?')">Confidence</button>
-      <button class="cp-sug" onclick="cpAsk('What is ORB?')">ORB</button>
-      <button class="cp-sug" onclick="cpAsk('How do I login?')">Login help</button>
-      <button class="cp-sug" onclick="cpAsk('How do Telegram alerts fire?')">Alerts</button>
-      <button class="cp-sug" onclick="cpAsk('What are the 4 macro layers?')">Macro</button>
-    </div>
-    <div class="cp-foot">
-      <textarea class="cp-inp" id="cpInp" rows="1"
-        placeholder="Ask about the scanner…"
-        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cpSend();}"
-        oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,72)+'px'"></textarea>
-      <button class="cp-btn" id="cpBtn" onclick="cpSend()">&#8593;</button>
-    </div>
-  </div>
-  <div id="chatFab" onclick="cpToggle()" title="Ask the Scanner Assistant" aria-label="Open chat">
-    <span style="font-size:22px;line-height:1;pointer-events:none;">&#129302;</span>
-  </div>
-
-  <script>
-var cpH=[],cpBusy=false,cpOpn=false;
-
-
-// ── NSE Scanner Knowledge Base ────────────────────────────────────────────────
-// Pure JS, no API needed. Keyword matching with ranked answers.
-
-const CP_KB = [
-
-  // ── LOGIN / AUTH ────────────────────────────────────────────────────────────
-  { keys: ['login','upstox','auth','oauth','token','morning','how to start','get started'],
-    q: 'How do I log in each morning?',
-    a: `**Morning routine (3 steps)**
-
-1. Open [login.html](login.html) on your phone
-2. Tap **🔐 Login** → Upstox OTP screen → tap Authorize
-3. Popup closes automatically → you're in
-
-The scanner auto-detects your session next time — if you logged in today, opening the scanner redirects straight in without needing to login again.
-
-**Token persists** in Supabase DB so Render restarts won't log you out.` },
-
-  // ── SIGNAL ──────────────────────────────────────────────────────────────────
-  { keys: ['buy signal','what is buy','buy means','buy decision'],
-    q: 'What does a BUY signal mean?',
-    a: `**BUY signal conditions (all 3 must be true):**
-
-- RSI(14) < 40 — oversold, momentum turning up
-- Price above VWAP — institutional buying pressure
-- Price above ORB High — opening range breakout confirmed
-
-**What to do:** place a limit order at the Entry price shown. Use the Stop Loss and Target shown in the expanded row.` },
-
-  { keys: ['sell signal','what is sell','sell means','sell decision'],
-    q: 'What does a SELL signal mean?',
-    a: `**SELL signal conditions (all 3 must be true):**
-
-- RSI(14) > 60 — overbought, momentum turning down
-- Price below VWAP — selling pressure dominant
-- Price below ORB Low — opening range breakdown confirmed
-
-Note: SELL means shorting the stock intraday. Only trade this if your broker and account allow intraday short selling.` },
-
-  { keys: ['watch','watch signal','why watch','watch means'],
-    q: 'Why is my signal showing WATCH?',
-    a: `**WATCH means mixed signals — skip this stock today.**
-
-Common causes:
-- Price is between ORB High and ORB Low (still in range)
-- RSI is neutral (40–60) — no clear momentum
-- Price near VWAP — no directional conviction
-- Nifty ±0.5% hard block — market too volatile (this overrides BUY/SELL to WATCH)
-
-**What to do:** wait for a cleaner setup or pick a different stock. WATCH signals have confidence capped at 45%.` },
-
-  // ── CONFIDENCE ──────────────────────────────────────────────────────────────
-  { keys: ['confidence','score','percent','how confidence','what is confidence','63%','78%','45%','55%','75%'],
-    q: 'How is the confidence score calculated?',
-    a: `**Confidence score = 6 weighted factors (0–100%)**
-
-| Factor | Weight | Full score if… |
-|--------|--------|---------------|
-| ORB breakout | 25% | Clean break above/below ORB |
-| Volume | 20% | ≥150% of 20-day average |
-| VWAP alignment | 20% | Price on correct side of VWAP |
-| RSI alignment | 15% | RSI in ideal range for signal |
-| Risk:Reward | 15% | R:R ≥ 2:1 |
-| ATR/volatility | 5% | Daily range in healthy zone |
-
-**Then adjusted by:**
-- Market context: Nifty trend, sector, gap, day trend (±5–15%)
-- Macro penalties: crude, gold, FII flows, news sentiment (–50% to +8%)
-- Candle confirmation: –20% if last 3 candles disagree
-
-**Verdict:**
-- ≥75% 🟢 Green — full position size
-- 55–74% 🟡 Amber — half position size
-- <55% 🔴 Red — skip this trade
-
-Hover the confidence cell in any row to see the exact breakdown for that stock.` },
-
-  // ── ORB ─────────────────────────────────────────────────────────────────────
-  { keys: ['orb','opening range','breakout','breakdown','first 15','9:15','9:30'],
-    q: 'What is ORB?',
-    a: `**ORB = Opening Range Breakout**
-
-The first 15 candles of the day (9:15–9:30 AM IST) define the opening range:
-- **ORB High** = highest price in those 15 minutes
-- **ORB Low** = lowest price in those 15 minutes
-
-**Breakout** (BUY signal): price closes above ORB High → bullish momentum  
-**Breakdown** (SELL signal): price closes below ORB Low → bearish momentum  
-**Inside range**: price still between ORB High and Low → WATCH, wait
-
-ORB has 25% weight in the confidence score — it's the most important single factor.` },
-
-  // ── VWAP ────────────────────────────────────────────────────────────────────
-  { keys: ['vwap','volume weighted','above vwap','below vwap'],
-    q: 'What is VWAP?',
-    a: `**VWAP = Volume Weighted Average Price**
-
-Calculated from all intraday 1-minute candles: sum of (price × volume) ÷ total volume.
-
-- **Price above VWAP** → institutions are net buyers → bullish (✓ for BUY)
-- **Price below VWAP** → institutions are net sellers → bearish (✓ for SELL)
-
-VWAP resets every day at 9:15 AM. It's a real-time institutional reference line.
-
-Weight in confidence: **20%**` },
-
-  // ── RSI ─────────────────────────────────────────────────────────────────────
-  { keys: ['rsi','relative strength','oversold','overbought','rsi 14'],
-    q: 'What does RSI mean in this scanner?',
-    a: `**RSI(14) = 14-period Relative Strength Index** (calculated from daily closes)
-
-- **RSI < 30** → Oversold — strong buying opportunity for BUY signals
-- **RSI 30–40** → Mildly oversold — good for BUY  
-- **RSI 40–60** → Neutral — ideal zone, both directions possible
-- **RSI 60–70** → Mildly overbought — good for SELL
-- **RSI > 70** → Overbought — strong SELL zone, caution for BUY
-
-Weight in confidence: **15%**
-
-The scanner requires RSI < 40 for BUY and RSI > 60 for SELL — not just direction, but magnitude.` },
-
-  // ── ATR ─────────────────────────────────────────────────────────────────────
-  { keys: ['atr','average true range','stop loss calculation','target calculation','volatility'],
-    q: 'What is ATR and how is it used?',
-    a: `**ATR = Average True Range** (14-day average daily range in ₹)
-
-Used to set **position-specific** stop loss and target:
-
-- **Target** = Entry + (ATR × 2) for BUY, Entry − (ATR × 2) for SELL
-- **Stop Loss** = below ORB Low for BUY, above ORB High for SELL
-
-Example: Stock at ₹1200, ATR = ₹18  
-→ Target = ₹1200 + ₹36 = ₹1236  
-→ R:R = ₹36 gain / ₹12 risk = 3:1
-
-A higher ATR means wider stop loss but also larger targets. Weight in confidence: **5%** (used mainly for R:R calculation).` },
-
-  // ── MACRO ───────────────────────────────────────────────────────────────────
-  { keys: ['macro','4 layer','macro layer','crude','oil','gold','fii','dii','news','rbi','fed'],
-    q: 'How does the macro intelligence work?',
-    a: `**4 macro layers run every 30 minutes and adjust confidence:**
-
-**Layer 1 — Economic calendar** (Investing.com)  
-High-impact event (RBI, Fed, Budget) within 30 min → **–50%** on all signals
-
-**Layer 2 — Yahoo Finance proxies**
-- Crude (BZ=F) +2% spike → –12% on Auto/FMCG/Pharma BUYs, +8% on Energy
-- Gold (GC=F) +1.5% rally → –10% on ALL equity BUYs
-- USD/INR +0.5% weakening → –10% on Auto/FMCG, +8% on IT BUYs
-- S&P futures <–1.5% → –15% on all BUYs
-- VIX >30 → –20%, VIX >25 → –10%
-
-**Layer 3 — NSE FII/DII flows**  
-FII net sellers >₹500 Cr → **–10%** on BUYs; buyers → **+5%**
-
-**Layer 4 — NewsAPI + Claude Haiku**  
-Headlines classified as bearish (high confidence) → **–15%** on BUYs
-
-All penalties are additive. Final = max(5, min(100, base + all_adjustments))` },
-
-  // ── READY COLUMN ────────────────────────────────────────────────────────────
-  { keys: ['ready','readiness','6 gate','gate','green ready','ready column','checklist'],
-    q: 'How do I read the Ready? column?',
-    a: `**Ready? = 6-gate checklist. All must pass for a trade.**
-
-| Gate | Condition |
-|------|-----------|
-| ⏱ Time | 9:45–10:30 AM IST (prime window) |
-| 📊 Signal | BUY or SELL (not WATCH) |
-| 🕯 Candles | 3/3 recent candles confirm VWAP side |
-| 💯 Confidence | ≥75% |
-| 📈 Volume | ≥100% of 20-day average |
-| 🔺 ORB | Clean breakout/breakdown confirmed |
-
-🟢 **Green** = all 6 pass → full position  
-🟡 **Amber** = most pass, confidence 55–74% → half position  
-🔴 **Red** = one or more fails → skip
-
-Hover any gate icon to see why it passed or failed.` },
-
-  // ── ALERTS ──────────────────────────────────────────────────────────────────
-  { keys: ['telegram','alert','notification','when does alert','alert fire','9:15','10:30'],
-    q: 'How do Telegram alerts work?',
-    a: `**Alerts fire automatically 9:15–10:30 AM IST, every 5 minutes.**
-
-3 triggers (each fires once per stock per session):
-
-1. **🟢 Green Ready** — first time a stock hits Green verdict
-2. **📈 Confidence crossed 75%** — was below, now above 75%
-3. **⚡ Signal reversal** — BUY flipped to SELL or vice versa
-
-**Setup required:**
-- your Telegram bot token → from @BotFather
-- your Telegram chat ID → your numeric ID (visit /get-chat-id)
-- Login each morning before 9:15 AM (token must be set)
-
-Test anytime via Admin → Dry Scan → Mock.` },
-
-  // ── MARKET FILTERS ──────────────────────────────────────────────────────────
-  { keys: ['nifty block','nifty 0.5','market filter','blocked','sector','gap filter','market context'],
-    q: 'Why did my signal get blocked?',
-    a: `**Market context filters run before macro:**
-
-- **Nifty ±0.5% hard block** → if Nifty moves >0.5% either way, ALL counter-trend signals forced to WATCH. This is not a penalty — it completely overrides the signal. Most common reason for unexpected WATCH.
-- **Sector headwind** → –15% if your stock's sector index is going against the signal
-- **Sector tailwind** → +5% bonus
-- **Gap filter** → –10% if stock opened with a gap against the signal direction
-- **Day trend** → ±5–10% based on stock's intraday direction vs signal
-
-Check the signal hover tooltip to see exactly which filter triggered.` },
-
-  // ── ADMIN ───────────────────────────────────────────────────────────────────
-  { keys: ['admin','admin tab','pin','admin pin','system status'],
-    q: 'How does the Admin tab work?',
-    a: `**Admin tab is PIN-protected** via the admin PIN env var in Render.
-
-Sections (all collapsible):
-- **System Status** — Proxy ping, Alert status, Macro status, DB status
-- **Dry Scan** — Test scan with symbol autocomplete; outside market hours auto-uses mock
-- **Database** — Init Supabase tables, trade stats, alert log
-- **Quick Links** — Render, Supabase, UptimeRobot, Set token form
-
-If no the admin PIN set → open access (dev mode).` },
-
-  // ── DRY SCAN ────────────────────────────────────────────────────────────────
-  { keys: ['dry scan','test scan','test alert','403','dry run'],
-    q: 'Why does dry scan give a 403 error?',
-    a: `**Upstox data APIs only work during market hours (9:00–15:40 IST).**
-
-Outside market hours → dry scan automatically switches to **Mock mode** and sends a test Telegram alert with synthetic data. This is normal and expected.
-
-For a real live scan:
-1. Login fresh this morning (token must be today's)
-2. Run dry scan between 9:00 AM and 3:40 PM IST
-3. If still 403 during market hours → logout and login again to get a fresh token` },
-
-  // ── DATABASE ────────────────────────────────────────────────────────────────
-  { keys: ['database','supabase','db','persist','restart','token lost'],
-    q: 'How does the database work?',
-    a: `**Supabase PostgreSQL (free tier) stores 4 things:**
-
-| Table | What it stores |
-|-------|---------------|
-| token table | Today's Upstox token — survives Render restarts |
-| session table | Locked signals, alerts fired today, macro cache |
-| history table | All your saved predictions with outcomes |
-| alert log table | Every Telegram message sent (permanent log) |
-
-**Setup:** Add your database connection string to Render env vars (from Supabase → Settings → Database → URI). Then visit \`Admin → Database → Init tables\` once to create tables.
-
-Without your database connection string → falls back to in-memory (data lost on restart).` },
-
-  // ── VERSION ─────────────────────────────────────────────────────────────────
-  { keys: ['version','v2.2','latest version','what version','current version'],
-    q: 'What version is the scanner?',
-    a: `**Current version: v2.2.0**
-
-Key milestones:
-- v0.1–v0.4: Local scanner with ORB/VWAP/RSI/confidence
-- v1.0: Cloud (GitHub Pages + Render)
-- v1.1: Telegram alerts
-- v1.2: Market context filters (Nifty block, sector, gap)
-- v1.3: 4-layer macro intelligence
-- v1.8: Security audit, OAuth popup auto-close
-- v1.9: Admin PIN, collapsible UI, AI disabled
-- v2.0: Supabase DB (token/session/history persist)
-- v2.1: Separate login.html, auth guard, logout
-- v2.2: Embedded chatbot, confTip breakdown, auto-mock dry scan` },
-
-  // ── STOCKS ──────────────────────────────────────────────────────────────────
-  { keys: ['stocks','30 stocks','which stocks','nifty 50','add stock','more stocks'],
-    q: 'Which stocks does the scanner cover?',
-    a: `**30 most liquid Nifty 50 stocks** (hardcoded with Upstox ISINs):
-
-Banking: HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, INDUSINDBK  
-IT: TCS, INFY, WIPRO, HCLTECH, TECHM  
-Energy: RELIANCE, NTPC, ONGC, COALINDIA  
-Auto: MARUTI, TATAMOTORS, BAJAJAUTO  
-Pharma: SUNPHARMA, DRREDDY, CIPLA  
-Consumer: HINDUNILVR, ITC, TITAN, ASIANPAINT  
-Others: LT, BHARTIARTL, BAJFINANCE, TATASTEEL, ULTRACEMCO  
-
-**To add more stocks:** add an entry to \`STOCKS\` in signals.py with the Upstox instrument key (\`NSE_EQ|<ISIN>\`). The ISIN for any stock is on nseindia.com.` },
-
-  // ── LOGOUT ──────────────────────────────────────────────────────────────────
-  { keys: ['logout','sign out','log out','switch account'],
-    q: 'How do I logout?',
-    a: `Click the **⏻ Logout** button in the top-right navbar.
-
-This:
-1. Clears your browser token
-2. Deletes today's token from Supabase (\`DELETE FROM token table\`)
-3. Redirects to login.html
-
-Next morning: open login.html → tap Login → you're back in.` },
-
-];
-
-// ── Matcher ───────────────────────────────────────────────────────────────────
-function cpAnswer(q){
-  var lower = q.toLowerCase();
-  var best = null, bestScore = 0;
-  CP_KB.forEach(function(entry){
-    var score = 0;
-    entry.keys.forEach(function(k){
-      if(lower.includes(k)) score += k.length; // longer keyword = higher weight
-    });
-    if(score > bestScore){ bestScore = score; best = entry; }
-  });
-  if(best && bestScore >= 3) return best.a;
-  // Fallback
-  return "I don\u2019t have a specific answer for that. Try asking about:\n\n" +
-    "- **Signals**: BUY, SELL, WATCH conditions\n" +
-    "- **Confidence score**: how it\u2019s calculated\n" +
-    "- **ORB, VWAP, RSI, ATR**: what each indicator means\n" +
-    "- **Macro layers**: how news/crude/FII affect signals\n" +
-    "- **Alerts**: Telegram setup and triggers\n" +
-    "- **Login / logout**: daily flow\n" +
-    "- **Admin tab**: dry scan, DB, system status";
-}
-
-
-function cpToggle(){
-  cpOpn=!cpOpn;
-  var p=document.getElementById('chatPanel');
-  if(cpOpn){
-    p.classList.add('cp-open');
-    if(!cpH.length) cpBot("<strong>Hi! I’m your NSE Scanner Assistant.</strong><br>Ask me anything about signals, confidence, ORB, VWAP, macro layers, Telegram alerts, login, or how to use the scanner.");
-    setTimeout(function(){var i=document.getElementById('cpInp');if(i)i.focus();},240);
-  } else { p.classList.remove('cp-open'); }
-}
-
-document.addEventListener('keydown',function(e){if(e.key==='Escape'&&cpOpn)cpToggle();});
-
-function cpBot(html){var d=document.createElement('div');d.className='cp-b';d.innerHTML=html;var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;}
-function cpUser(txt){var d=document.createElement('div');d.className='cp-u';d.textContent=txt;var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;}
-
-function cpMd(t){
-  return t
-    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
-    .replace(/^#{1,3} (.+)$/gm,'<strong style="display:block;margin:8px 0 4px;color:#27500A;font-size:11px;text-transform:uppercase;letter-spacing:.05em;">$1</strong>')
-    .replace(/^[-*] (.+)$/gm,'<li>$1</li>')
-    .replace(/(<li>[\s\S]*?<\/li>)/g,'<ul style="padding-left:14px;margin:4px 0;">$1</ul>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" style="color:#185FA5;">$1</a>')
-    .replace(/`([^`]+)`/g,'<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:11px;">$1</code>')
-    .replace(/\n\n/g,'<br><br>').replace(/\n/g,'<br>')
-    .replace(/\|([^|\n]+)\|/g, function(m){ return '<span style="display:inline-block;padding:2px 6px;border:1px solid #e0e0e0;margin:1px;font-size:12px;">'+m.replace(/\|/g,'')+'</span>'; });
-}
-
-function cpAsk(q){document.getElementById('cpInp').value=q;cpSend();}
-
-function cpSend(){
-  if(cpBusy)return;
-  var inp=document.getElementById('cpInp'),txt=inp.value.trim();
-  if(!txt)return;
-  inp.value='';inp.style.height='auto';
-  cpBusy=true;document.getElementById('cpBtn').disabled=true;
-  document.getElementById('cpSugs').style.display='none';
-  cpUser(txt);
-  // Small delay to feel natural
-  setTimeout(function(){
-    var answer = cpAnswer(txt);
-    cpBot(cpMd(answer));
-    cpBusy=false;document.getElementById('cpBtn').disabled=false;
-    document.getElementById('cpInp').focus();
-  }, 180);
-}
+checkSession();
 </script>
 </body>
 </html>
