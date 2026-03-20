@@ -18,18 +18,22 @@ log = logging.getLogger(__name__)
 
 # ── Connection ────────────────────────────────────────────────────────────────
 _DB  = None
-_db  = None   # psycopg2 connection
+_db  = None   # psycopg v3 connection
 
 def get_connection():
     global _DB, _db
-    import psycopg2, psycopg2.extras
+    import psycopg
+    from psycopg.rows import dict_row
     url = os.environ.get("DATABASE_URL", "")
     if not url:
         return None
-    if _db is None or _db.closed:
-        _db = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
-        _db.autocommit = True
-        _DB = True
+    try:
+        if _db is None or _db.closed:
+            _db = psycopg.connect(url, row_factory=dict_row, autocommit=True)
+            _DB = True
+    except Exception as e:
+        log.error("DB connection failed: %s", e)
+        return None
     return _db
 
 def db():
