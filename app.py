@@ -163,8 +163,25 @@ def admin_check():
 @app.route("/db/init")
 @app.route("/db/init/")
 def db_init():
+    import os as _os
+    db_url = _os.environ.get("DATABASE_URL", "")
+    # Diagnostic: show what env sees (mask password)
+    if not db_url:
+        # List all env vars containing 'database' or 'postgres' or 'supabase'
+        hints = {k: v[:8]+"..." for k,v in _os.environ.items()
+                 if any(x in k.lower() for x in ["database","postgres","supabase","db_"])}
+        return jsonify({
+            "error": "DATABASE_URL not set",
+            "hint": "Check Render env var name is exactly DATABASE_URL (case-sensitive)",
+            "similar_vars_found": hints or "none",
+            "total_env_vars": len(_os.environ)
+        }), 503
     if not _has_db():
-        return jsonify({"error": "DATABASE_URL not set in Render env vars"}), 503
+        return jsonify({
+            "error": "DATABASE_URL set but connection failed",
+            "url_prefix": db_url[:25] + "...",
+            "hint": "Check the URL format: postgresql://user:pass@host:port/dbname"
+        }), 503
     try:
         result = _db_module.init_db()
         return jsonify({"status": "ok", "message": "All tables created successfully.", "detail": result})

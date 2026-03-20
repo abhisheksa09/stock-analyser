@@ -26,6 +26,9 @@ def get_connection():
     from psycopg.rows import dict_row
     url = os.environ.get("DATABASE_URL", "")
     if not url:
+        log.error("DATABASE_URL env var is empty or not set. "
+                  "Env keys visible: %s",
+                  [k for k in os.environ if "DATA" in k or "POST" in k or "DB" in k])
         return None
     try:
         if _db is None or _db.closed:
