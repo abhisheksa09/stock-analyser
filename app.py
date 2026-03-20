@@ -649,6 +649,48 @@ OAUTH_REDIRECT    = RENDER_BASE_URL + "/auth/callback"
 # Store last OAuth attempt result for debugging
 _last_oauth = {"status": "never attempted", "detail": "", "time": ""}
 
+# ─── Bootstrap (first-time setup only) ───────────────────────────────────────
+
+@app.route("/bootstrap/create-admin", methods=["POST"])
+def bootstrap_create_admin():
+    """
+    One-time endpoint to create the first admin user.
+    Only works when the users table is empty.
+    Requires ADMIN_PIN in the request body as proof of server access.
+    Body: {"pin": "...", "username": "...", "password": "..."}
+    """
+    import db as _db_mod
+    data     = request.get_json(silent=True) or {}
+    pin      = data.get("pin", "")
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+
+    # Verify ADMIN_PIN
+    correct_pin = os.environ.get("ADMIN_PIN", "")
+    if not correct_pin or pin != correct_pin:
+        return jsonify({"error": "Invalid PIN"}), 403
+
+    # Only allow if no users exist yet
+    existing = _db_mod.get_users()
+    if existing:
+        return jsonify({
+            "error": "Users already exist. Use /admin/users/create instead.",
+            "users": [u["username"] for u in existing]
+        }), 409
+
+    if not username or len(password) < 8:
+        return jsonify({"error": "username required, password must be >= 8 chars"}), 400
+
+    result = _db_mod.create_user(username, password, "admin")
+    if "error" in result:
+        return jsonify(result), 400
+
+    return jsonify({
+        "status": "ok",
+        "message": f"Admin user '{username}' created. You can now login at /login.html",
+        "user": result["user"]
+    })
+
 # ─── App authentication (username + password) ─────────────────────────────────
 
 @app.route("/app/login", methods=["POST"])
