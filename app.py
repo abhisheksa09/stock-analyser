@@ -869,7 +869,12 @@ def scanner_chat():
 
     ak = os.environ.get("ANTHROPIC_API_KEY", "")
     if not ak:
-        return jsonify({"error": "ANTHROPIC_API_KEY not configured on server"}), 503
+        return jsonify({
+            "error": {
+                "type": "configuration_error",
+                "message": "Chatbot not configured. Add ANTHROPIC_API_KEY to Render environment variables, then redeploy."
+            }
+        }), 503
 
     body     = request.get_json(silent=True) or {}
     messages = body.get("messages", [])
