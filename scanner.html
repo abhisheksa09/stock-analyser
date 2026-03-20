@@ -1,4 +1,4 @@
-<!DOCTY</div><!-- /tbl-wrap -->PE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -15,7 +15,7 @@ h1{font-size:20px;font-weight:600;}
 .chip-gray{background:#f5f5f0;color:#888;border-color:#ddd;}
 .navbar{display:flex;align-items:center;justify-content:space-between;
   gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e0e0e0;
-  margin:-20px -16px 20px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;}
+  margin:-20px -16px 20px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;position:relative;}
 .navbar-brand{display:flex;align-items:center;gap:8px;flex-shrink:0;}
 .navbar-title{font-size:16px;font-weight:700;white-space:nowrap;}
 .navbar-centre{display:flex;align-items:center;gap:6px;flex:1;justify-content:center;flex-wrap:wrap;}
@@ -417,7 +417,7 @@ html,body{max-width:100%;overflow-x:hidden;}
     </div>
 
     <div class="tbl-box" id="tblBox"><div class="tbl-wrap">
-      <table>
+      <div class="tbl-wrap"><table>
         <thead><tr>
           <th data-tip="Stock symbol and sector. Signal history dots show previous scans. Lock = first signal of session.">Stock</th>
           <th data-tip="Signal direction for this stock.
@@ -433,7 +433,7 @@ to see the specific analysis and reason.">Signal</th>
           <th class="r" data-tip="6-gate entry checklist: Time 9:45-10:30 IST, Signal confirmed, 3/3 candles agree, Confidence above 75%, Volume above 100%, ORB breakout confirmed.">Ready?</th>
         </tr></thead>
         <tbody id="scanBody"></tbody>
-      </table></div>
+      </table></div></div>
     </div>
 
     <div class="empty-box" id="emptyBox">Add stocks above &#8594; click scan<br><span style="font-size:12px;">Educational only. Not financial advice.</span></div>
@@ -663,8 +663,18 @@ to see the specific analysis and reason.">Signal</th>
 
 </div>
 
-<script>
 
+<script>
+// ── Mobile menu ────────────────────────────────────────────────────────────────
+function toggleMobileMenu(){
+  var m=document.getElementById('mobileMenu');
+  if(m) m.style.display=(m.style.display==='none'||m.style.display==='')?'block':'none';
+}
+document.addEventListener('click',function(e){
+  var m=document.getElementById('mobileMenu'),b=document.getElementById('burgerBtn');
+  if(m&&b&&!m.contains(e.target)&&!b.contains(e.target)&&m.style.display!=='none')
+    m.style.display='none';
+});
 // ─── CONSTANTS ───
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
@@ -1018,22 +1028,7 @@ async function runDryScan(btnEl){
 }
 
 // ─── NAVBAR FUNCTIONS ─────────────────────────────────────────────────────────
-// ── Mobile menu ────────────────────────────────────────────────────────────────
-function toggleMobileMenu(){
-  var m=document.getElementById('mobileMenu');
-  if(m) m.style.display=(m.style.display==='none'||m.style.display==='')?'block':'none';
-}
-document.addEventListener('click',function(e){
-  var m=document.getElementById('mobileMenu'),b=document.getElementById('burgerBtn');
-  if(m&&b&&!m.contains(e.target)&&!b.contains(e.target)&&m.style.display!=='none')
-    m.style.display='none';
-});
-// ── Logout ──────────────────────────────────────────────────────────────────────
-function doLogout(){
-  token='';
-  fetch(PROXY+'/auth/logout',{method:'POST'}).catch(function(){});
-  setTimeout(function(){window.location.replace('login.html');},350);
-}
+
 // ── Auth guard ─────────────────────────────────────────────────────────────────
 (async function authGuard(){
   try{
@@ -1826,6 +1821,25 @@ function updateEventUI(){document.querySelectorAll('.qpill').forEach(pill=>{cons
 function updateEventBanner(){const banner=document.getElementById('evtBanner');if(!banner)return;const selectedSyms=[...sel.keys()];const warnings=[];selectedSyms.forEach(sym=>{getStockEvents(sym).forEach(e=>{warnings.push({sym,...e});});});if(!warnings.length){banner.style.display='none';return;}const lines=warnings.map(w=>'<strong>'+w.sym+'</strong> \u2014 '+w.icon+' '+w.subject+' on '+w.date+' ('+w.daysAway+' day'+(w.daysAway!==1?'s':'')+' away)');banner.innerHTML='<strong>\u26a0 Corporate events in next 7 days:</strong><br>'+lines.join('<br>')+'<br><span style="font-size:11px;opacity:.8;">These events can cause unusual price moves. Trade with extra caution or consider skipping on event day.</span>';banner.style.display='block';}
 function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return '';return evts.map(e=>'<span class="evt-badge '+e.cls+'" title="'+e.subject+' on '+e.date+'">'+e.icon+' '+e.label+' '+e.daysAway+'d</span>').join(' ');}
 
+
+
+
+// ── Logout ──────────────────────────────────────────────────────────────────────
+
+// ── Logout ──────────────────────────────────────────────────────────────────────
+function doLogout(){
+  if(typeof token !== 'undefined') token='';
+  fetch('https://nse-proxy-mojx.onrender.com/auth/logout',{method:'POST'}).catch(function(){});
+  setTimeout(function(){window.location.replace('login.html');},350);
+}
+
+</script>
+<script>
+function doLogout(){
+  token='';
+  fetch(PROXY+'/auth/logout',{method:'POST'}).catch(function(){});
+  setTimeout(function(){window.location.replace('login.html');},350);
+}
 
 
 </script>
