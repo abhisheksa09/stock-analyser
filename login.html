@@ -337,45 +337,375 @@ checkLogin();
 
   <script>
 var cpH=[],cpBusy=false,cpOpn=false;
-var CP_PROXY='https://nse-proxy-mojx.onrender.com';
+
+
+// ── NSE Scanner Knowledge Base ────────────────────────────────────────────────
+// Pure JS, no API needed. Keyword matching with ranked answers.
+
+const CP_KB = [
+
+  // ── LOGIN / AUTH ────────────────────────────────────────────────────────────
+  { keys: ['login','upstox','auth','oauth','token','morning','how to start','get started'],
+    q: 'How do I log in each morning?',
+    a: `**Morning routine (3 steps)**
+
+1. Open [login.html](login.html) on your phone
+2. Tap **🔐 Login** → Upstox OTP screen → tap Authorize
+3. Popup closes automatically → you're in
+
+The scanner auto-detects your session next time — if you logged in today, opening the scanner redirects straight in without needing to login again.
+
+**Token persists** in Supabase DB so Render restarts won't log you out.` },
+
+  // ── SIGNAL ──────────────────────────────────────────────────────────────────
+  { keys: ['buy signal','what is buy','buy means','buy decision'],
+    q: 'What does a BUY signal mean?',
+    a: `**BUY signal conditions (all 3 must be true):**
+
+- RSI(14) < 40 — oversold, momentum turning up
+- Price above VWAP — institutional buying pressure
+- Price above ORB High — opening range breakout confirmed
+
+**What to do:** place a limit order at the Entry price shown. Use the Stop Loss and Target shown in the expanded row.` },
+
+  { keys: ['sell signal','what is sell','sell means','sell decision'],
+    q: 'What does a SELL signal mean?',
+    a: `**SELL signal conditions (all 3 must be true):**
+
+- RSI(14) > 60 — overbought, momentum turning down
+- Price below VWAP — selling pressure dominant
+- Price below ORB Low — opening range breakdown confirmed
+
+Note: SELL means shorting the stock intraday. Only trade this if your broker and account allow intraday short selling.` },
+
+  { keys: ['watch','watch signal','why watch','watch means'],
+    q: 'Why is my signal showing WATCH?',
+    a: `**WATCH means mixed signals — skip this stock today.**
+
+Common causes:
+- Price is between ORB High and ORB Low (still in range)
+- RSI is neutral (40–60) — no clear momentum
+- Price near VWAP — no directional conviction
+- Nifty ±0.5% hard block — market too volatile (this overrides BUY/SELL to WATCH)
+
+**What to do:** wait for a cleaner setup or pick a different stock. WATCH signals have confidence capped at 45%.` },
+
+  // ── CONFIDENCE ──────────────────────────────────────────────────────────────
+  { keys: ['confidence','score','percent','how confidence','what is confidence','63%','78%','45%','55%','75%'],
+    q: 'How is the confidence score calculated?',
+    a: `**Confidence score = 6 weighted factors (0–100%)**
+
+| Factor | Weight | Full score if… |
+|--------|--------|---------------|
+| ORB breakout | 25% | Clean break above/below ORB |
+| Volume | 20% | ≥150% of 20-day average |
+| VWAP alignment | 20% | Price on correct side of VWAP |
+| RSI alignment | 15% | RSI in ideal range for signal |
+| Risk:Reward | 15% | R:R ≥ 2:1 |
+| ATR/volatility | 5% | Daily range in healthy zone |
+
+**Then adjusted by:**
+- Market context: Nifty trend, sector, gap, day trend (±5–15%)
+- Macro penalties: crude, gold, FII flows, news sentiment (–50% to +8%)
+- Candle confirmation: –20% if last 3 candles disagree
+
+**Verdict:**
+- ≥75% 🟢 Green — full position size
+- 55–74% 🟡 Amber — half position size
+- <55% 🔴 Red — skip this trade
+
+Hover the confidence cell in any row to see the exact breakdown for that stock.` },
+
+  // ── ORB ─────────────────────────────────────────────────────────────────────
+  { keys: ['orb','opening range','breakout','breakdown','first 15','9:15','9:30'],
+    q: 'What is ORB?',
+    a: `**ORB = Opening Range Breakout**
+
+The first 15 candles of the day (9:15–9:30 AM IST) define the opening range:
+- **ORB High** = highest price in those 15 minutes
+- **ORB Low** = lowest price in those 15 minutes
+
+**Breakout** (BUY signal): price closes above ORB High → bullish momentum  
+**Breakdown** (SELL signal): price closes below ORB Low → bearish momentum  
+**Inside range**: price still between ORB High and Low → WATCH, wait
+
+ORB has 25% weight in the confidence score — it's the most important single factor.` },
+
+  // ── VWAP ────────────────────────────────────────────────────────────────────
+  { keys: ['vwap','volume weighted','above vwap','below vwap'],
+    q: 'What is VWAP?',
+    a: `**VWAP = Volume Weighted Average Price**
+
+Calculated from all intraday 1-minute candles: sum of (price × volume) ÷ total volume.
+
+- **Price above VWAP** → institutions are net buyers → bullish (✓ for BUY)
+- **Price below VWAP** → institutions are net sellers → bearish (✓ for SELL)
+
+VWAP resets every day at 9:15 AM. It's a real-time institutional reference line.
+
+Weight in confidence: **20%**` },
+
+  // ── RSI ─────────────────────────────────────────────────────────────────────
+  { keys: ['rsi','relative strength','oversold','overbought','rsi 14'],
+    q: 'What does RSI mean in this scanner?',
+    a: `**RSI(14) = 14-period Relative Strength Index** (calculated from daily closes)
+
+- **RSI < 30** → Oversold — strong buying opportunity for BUY signals
+- **RSI 30–40** → Mildly oversold — good for BUY  
+- **RSI 40–60** → Neutral — ideal zone, both directions possible
+- **RSI 60–70** → Mildly overbought — good for SELL
+- **RSI > 70** → Overbought — strong SELL zone, caution for BUY
+
+Weight in confidence: **15%**
+
+The scanner requires RSI < 40 for BUY and RSI > 60 for SELL — not just direction, but magnitude.` },
+
+  // ── ATR ─────────────────────────────────────────────────────────────────────
+  { keys: ['atr','average true range','stop loss calculation','target calculation','volatility'],
+    q: 'What is ATR and how is it used?',
+    a: `**ATR = Average True Range** (14-day average daily range in ₹)
+
+Used to set **position-specific** stop loss and target:
+
+- **Target** = Entry + (ATR × 2) for BUY, Entry − (ATR × 2) for SELL
+- **Stop Loss** = below ORB Low for BUY, above ORB High for SELL
+
+Example: Stock at ₹1200, ATR = ₹18  
+→ Target = ₹1200 + ₹36 = ₹1236  
+→ R:R = ₹36 gain / ₹12 risk = 3:1
+
+A higher ATR means wider stop loss but also larger targets. Weight in confidence: **5%** (used mainly for R:R calculation).` },
+
+  // ── MACRO ───────────────────────────────────────────────────────────────────
+  { keys: ['macro','4 layer','macro layer','crude','oil','gold','fii','dii','news','rbi','fed'],
+    q: 'How does the macro intelligence work?',
+    a: `**4 macro layers run every 30 minutes and adjust confidence:**
+
+**Layer 1 — Economic calendar** (Investing.com)  
+High-impact event (RBI, Fed, Budget) within 30 min → **–50%** on all signals
+
+**Layer 2 — Yahoo Finance proxies**
+- Crude (BZ=F) +2% spike → –12% on Auto/FMCG/Pharma BUYs, +8% on Energy
+- Gold (GC=F) +1.5% rally → –10% on ALL equity BUYs
+- USD/INR +0.5% weakening → –10% on Auto/FMCG, +8% on IT BUYs
+- S&P futures <–1.5% → –15% on all BUYs
+- VIX >30 → –20%, VIX >25 → –10%
+
+**Layer 3 — NSE FII/DII flows**  
+FII net sellers >₹500 Cr → **–10%** on BUYs; buyers → **+5%**
+
+**Layer 4 — NewsAPI + Claude Haiku**  
+Headlines classified as bearish (high confidence) → **–15%** on BUYs
+
+All penalties are additive. Final = max(5, min(100, base + all_adjustments))` },
+
+  // ── READY COLUMN ────────────────────────────────────────────────────────────
+  { keys: ['ready','readiness','6 gate','gate','green ready','ready column','checklist'],
+    q: 'How do I read the Ready? column?',
+    a: `**Ready? = 6-gate checklist. All must pass for a trade.**
+
+| Gate | Condition |
+|------|-----------|
+| ⏱ Time | 9:45–10:30 AM IST (prime window) |
+| 📊 Signal | BUY or SELL (not WATCH) |
+| 🕯 Candles | 3/3 recent candles confirm VWAP side |
+| 💯 Confidence | ≥75% |
+| 📈 Volume | ≥100% of 20-day average |
+| 🔺 ORB | Clean breakout/breakdown confirmed |
+
+🟢 **Green** = all 6 pass → full position  
+🟡 **Amber** = most pass, confidence 55–74% → half position  
+🔴 **Red** = one or more fails → skip
+
+Hover any gate icon to see why it passed or failed.` },
+
+  // ── ALERTS ──────────────────────────────────────────────────────────────────
+  { keys: ['telegram','alert','notification','when does alert','alert fire','9:15','10:30'],
+    q: 'How do Telegram alerts work?',
+    a: `**Alerts fire automatically 9:15–10:30 AM IST, every 5 minutes.**
+
+3 triggers (each fires once per stock per session):
+
+1. **🟢 Green Ready** — first time a stock hits Green verdict
+2. **📈 Confidence crossed 75%** — was below, now above 75%
+3. **⚡ Signal reversal** — BUY flipped to SELL or vice versa
+
+**Setup required:**
+- \`TELEGRAM_BOT_TOKEN\` → from @BotFather
+- \`TELEGRAM_CHAT_ID\` → your numeric ID (visit /get-chat-id)
+- Login each morning before 9:15 AM (token must be set)
+
+Test anytime via Admin → Dry Scan → Mock.` },
+
+  // ── MARKET FILTERS ──────────────────────────────────────────────────────────
+  { keys: ['nifty block','nifty 0.5','market filter','blocked','sector','gap filter','market context'],
+    q: 'Why did my signal get blocked?',
+    a: `**Market context filters run before macro:**
+
+- **Nifty ±0.5% hard block** → if Nifty moves >0.5% either way, ALL counter-trend signals forced to WATCH. This is not a penalty — it completely overrides the signal. Most common reason for unexpected WATCH.
+- **Sector headwind** → –15% if your stock's sector index is going against the signal
+- **Sector tailwind** → +5% bonus
+- **Gap filter** → –10% if stock opened with a gap against the signal direction
+- **Day trend** → ±5–10% based on stock's intraday direction vs signal
+
+Check the signal hover tooltip to see exactly which filter triggered.` },
+
+  // ── ADMIN ───────────────────────────────────────────────────────────────────
+  { keys: ['admin','admin tab','pin','admin pin','system status'],
+    q: 'How does the Admin tab work?',
+    a: `**Admin tab is PIN-protected** via \`ADMIN_PIN\` env var in Render.
+
+Sections (all collapsible):
+- **System Status** — Proxy ping, Alert status, Macro status, DB status
+- **Dry Scan** — Test scan with symbol autocomplete; outside market hours auto-uses mock
+- **Database** — Init Supabase tables, trade stats, alert log
+- **Quick Links** — Render, Supabase, UptimeRobot, Set token form
+
+If no \`ADMIN_PIN\` set → open access (dev mode).` },
+
+  // ── DRY SCAN ────────────────────────────────────────────────────────────────
+  { keys: ['dry scan','test scan','test alert','403','dry run'],
+    q: 'Why does dry scan give a 403 error?',
+    a: `**Upstox data APIs only work during market hours (9:00–15:40 IST).**
+
+Outside market hours → dry scan automatically switches to **Mock mode** and sends a test Telegram alert with synthetic data. This is normal and expected.
+
+For a real live scan:
+1. Login fresh this morning (token must be today's)
+2. Run dry scan between 9:00 AM and 3:40 PM IST
+3. If still 403 during market hours → logout and login again to get a fresh token` },
+
+  // ── DATABASE ────────────────────────────────────────────────────────────────
+  { keys: ['database','supabase','db','persist','restart','token lost'],
+    q: 'How does the database work?',
+    a: `**Supabase PostgreSQL (free tier) stores 4 things:**
+
+| Table | What it stores |
+|-------|---------------|
+| \`token_store\` | Today's Upstox token — survives Render restarts |
+| \`session_state\` | Locked signals, alerts fired today, macro cache |
+| \`trade_history\` | All your saved predictions with outcomes |
+| \`alert_log\` | Every Telegram message sent (permanent log) |
+
+**Setup:** Add \`DATABASE_URL\` to Render env vars (from Supabase → Settings → Database → URI). Then visit \`/db/init\` once to create tables.
+
+Without DATABASE_URL → falls back to in-memory (data lost on restart).` },
+
+  // ── VERSION ─────────────────────────────────────────────────────────────────
+  { keys: ['version','v2.2','latest version','what version','current version'],
+    q: 'What version is the scanner?',
+    a: `**Current version: v2.2.0**
+
+Key milestones:
+- v0.1–v0.4: Local scanner with ORB/VWAP/RSI/confidence
+- v1.0: Cloud (GitHub Pages + Render)
+- v1.1: Telegram alerts
+- v1.2: Market context filters (Nifty block, sector, gap)
+- v1.3: 4-layer macro intelligence
+- v1.8: Security audit, OAuth popup auto-close
+- v1.9: Admin PIN, collapsible UI, AI disabled
+- v2.0: Supabase DB (token/session/history persist)
+- v2.1: Separate login.html, auth guard, logout
+- v2.2: Embedded chatbot, confTip breakdown, auto-mock dry scan` },
+
+  // ── STOCKS ──────────────────────────────────────────────────────────────────
+  { keys: ['stocks','30 stocks','which stocks','nifty 50','add stock','more stocks'],
+    q: 'Which stocks does the scanner cover?',
+    a: `**30 most liquid Nifty 50 stocks** (hardcoded with Upstox ISINs):
+
+Banking: HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, INDUSINDBK  
+IT: TCS, INFY, WIPRO, HCLTECH, TECHM  
+Energy: RELIANCE, NTPC, ONGC, COALINDIA  
+Auto: MARUTI, TATAMOTORS, BAJAJAUTO  
+Pharma: SUNPHARMA, DRREDDY, CIPLA  
+Consumer: HINDUNILVR, ITC, TITAN, ASIANPAINT  
+Others: LT, BHARTIARTL, BAJFINANCE, TATASTEEL, ULTRACEMCO  
+
+**To add more stocks:** add an entry to \`STOCKS\` in signals.py with the Upstox instrument key (\`NSE_EQ|<ISIN>\`). The ISIN for any stock is on nseindia.com.` },
+
+  // ── LOGOUT ──────────────────────────────────────────────────────────────────
+  { keys: ['logout','sign out','log out','switch account'],
+    q: 'How do I logout?',
+    a: `Click the **⏻ Logout** button in the top-right navbar.
+
+This:
+1. Clears your browser token
+2. Deletes today's token from Supabase (\`DELETE FROM token_store\`)
+3. Redirects to login.html
+
+Next morning: open login.html → tap Login → you're back in.` },
+
+];
+
+// ── Matcher ───────────────────────────────────────────────────────────────────
+function cpAnswer(q){
+  var lower = q.toLowerCase();
+  var best = null, bestScore = 0;
+  CP_KB.forEach(function(entry){
+    var score = 0;
+    entry.keys.forEach(function(k){
+      if(lower.includes(k)) score += k.length; // longer keyword = higher weight
+    });
+    if(score > bestScore){ bestScore = score; best = entry; }
+  });
+  if(best && bestScore >= 3) return best.a;
+  // Fallback
+  return "I don\u2019t have a specific answer for that. Try asking about:\n\n" +
+    "- **Signals**: BUY, SELL, WATCH conditions\n" +
+    "- **Confidence score**: how it\u2019s calculated\n" +
+    "- **ORB, VWAP, RSI, ATR**: what each indicator means\n" +
+    "- **Macro layers**: how news/crude/FII affect signals\n" +
+    "- **Alerts**: Telegram setup and triggers\n" +
+    "- **Login / logout**: daily flow\n" +
+    "- **Admin tab**: dry scan, DB, system status";
+}
+
+
 function cpToggle(){
   cpOpn=!cpOpn;
   var p=document.getElementById('chatPanel');
   if(cpOpn){
     p.classList.add('cp-open');
-    if(!cpH.length) cpBot("<strong>Hi! I’m your NSE Scanner Assistant.</strong><br>Ask me anything about signals, confidence, alerts, macros, or how to use the scanner.");
+    if(!cpH.length) cpBot("<strong>Hi! I’m your NSE Scanner Assistant.</strong><br>Ask me anything about signals, confidence, ORB, VWAP, macro layers, Telegram alerts, login, or how to use the scanner.");
     setTimeout(function(){var i=document.getElementById('cpInp');if(i)i.focus();},240);
   } else { p.classList.remove('cp-open'); }
 }
+
 document.addEventListener('keydown',function(e){if(e.key==='Escape'&&cpOpn)cpToggle();});
+
 function cpBot(html){var d=document.createElement('div');d.className='cp-b';d.innerHTML=html;var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;}
 function cpUser(txt){var d=document.createElement('div');d.className='cp-u';d.textContent=txt;var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;}
-function cpTyping(){var d=document.createElement('div');d.className='cp-b cp-dots';d.id='cpTyping';d.innerHTML='<span></span><span></span><span></span>';var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;}
-function cpRm(){var t=document.getElementById('cpTyping');if(t)t.remove();}
-function cpMd(t){return t.replace(/```[\w]*\n?([\s\S]*?)```/g,'<pre style="background:#f0f0ed;padding:7px;border-radius:5px;overflow-x:auto;font-size:11px;margin:4px 0;"><code>$1</code></pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/^#{1,3} (.+)$/gm,'<strong style="display:block;margin:7px 0 3px;color:#27500A;font-size:11px;text-transform:uppercase;letter-spacing:.05em;">$1</strong>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/^[-*] (.+)$/gm,'<li>$1</li>').replace(/(<li>[\s\S]*?<\/li>)/g,'<ul style="padding-left:14px;margin:4px 0;">$1</ul>').replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>').replace(/^(.)/,'<p>$1').replace(/(.)$/,'$1</p>');}
+
+function cpMd(t){
+  return t
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/^#{1,3} (.+)$/gm,'<strong style="display:block;margin:8px 0 4px;color:#27500A;font-size:11px;text-transform:uppercase;letter-spacing:.05em;">$1</strong>')
+    .replace(/^[-*] (.+)$/gm,'<li>$1</li>')
+    .replace(/(<li>[\s\S]*?<\/li>)/g,'<ul style="padding-left:14px;margin:4px 0;">$1</ul>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" style="color:#185FA5;">$1</a>')
+    .replace(/`([^`]+)`/g,'<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:11px;">$1</code>')
+    .replace(/\n\n/g,'<br><br>').replace(/\n/g,'<br>')
+    .replace(/\|([^|\n]+)\|/g, function(m){ return '<span style="display:inline-block;padding:2px 6px;border:1px solid #e0e0e0;margin:1px;font-size:12px;">'+m.replace(/\|/g,'')+'</span>'; });
+}
+
 function cpAsk(q){document.getElementById('cpInp').value=q;cpSend();}
-async function cpSend(){
+
+function cpSend(){
   if(cpBusy)return;
   var inp=document.getElementById('cpInp'),txt=inp.value.trim();
   if(!txt)return;
   inp.value='';inp.style.height='auto';
   cpBusy=true;document.getElementById('cpBtn').disabled=true;
   document.getElementById('cpSugs').style.display='none';
-  cpUser(txt);cpH.push({role:'user',content:txt});cpTyping();
-  try{
-    var res=await fetch(CP_PROXY+'/chat',{method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({messages:cpH,max_tokens:768})});
-    var d=await res.json();cpRm();
-    if(d.error){var em=typeof d.error==='object'?d.error.message:String(d.error);
-      cpBot('<span style="color:#A32D2D">&#9888; '+em+'</span><br><small style="color:#999">Check ANTHROPIC_API_KEY is set in Render env vars.</small>');}
-    else{var rep=(d.content&&d.content[0]&&d.content[0].text)||'No response.';
-      cpBot(cpMd(rep));cpH.push({role:'assistant',content:rep});
-      if(cpH.length>30)cpH=cpH.slice(-30);}
-  }catch(e){cpRm();cpBot('<span style="color:#A32D2D">&#9888; Could not reach server.</span>');}
-  cpBusy=false;document.getElementById('cpBtn').disabled=false;
-  document.getElementById('cpInp').focus();
+  cpUser(txt);
+  // Small delay to feel natural
+  setTimeout(function(){
+    var answer = cpAnswer(txt);
+    cpBot(cpMd(answer));
+    cpBusy=false;document.getElementById('cpBtn').disabled=false;
+    document.getElementById('cpInp').focus();
+  }, 180);
 }
-  </script>
+</script>
 </body>
 </html>
