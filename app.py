@@ -25,6 +25,16 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import scanner
 import macro as macro_module
+import db as _db_module   # db layer — used via _db_module.init_db() etc.
+
+# Initialise DB connection at startup (non-fatal if DATABASE_URL not set)
+def _get_db():
+    """Return psycopg2 connection or None."""
+    return _db_module.get_connection()
+
+def _has_db():
+    """True if DATABASE_URL is set and connection works."""
+    return _get_db() is not None
 
 log = logging.getLogger("app")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [app] %(message)s")
@@ -72,8 +82,7 @@ def _get_session(request) -> dict | None:
              request.headers.get("X-Session-Token", ""))
     if not token:
         return None
-    import db as _db
-    return _db.validate_app_session(token)
+    return _db_module.validate_app_session(token)
 
 def _require_session(request):
     """Returns (session_dict, None) or (None, error_response)."""
@@ -154,46 +163,28 @@ def admin_check():
 @app.route("/db/init")
 @app.route("/db/init/")
 def db_init():
-    if not _DB:
+    if not _has_db():
         return jsonify({"error": "DATABASE_URL not set in Render env vars"}), 503
     try:
-        _db.init_db()
-        return jsonify({"status": "ok", "message": "All tables created successfully."})
+        result = _db_module.init_db()
+        return jsonify({"status": "ok", "message": "All tables created successfully.", "detail": result})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route("/db/status")
 @app.route("/db/status/")
 def db_status():
-    if not _DB:
-        return jsonify({"database": "not configured"}), 503
-    try:
-        with _db.cursor() as cur:
-            cur.execute(
-                "SELECT "
-                "(SELECT COUNT(*) FROM token_store) AS tokens,"
-                "(SELECT COUNT(*) FROM session_state) AS sessions,"
-                "(SELECT COUNT(*) FROM trade_history) AS trades,"
-                "(SELECT COUNT(*) FROM alert_log) AS alerts"
-            )
-            row = cur.fetchone()
-        return jsonify({
-            "database":   "connected",
-            "row_counts": {"tokens": row[0], "sessions": row[1],
-                           "trades": row[2], "alerts": row[3]},
-            "token_info": _db.get_token_info(),
-            "ist_now":    datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
-        })
-    except Exception as e:
-        return jsonify({"database": "error", "detail": str(e)}), 500
+    result = _db_module.db_status()
+    code = 200 if result.get("connected") else 503
+    return jsonify(result), code
 
 @app.route("/history/trades", methods=["GET"])
 @app.route("/history/trades/", methods=["GET"])
 def get_trades():
-    if not _DB:
+    if not _has_db():
         return jsonify({"error": "Database not configured"}), 503
     try:
-        trades = _db.load_trades(
+        trades = _db_module.load_trades(
             from_date=request.args.get("from_date"),
             to_date=request.args.get("to_date"),
             sym=request.args.get("sym"),
@@ -201,19 +192,19 @@ def get_trades():
             outcome=request.args.get("outcome"),
             limit=int(request.args.get("limit", 500)),
         )
-        return jsonify({"trades": trades, "stats": _db.get_trade_stats(), "count": len(trades)})
+        return jsonify({"trades": trades, "stats": _db_module.get_trade_stats(), "count": len(trades)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route("/history/trades", methods=["POST"])
 @app.route("/history/trades/", methods=["POST"])
 def save_trades():
-    if not _DB:
+    if not _has_db():
         return jsonify({"error": "Database not configured"}), 503
     try:
         data   = request.get_json(silent=True) or {}
         trades = data.get("trades", [data] if data.get("id") else [])
-        saved  = sum(1 for t in trades if t.get("id") and _db.save_trade(t))
+        saved  = sum(1 for t in trades if t.get("id") and _db_module.save_trade(t))
         return jsonify({"status": "ok", "saved": saved})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -221,10 +212,10 @@ def save_trades():
 @app.route("/history/trades/<trade_id>", methods=["PATCH"])
 @app.route("/history/trades/<trade_id>/", methods=["PATCH"])
 def update_trade_route(trade_id):
-    if not _DB:
+    if not _has_db():
         return jsonify({"error": "Database not configured"}), 503
     try:
-        _db.update_trade(trade_id, request.get_json(silent=True) or {})
+        _db_module.update_trade(trade_id, request.get_json(silent=True) or {})
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -232,10 +223,10 @@ def update_trade_route(trade_id):
 @app.route("/history/trades/<trade_id>", methods=["DELETE"])
 @app.route("/history/trades/<trade_id>/", methods=["DELETE"])
 def delete_trade_route(trade_id):
-    if not _DB:
+    if not _has_db():
         return jsonify({"error": "Database not configured"}), 503
     try:
-        _db.delete_trade(trade_id)
+        _db_module.delete_trade(trade_id)
         return jsonify({"status": "ok"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -243,20 +234,20 @@ def delete_trade_route(trade_id):
 @app.route("/history/stats")
 @app.route("/history/stats/")
 def trade_stats():
-    if not _DB:
+    if not _has_db():
         return jsonify({"error": "Database not configured"}), 503
     try:
-        return jsonify(_db.get_trade_stats(from_date=request.args.get("from_date")))
+        return jsonify(_db_module.get_trade_stats(from_date=request.args.get("from_date")))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route("/history/alerts")
 @app.route("/history/alerts/")
 def alert_history():
-    if not _DB:
+    if not _has_db():
         return jsonify({"error": "Database not configured"}), 503
     try:
-        return jsonify(_db.load_alert_log(
+        return jsonify(_db_module.load_alert_log(
             from_date=request.args.get("from_date"),
             sym=request.args.get("sym"),
             limit=int(request.args.get("limit", 100)),
@@ -292,10 +283,10 @@ def logout():
     scanner.set_token("")
 
     # Clear from DB if available
-    if _DB:
+    if _has_db():
         try:
             from datetime import date as _date
-            with _db.cursor() as cur:
+            with _db_module.cursor() as cur:
                 cur.execute(
                     "DELETE FROM token_store WHERE ist_date = %s",
                     (_date.today(),)
@@ -650,7 +641,6 @@ def app_login():
     Returns a session cookie valid for 30 days.
     Body: {"username": "...", "password": "..."}
     """
-    import db as _db
     data     = request.get_json(silent=True) or {}
     username = (data.get("username") or "").strip()
     password = data.get("password") or ""
@@ -658,11 +648,11 @@ def app_login():
     if not username or not password:
         return jsonify({"error": "username and password required"}), 400
 
-    user = _db.authenticate_user(username, password)
+    user = _db_module.authenticate_user(username, password)
     if not user:
         return jsonify({"error": "Invalid username or password"}), 401
 
-    token = _db.create_app_session(user)
+    token = _db_module.create_app_session(user)
     if not token:
         return jsonify({"error": "Could not create session"}), 500
 
@@ -677,10 +667,9 @@ def app_login():
 @app.route("/app/logout", methods=["POST"])
 def app_logout():
     """Revoke current session cookie."""
-    import db as _db
     token = request.cookies.get(SESSION_COOKIE, "")
     if token:
-        _db.revoke_app_session(token)
+        _db_module.revoke_app_session(token)
     resp = jsonify({"status": "ok"})
     return _clear_session_cookie(resp)
 
@@ -704,7 +693,6 @@ def app_me():
 @app.route("/app/change-password", methods=["POST"])
 def app_change_password():
     """Change own password. Body: {"current": "...", "new": "..."}"""
-    import db as _db
     sess, err = _require_session(request)
     if err:
         return err
@@ -717,26 +705,26 @@ def app_change_password():
         return jsonify({"error": "New password must be at least 8 characters"}), 400
 
     # Verify current password
-    user = _db.authenticate_user(sess["username"], current)
+    user = _db_module.authenticate_user(sess["username"], current)
     if not user:
         return jsonify({"error": "Current password incorrect"}), 401
 
     # Update
-    conn = _db.db()
+    conn = _db_module.db()
     if not conn:
         return jsonify({"error": "No DB connection"}), 503
     try:
-        pwd_hash = _db.hash_password(new_pwd)
+        pwd_hash = _db_module.hash_password(new_pwd)
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET pwd_hash=%s WHERE username=%s",
                         (pwd_hash, sess["username"]))
         # Revoke all other sessions (force re-login on other devices)
-        _db.revoke_all_sessions(sess["username"])
+        _db_module.revoke_all_sessions(sess["username"])
         # Re-issue a fresh session for current device
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM users WHERE username=%s", (sess["username"],))
             user = dict(cur.fetchone())
-        new_token = _db.create_app_session(user)
+        new_token = _db_module.create_app_session(user)
         resp = jsonify({"status": "ok", "message": "Password changed. Other sessions revoked."})
         return _set_session_cookie(resp, new_token)
     except Exception as e:
@@ -748,10 +736,9 @@ def app_change_password():
 @app.route("/admin/users", methods=["GET"])
 def admin_list_users():
     """List all users. Admin only."""
-    import db as _db
     sess, err = _require_admin(request)
     if err: return err
-    return jsonify({"users": _db.get_users()})
+    return jsonify({"users": _db_module.get_users()})
 
 
 @app.route("/admin/users/create", methods=["POST"])
@@ -759,7 +746,6 @@ def admin_create_user():
     """Create a new user. Admin only.
     Body: {"username": "...", "password": "...", "role": "viewer|admin"}
     """
-    import db as _db
     sess, err = _require_admin(request)
     if err: return err
 
@@ -773,7 +759,7 @@ def admin_create_user():
     if role not in ("admin", "viewer"):
         return jsonify({"error": "role must be admin or viewer"}), 400
 
-    result = _db.create_user(username, password, role)
+    result = _db_module.create_user(username, password, role)
     if "error" in result:
         return jsonify(result), 409
     return jsonify(result)
@@ -782,31 +768,28 @@ def admin_create_user():
 @app.route("/admin/users/<username>/deactivate", methods=["POST"])
 def admin_deactivate_user(username):
     """Deactivate a user account. Admin only."""
-    import db as _db
     sess, err = _require_admin(request)
     if err: return err
-    _db.set_user_active(username, False)
-    _db.revoke_all_sessions(username)
+    _db_module.set_user_active(username, False)
+    _db_module.revoke_all_sessions(username)
     return jsonify({"status": "ok", "username": username, "active": False})
 
 
 @app.route("/admin/users/<username>/activate", methods=["POST"])
 def admin_activate_user(username):
     """Re-activate a user account. Admin only."""
-    import db as _db
     sess, err = _require_admin(request)
     if err: return err
-    _db.set_user_active(username, True)
+    _db_module.set_user_active(username, True)
     return jsonify({"status": "ok", "username": username, "active": True})
 
 
 @app.route("/admin/sessions/cleanup", methods=["POST"])
 def admin_cleanup_sessions():
     """Remove expired sessions. Admin only."""
-    import db as _db
     sess, err = _require_admin(request)
     if err: return err
-    removed = _db.cleanup_expired_sessions()
+    removed = _db_module.cleanup_expired_sessions()
     return jsonify({"status": "ok", "removed": removed})
 
 
@@ -1029,10 +1012,10 @@ def auth_logout():
     Deletes today's token from Supabase and clears scanner in-memory token.
     """
     scanner.set_token("")          # clear in-memory
-    if _DB:
+    if _has_db():
         try:
             from datetime import date
-            with _db.cursor() as cur:
+            with _db_module.cursor() as cur:
                 cur.execute(
                     "DELETE FROM token_store WHERE ist_date = %s",
                     (date.today(),)
