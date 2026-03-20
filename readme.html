@@ -232,10 +232,9 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;border-top:1px
                    &#9474;  HTTP Routes:                    &#9474;
                    &#9474;  GET  /ping                      &#9474;
                    &#9474;  GET  /auth/login                &#9474;
-                   &#9474;  GET  /auth/callback             &#9474;
+                   &#9474;  GET  /auth/callback (internal)             &#9474;
                    &#9474;  GET  /auth/status               &#9474;
-                   &#9474;  POST /set-token                 &#9474;
-                   &#9474;  GET  /set-token-form            &#9474;
+                   &#9474;                     &#9474;  GET  /token-setup            &#9474;
                    &#9474;  GET  /alert-status              &#9474;
                    &#9474;  GET  /macro-status              &#9474;
                    &#9474;  GET  /test-alert                &#9474;
@@ -381,8 +380,8 @@ Phone browser opens /auth/login
   &#9492;&#9472; app.py redirects to Upstox login page
        https://api.upstox.com/v2/login/authorization/dialog
        ?response_type=code
-       &amp;client_id={UPSTOX_API_KEY}
-       &amp;redirect_uri=https://nse-proxy-mojx.onrender.com/auth/callback
+       &amp;client_id={[your Upstox API key]}
+       &amp;redirect_uri=https://your-backend.onrender.com/auth/callback
        &#9474;
        User enters mobile + OTP + taps Authorize
        &#9474;
@@ -453,11 +452,11 @@ python GetUpstoxToken.ps1</div>
   <h3 class="sub-title" id="settoken">Activating Alerts Each Morning</h3>
   <p>After generating the token, paste it into the cloud proxy so the background scanner can use it:</p>
   <div class="steps">
-    <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Open on your phone</div><div class="step-desc"><span class="inline-code">https://nse-proxy-mojx.onrender.com/set-token-form</span></div></div></div>
+    <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Open on your phone</div><div class="step-desc"><span class="inline-code">https://your-backend.onrender.com/token-setup</span></div></div></div>
     <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">Paste token &#8594; tap Set token</div><div class="step-desc">Scanner activates immediately. Macro context (news, proxies, FII/DII) loads in the background.</div></div></div>
     <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Done</div><div class="step-desc">Scanner checks every 5 min from 9:15&#8211;10:30 IST. Telegram alerts fire automatically.</div></div></div>
   </div>
-  <div class="callout callout-warning"><strong>&#9203; Render free tier cold start</strong>The service sleeps after 15 min of inactivity. Set up UptimeRobot (free) to ping <span class="inline-code">https://nse-proxy-mojx.onrender.com/ping</span> every 5 minutes so Render never sleeps and never misses the market open.</div>
+  <div class="callout callout-warning"><strong>&#9203; Render free tier cold start</strong>The service sleeps after 15 min of inactivity. Set up UptimeRobot (free) to ping <span class="inline-code">https://your-backend.onrender.com/ping</span> every 5 minutes so Render never sleeps and never misses the market open.</div>
 </div>
 
 <!-- 3. SCANNER TAB -->
@@ -569,7 +568,7 @@ python GetUpstoxToken.ps1</div>
     <tr><td>Overall bullish (high confidence)</td><td>+5% bonus</td><td>&#8722;15%</td></tr>
     <tr><td>Sector-specific bearish news</td><td>&#8722;10%</td><td>+5%</td></tr>
   </table>
-  <div class="callout callout-info"><strong>&#128202; Check macro status anytime</strong>Visit <span class="inline-code">https://nse-proxy-mojx.onrender.com/macro-status</span> to see all current macro data: proxy prices, FII/DII net flows, Claude's sentiment classification, scheduled events.</div>
+  <div class="callout callout-info"><strong>&#128202; Check macro status anytime</strong>Visit <span class="inline-code">https://your-backend.onrender.com/macro-status</span> to see all current macro data: proxy prices, FII/DII net flows, Claude's sentiment classification, scheduled events.</div>
 </div>
 
 <!-- 6. WHEN TO TRADE -->
@@ -684,20 +683,20 @@ python GetUpstoxToken.ps1</div>
   <div class="steps">
     <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Create bot via @BotFather</div><div class="step-desc">Search @BotFather in Telegram &#8594; /newbot &#8594; get token like <span class="inline-code">7123456789:AAF-xxx</span></div></div></div>
     <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">Get your Chat ID</div><div class="step-desc">Send /start to your new bot. Search @userinfobot in Telegram and send any message &#8594; it replies with your ID number.</div></div></div>
-    <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Set Render env vars</div><div class="step-desc">Dashboard &#8594; Environment &#8594; add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID</div></div></div>
-    <div class="step"><div class="step-num">4</div><div class="step-body"><div class="step-title">Test</div><div class="step-desc">Visit <span class="inline-code">https://nse-proxy-mojx.onrender.com/test-alert</span> &#8212; you should get a Telegram message within 5 seconds.</div></div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Set Render env vars</div><div class="step-desc">Dashboard &#8594; Environment &#8594; add [configured in Render] and [configured in Render]</div></div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body"><div class="step-title">Test</div><div class="step-desc">Visit <span class="inline-code">https://your-backend.onrender.com/test-alert</span> &#8212; you should get a Telegram message within 5 seconds.</div></div></div>
   </div>
 
   <h3 class="sub-title">Render Environment Variables</h3>
   <table>
     <tr><th>Key</th><th>Value</th><th>Required</th></tr>
-    <tr><td>TELEGRAM_BOT_TOKEN</td><td>from @BotFather</td><td>Yes</td></tr>
-    <tr><td>TELEGRAM_CHAT_ID</td><td>your numeric ID</td><td>Yes</td></tr>
+    <tr><td>[configured in Render]</td><td>from @BotFather</td><td>Yes</td></tr>
+    <tr><td>[configured in Render]</td><td>your numeric ID</td><td>Yes</td></tr>
     <tr><td>ALERT_START_IST</td><td>09:15</td><td>Yes</td></tr>
     <tr><td>ALERT_STOP_IST</td><td>10:30</td><td>Yes</td></tr>
     <tr><td>SCAN_INTERVAL_MINS</td><td>5</td><td>Yes</td></tr>
     <tr><td>SCAN_SYMBOLS</td><td>HDFCBANK,INFY,... (blank = all 30)</td><td>No</td></tr>
-    <tr><td>NEWS_API_KEY</td><td>from newsapi.org free account</td><td>No (enables news sentiment)</td></tr>
+    <tr><td>[configured in Render]</td><td>from newsapi.org free account</td><td>No (enables news sentiment)</td></tr>
   </table>
 
   <h3 class="sub-title" id="alert-triggers">Alert Triggers</h3>
@@ -775,12 +774,12 @@ python GetUpstoxToken.ps1</div>
   <table>
     <tr><th>Problem</th><th>Cause</th><th>Fix</th></tr>
     <tr><td>Proxy not detected</td><td>Render dyno sleeping</td><td>Set up UptimeRobot to ping /ping every 5 min</td></tr>
-    <tr><td>No Telegram alerts during market hours</td><td>Token not set for today</td><td>Open /set-token-form and paste today's Upstox token</td></tr>
+    <tr><td>No Telegram alerts during market hours</td><td>Token not set for today</td><td>Open /token-setup and paste today's Upstox token</td></tr>
     <tr><td>Duplicate Telegram alerts</td><td>Multiple gunicorn workers</td><td>Use --workers 1 in start command</td></tr>
     <tr><td>ImportError: get_market_context</td><td>Old signals.py deployed</td><td>Re-upload signals.py &#8212; all 5 Python files must be current version</td></tr>
     <tr><td>All signals showing WATCH</td><td>Nifty hard block active</td><td>Normal &#8212; market is up/down &gt;0.5%. Check market banner at top of scanner.</td></tr>
     <tr><td>Confidence lower than expected</td><td>Macro penalties applied</td><td>Check /macro-status to see which penalties fired (VIX, crude, news etc.)</td></tr>
-    <tr><td>News sentiment not working</td><td>NEWS_API_KEY not set</td><td>Add key from newsapi.org to Render env vars</td></tr>
+    <tr><td>News sentiment not working</td><td>[your NewsAPI key] not set</td><td>Add key from newsapi.org to Render env vars</td></tr>
     <tr><td>macro-status shows "not fetched yet"</td><td>Scanner hasn't run yet</td><td>Set token first. Macro fetches at first scan after 9:15 IST.</td></tr>
     <tr><td>Token expired</td><td>Upstox tokens expire at midnight IST</td><td>Run GetUpstoxToken.ps1 each morning</td></tr>
     <tr><td>Save to history error</td><td>saveH not defined</td><td>Hard reload the page (Ctrl+Shift+R or ?v=N in URL)</td></tr>
@@ -791,7 +790,7 @@ python GetUpstoxToken.ps1</div>
 <!-- 16. API REFERENCE -->
 <div class="section" id="api">
   <h2 class="sec-title">16. API Reference</h2>
-  <p>Base URL: <span class="inline-code">https://nse-proxy-mojx.onrender.com</span></p>
+  <p>Base URL: <span class="inline-code">https://your-backend.onrender.com</span></p>
 
   <h3 class="sub-title">Health &amp; Status</h3>
   <table>
@@ -804,14 +803,14 @@ python GetUpstoxToken.ps1</div>
   <h3 class="sub-title">Token Management</h3>
   <table>
     <tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr>
-    <tr><td>POST</td><td>/set-token</td><td>Set today's Upstox token. Body: <span class="inline-code">{"token":"eyJ..."}</span>. Resets session state. Call once each morning before 9:15 IST.</td></tr>
-    <tr><td>GET</td><td>/set-token-form</td><td>Phone-friendly HTML form to paste the token. Shows Telegram + NewsAPI config status. Bookmark this on your phone.</td></tr>
+    <tr><td>POST</td><td>/token-setup</td><td>Set today's Upstox token. Body: <span class="inline-code">{"token":"eyJ..."}</span>. Resets session state. Call once each morning before 9:15 IST.</td></tr>
+    <tr><td>GET</td><td>/token-setup</td><td>Phone-friendly HTML form to paste the token. Shows Telegram + NewsAPI config status. Bookmark this on your phone.</td></tr>
   </table>
 
   <h3 class="sub-title">Telegram Setup &amp; Testing</h3>
   <table>
     <tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr>
-    <tr><td>GET/POST</td><td>/test-alert</td><td>Sends a real Telegram message immediately. Confirms TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are correct.</td></tr>
+    <tr><td>GET/POST</td><td>/test-alert</td><td>Sends a real Telegram message immediately. Confirms [your Telegram bot token] and [your Telegram chat ID] are correct.</td></tr>
     <tr><td>GET</td><td>/get-chat-id</td><td>Calls Telegram getUpdates and returns your chat ID in clean JSON. Use once during setup after sending /start to your bot.</td></tr>
   </table>
 
@@ -829,7 +828,7 @@ python GetUpstoxToken.ps1</div>
       <td>
         One-shot test scan bypassing the 9:15&#8211;10:30 time window. Sends a real Telegram alert.<br><br>
         <strong>mock=1</strong> &#8212; No token needed. Uses synthetic BUY signal at 78% confidence. Tests the full Telegram pipeline anytime, even outside market hours.<br><br>
-        <strong>sym=HDFCBANK</strong> &#8212; Live Upstox data for one stock. Token must be set via /set-token first. Good for testing during market hours.<br><br>
+        <strong>sym=HDFCBANK</strong> &#8212; Live Upstox data for one stock. Token must be set via /token-setup first. Good for testing during market hours.<br><br>
         <strong>no params</strong> &#8212; Live data for first 5 Nifty stocks. Sends alert for first green/amber result. If nothing qualifies, sends the highest-confidence stock anyway so you always get a message.<br><br>
         Response includes <span class="inline-code">alert_sent.telegram_sent: true/false</span> so you can confirm delivery.
       </td>
@@ -837,9 +836,9 @@ python GetUpstoxToken.ps1</div>
   </table>
   <div class="callout callout-tip">
     <strong>&#128161; Dry scan troubleshooting</strong>
-    <span class="inline-code">telegram_sent: false</span> &#8212; check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID env vars in Render dashboard.<br>
+    <span class="inline-code">telegram_sent: false</span> &#8212; check [your Telegram bot token] and [your Telegram chat ID] env vars in Render dashboard.<br>
     <span class="inline-code">error: Symbol not found</span> &#8212; use exact symbol e.g. HDFCBANK, INFY, TCS (no hyphens, no spaces).<br>
-    <span class="inline-code">mode: "mock"</span> when you expected live &#8212; token not set, call /set-token first.
+    <span class="inline-code">mode: "mock"</span> when you expected live &#8212; token not set, call /token-setup first.
   </div>
 
   <h3 class="sub-title">Data Proxies (used by browser scanner)</h3>
@@ -859,7 +858,7 @@ python GetUpstoxToken.ps1</div>
 
   <h3 class="sub-title">Quick Reference Card</h3>
   <div class="code">&#8212;&#8212; Every morning &#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;
-  Open on phone: https://nse-proxy-mojx.onrender.com/set-token-form
+  Open on phone: https://your-backend.onrender.com/token-setup
   Paste Upstox token &#8594; tap Set token &#8594; done
 
 &#8212;&#8212; One-time setup &#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;
@@ -1099,8 +1098,8 @@ Hover any gate icon to see why it passed or failed.` },
 3. **⚡ Signal reversal** — BUY flipped to SELL or vice versa
 
 **Setup required:**
-- \`TELEGRAM_BOT_TOKEN\` → from @BotFather
-- \`TELEGRAM_CHAT_ID\` → your numeric ID (visit /get-chat-id)
+- \`[your Telegram bot token]\` → from @BotFather
+- \`[your Telegram chat ID]\` → your numeric ID (visit /get-chat-id)
 - Login each morning before 9:15 AM (token must be set)
 
 Test anytime via Admin → Dry Scan → Mock.` },
@@ -1121,7 +1120,7 @@ Check the signal hover tooltip to see exactly which filter triggered.` },
   // ── ADMIN ───────────────────────────────────────────────────────────────────
   { keys: ['admin','admin tab','pin','admin pin','system status'],
     q: 'How does the Admin tab work?',
-    a: `**Admin tab is PIN-protected** via \`ADMIN_PIN\` env var in Render.
+    a: `**Admin tab is PIN-protected** via \`[the admin PIN]\` env var in Render.
 
 Sections (all collapsible):
 - **System Status** — Proxy ping, Alert status, Macro status, DB status
@@ -1129,7 +1128,7 @@ Sections (all collapsible):
 - **Database** — Init Supabase tables, trade stats, alert log
 - **Quick Links** — Render, Supabase, UptimeRobot, Set token form
 
-If no \`ADMIN_PIN\` set → open access (dev mode).` },
+If no \`[the admin PIN]\` set → open access (dev mode).` },
 
   // ── DRY SCAN ────────────────────────────────────────────────────────────────
   { keys: ['dry scan','test scan','test alert','403','dry run'],
@@ -1150,14 +1149,14 @@ For a real live scan:
 
 | Table | What it stores |
 |-------|---------------|
-| \`token_store\` | Today's Upstox token — survives Render restarts |
-| \`session_state\` | Locked signals, alerts fired today, macro cache |
-| \`trade_history\` | All your saved predictions with outcomes |
-| \`alert_log\` | Every Telegram message sent (permanent log) |
+| \`token table\` | Today's Upstox token — survives Render restarts |
+| \`session table\` | Locked signals, alerts fired today, macro cache |
+| \`history table\` | All your saved predictions with outcomes |
+| \`alert log table\` | Every Telegram message sent (permanent log) |
 
-**Setup:** Add \`DATABASE_URL\` to Render env vars (from Supabase → Settings → Database → URI). Then visit \`/db/init\` once to create tables.
+**Setup:** Add \`[database connection string]\` to Render env vars (from Supabase → Settings → Database → URI). Then visit \`Admin → Database → Init tables\` once to create tables.
 
-Without DATABASE_URL → falls back to in-memory (data lost on restart).` },
+Without [database connection string] → falls back to in-memory (data lost on restart).` },
 
   // ── VERSION ─────────────────────────────────────────────────────────────────
   { keys: ['version','v2.2','latest version','what version','current version'],
@@ -1198,7 +1197,7 @@ Others: LT, BHARTIARTL, BAJFINANCE, TATASTEEL, ULTRACEMCO
 
 This:
 1. Clears your browser token
-2. Deletes today's token from Supabase (\`DELETE FROM token_store\`)
+2. Deletes today's token from Supabase (\`DELETE FROM token table\`)
 3. Redirects to login.html
 
 Next morning: open login.html → tap Login → you're back in.` },

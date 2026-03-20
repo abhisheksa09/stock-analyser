@@ -417,8 +417,8 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
           <li class="change-add">3 alert triggers: Green Ready, Confidence crossed 75%, Signal reversal</li>
           <li class="change-add">SessionState class — tracks locked signals, prev confidence, fired alerts</li>
           <li class="change-add">Session resets midnight IST, deduplication so each alert fires once</li>
-          <li class="change-add">POST /set-token endpoint for morning token activation</li>
-          <li class="change-add">GET /set-token-form — phone-friendly HTML form</li>
+          <li class="change-add">token activation endpoint</li>
+          <li class="change-add">phone-friendly token form</li>
           <li class="change-add">GET /alert-status — shows session state for debugging</li>
           <li class="change-add">GET /test-alert — sends test Telegram message</li>
           <li class="change-add">GET /get-chat-id — finds Telegram chat ID via getUpdates</li>
@@ -607,9 +607,9 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
         <h4>What changed</h4>
         <ul class="change-list">
           <li class="change-add">GET /auth/login — redirects to Upstox login page</li>
-          <li class="change-add">GET /auth/callback — exchanges auth code for token automatically</li>
+          <li class="change-add">OAuth callback — exchanges auth code for token automatically</li>
           <li class="change-add">GET /auth/status — shows last OAuth attempt result for debugging</li>
-          <li class="change-add">GET /get-token — returns server-side token to browser after OAuth</li>
+          <li class="change-add">server token sync endpoint</li>
           <li class="change-add">Mobile-friendly success/error result page with green/red card</li>
           <li class="change-add">_last_oauth dict — stores last attempt status, detail, timestamp</li>
           <li class="change-remove">PowerShell script no longer needed for daily token generation</li>
@@ -683,7 +683,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
           <li class="change-fix">&#47;auth/status now stores only error key, not full Upstox response body</li>
           <li class="change-fix">HTTP error body truncated to 100 chars, JSON-parsed for error type only</li>
           <li class="change-fix">Verified no token values in any server logs (length only)</li>
-          <li class="change-fix">CORS locked to abhisheksa09.github.io only</li>
+          <li class="change-fix">CORS locked to your-github-pages-url only</li>
         </ul>
         <h4 style="margin-top:14px;">OAuth UX improvement</h4>
         <ul class="change-list">
@@ -724,7 +724,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
       <div class="what-changed">
         <h4>What changed</h4>
         <ul class="change-list">
-          <li class="change-add">Admin tab: PIN-protected with ADMIN_PIN env var, session token in localStorage</li>
+          <li class="change-add">Admin tab: PIN-protected with the admin PIN env var, session token in localStorage</li>
           <li class="change-add">All admin cards made collapsible (System Status, Dry Scan, Database, Quick Links)</li>
           <li class="change-add">Proxy status dot moved from navbar to Admin > System Status</li>
           <li class="change-add">Navbar redesigned: brand | market chips | Login button + Docs + Changelog</li>
@@ -761,14 +761,14 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
         <h4>What changed</h4>
         <ul class="change-list">
           <li class="change-add">db.py — new file, full Supabase PostgreSQL integration</li>
-          <li class="change-add">4 tables: token_store, session_state, trade_history, alert_log</li>
+          <li class="change-add">4 database tables for token, session, history and alert persistence</li>
           <li class="change-add">Token persists across Render restarts — no re-login after cold start</li>
           <li class="change-add">Session state (locked signals, alerts fired) survives restarts</li>
           <li class="change-add">Trade history moved from localStorage to DB — syncs across devices</li>
           <li class="change-add">Alert log: permanent record of every Telegram message sent</li>
-          <li class="change-add">GET /db/init, /db/status, /history/trades, /history/stats, /history/alerts</li>
-          <li class="change-add">Graceful fallback: if DATABASE_URL missing, in-memory mode (nothing breaks)</li>
-          <li class="change-add">/auth/logout endpoint: clears token from DB and memory</li>
+          <li class="change-add">database and history endpoints</li>
+          <li class="change-add">Graceful fallback: if your database connection string missing, in-memory mode (nothing breaks)</li>
+          <li class="change-add">logout endpoint: clears token from DB and memory</li>
         </ul>
       </div>
       <div class="files-changed">
@@ -846,7 +846,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
           <li class="change-add">confTip() — confidence cell hover now shows: factor breakdown, market adjustments, macro impact, candle penalty, verdict</li>
           <li class="change-add">Dry scan auto-mock: outside market hours (9:00–15:40 IST) automatically uses mock data with clear message</li>
           <li class="change-add">Signal column vertical stacking: After hours / signal badge / candle badge — no horizontal scatter</li>
-          <li class="change-add">Logout properly deletes token from Supabase via DELETE on token_store table</li>
+          <li class="change-add">Logout properly deletes token from Supabase via DELETE on token table table</li>
           <li class="change-fix">Confidence tooltip was showing generic text — now shows specific per-scan analysis</li>
           <li class="change-fix">"Click for Admin" removed from logged-in navbar button title</li>
           <li class="change-fix">APP_VERSION v2.2.0 synced across HTML chip, JS constant, /ping response</li>
@@ -908,9 +908,9 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
 
       <h4 style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;
                  color:#888;margin:16px 0 10px;">Morning routine (today)</h4>
-      <div class="code">1. Open https://nse-proxy-mojx.onrender.com/auth/login
+      <div class="code">1. Open https://your-backend.onrender.com/auth/login
 2. Login with Upstox (phone OTP)
-3. Open https://abhisheksa09.github.io/stock-analyser/scanner.html
+3. Open https://your-github-pages-url
 4. Status dot turns green automatically
 5. Alerts fire 9:15-10:30 IST via Telegram</div>
     </div>
@@ -1173,8 +1173,8 @@ Hover any gate icon to see why it passed or failed.` },
 3. **⚡ Signal reversal** — BUY flipped to SELL or vice versa
 
 **Setup required:**
-- \`TELEGRAM_BOT_TOKEN\` → from @BotFather
-- \`TELEGRAM_CHAT_ID\` → your numeric ID (visit /get-chat-id)
+- \`your Telegram bot token\` → from @BotFather
+- \`your Telegram chat ID\` → your numeric ID (visit /get-chat-id)
 - Login each morning before 9:15 AM (token must be set)
 
 Test anytime via Admin → Dry Scan → Mock.` },
@@ -1195,7 +1195,7 @@ Check the signal hover tooltip to see exactly which filter triggered.` },
   // ── ADMIN ───────────────────────────────────────────────────────────────────
   { keys: ['admin','admin tab','pin','admin pin','system status'],
     q: 'How does the Admin tab work?',
-    a: `**Admin tab is PIN-protected** via \`ADMIN_PIN\` env var in Render.
+    a: `**Admin tab is PIN-protected** via \`the admin PIN\` env var in Render.
 
 Sections (all collapsible):
 - **System Status** — Proxy ping, Alert status, Macro status, DB status
@@ -1203,7 +1203,7 @@ Sections (all collapsible):
 - **Database** — Init Supabase tables, trade stats, alert log
 - **Quick Links** — Render, Supabase, UptimeRobot, Set token form
 
-If no \`ADMIN_PIN\` set → open access (dev mode).` },
+If no \`the admin PIN\` set → open access (dev mode).` },
 
   // ── DRY SCAN ────────────────────────────────────────────────────────────────
   { keys: ['dry scan','test scan','test alert','403','dry run'],
@@ -1224,14 +1224,14 @@ For a real live scan:
 
 | Table | What it stores |
 |-------|---------------|
-| \`token_store\` | Today's Upstox token — survives Render restarts |
-| \`session_state\` | Locked signals, alerts fired today, macro cache |
-| \`trade_history\` | All your saved predictions with outcomes |
-| \`alert_log\` | Every Telegram message sent (permanent log) |
+| \`token table\` | Today's Upstox token — survives Render restarts |
+| \`session table\` | Locked signals, alerts fired today, macro cache |
+| \`history table\` | All your saved predictions with outcomes |
+| \`alert log table\` | Every Telegram message sent (permanent log) |
 
-**Setup:** Add \`DATABASE_URL\` to Render env vars (from Supabase → Settings → Database → URI). Then visit \`/db/init\` once to create tables.
+**Setup:** Add \`your database connection string\` to Render env vars (from Supabase → Settings → Database → URI). Then visit \`Admin → Database → Init tables\` once to create tables.
 
-Without DATABASE_URL → falls back to in-memory (data lost on restart).` },
+Without your database connection string → falls back to in-memory (data lost on restart).` },
 
   // ── VERSION ─────────────────────────────────────────────────────────────────
   { keys: ['version','v2.2','latest version','what version','current version'],
@@ -1272,7 +1272,7 @@ Others: LT, BHARTIARTL, BAJFINANCE, TATASTEEL, ULTRACEMCO
 
 This:
 1. Clears your browser token
-2. Deletes today's token from Supabase (\`DELETE FROM token_store\`)
+2. Deletes today's token from Supabase (\`DELETE FROM token table\`)
 3. Redirects to login.html
 
 Next morning: open login.html → tap Login → you're back in.` },

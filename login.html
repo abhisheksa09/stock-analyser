@@ -217,6 +217,25 @@ body{
       <span class="chip">4-layer macro</span>
     </div>
 
+    <div style="margin-top:14px;text-align:center;">
+      <button onclick="document.getElementById('manualWrap').style.display=document.getElementById('manualWrap').style.display==='none'?'block':'none'"
+              style="font-size:12px;color:#aaa;background:none;border:none;cursor:pointer;text-decoration:underline;">
+        Paste token manually
+      </button>
+      <div id="manualWrap" style="display:none;margin-top:10px;text-align:left;">
+        <div style="display:flex;gap:8px;">
+          <input id="manualToken" type="password"
+                 style="flex:1;border:1px solid #e0e0e0;border-radius:8px;padding:8px 10px;
+                        font-size:13px;outline:none;"
+                 placeholder="Paste Upstox access token&#8230;"/>
+          <button onclick="doManualToken()"
+                  style="padding:8px 14px;border-radius:8px;border:none;background:#27500A;
+                         color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Set</button>
+        </div>
+        <div id="manualMsg" style="font-size:12px;color:#888;margin-top:6px;min-height:16px;"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -301,6 +320,24 @@ function doLogin(){
 }
 
 // ── Go to scanner ─────────────────────────────────────────────────────────────
+function doManualToken(){
+  var t=(document.getElementById('manualToken').value||'').trim();
+  var msg=document.getElementById('manualMsg');
+  if(!t){msg.textContent='Paste your token first';msg.style.color='#A32D2D';return;}
+  msg.textContent='Setting…';msg.style.color='#888';
+  fetch(PROXY+'/set-token',{method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({token:t})
+  }).then(function(r){return r.json();}).then(function(d){
+    if(d.status==='ok'||d.message){
+      msg.textContent='✓ Token set';msg.style.color='#27500A';
+      setTimeout(goToScanner,600);
+    } else {
+      msg.textContent='Failed: '+(d.error||'unknown');msg.style.color='#A32D2D';
+    }
+  }).catch(function(e){msg.textContent='Error: '+e.message;msg.style.color='#A32D2D';});
+}
+
 function goToScanner(){
   window.location.href = 'scanner.html';
 }
@@ -531,8 +568,8 @@ Hover any gate icon to see why it passed or failed.` },
 3. **⚡ Signal reversal** — BUY flipped to SELL or vice versa
 
 **Setup required:**
-- \`TELEGRAM_BOT_TOKEN\` → from @BotFather
-- \`TELEGRAM_CHAT_ID\` → your numeric ID (visit /get-chat-id)
+- your Telegram bot token → from @BotFather
+- your Telegram chat ID → your numeric ID (visit /get-chat-id)
 - Login each morning before 9:15 AM (token must be set)
 
 Test anytime via Admin → Dry Scan → Mock.` },
@@ -553,7 +590,7 @@ Check the signal hover tooltip to see exactly which filter triggered.` },
   // ── ADMIN ───────────────────────────────────────────────────────────────────
   { keys: ['admin','admin tab','pin','admin pin','system status'],
     q: 'How does the Admin tab work?',
-    a: `**Admin tab is PIN-protected** via \`ADMIN_PIN\` env var in Render.
+    a: `**Admin tab is PIN-protected** via the admin PIN env var in Render.
 
 Sections (all collapsible):
 - **System Status** — Proxy ping, Alert status, Macro status, DB status
@@ -561,7 +598,7 @@ Sections (all collapsible):
 - **Database** — Init Supabase tables, trade stats, alert log
 - **Quick Links** — Render, Supabase, UptimeRobot, Set token form
 
-If no \`ADMIN_PIN\` set → open access (dev mode).` },
+If no the admin PIN set → open access (dev mode).` },
 
   // ── DRY SCAN ────────────────────────────────────────────────────────────────
   { keys: ['dry scan','test scan','test alert','403','dry run'],
@@ -582,14 +619,14 @@ For a real live scan:
 
 | Table | What it stores |
 |-------|---------------|
-| \`token_store\` | Today's Upstox token — survives Render restarts |
-| \`session_state\` | Locked signals, alerts fired today, macro cache |
-| \`trade_history\` | All your saved predictions with outcomes |
-| \`alert_log\` | Every Telegram message sent (permanent log) |
+| token table | Today's Upstox token — survives Render restarts |
+| session table | Locked signals, alerts fired today, macro cache |
+| history table | All your saved predictions with outcomes |
+| alert log table | Every Telegram message sent (permanent log) |
 
-**Setup:** Add \`DATABASE_URL\` to Render env vars (from Supabase → Settings → Database → URI). Then visit \`/db/init\` once to create tables.
+**Setup:** Add your database connection string to Render env vars (from Supabase → Settings → Database → URI). Then visit \`Admin → Database → Init tables\` once to create tables.
 
-Without DATABASE_URL → falls back to in-memory (data lost on restart).` },
+Without your database connection string → falls back to in-memory (data lost on restart).` },
 
   // ── VERSION ─────────────────────────────────────────────────────────────────
   { keys: ['version','v2.2','latest version','what version','current version'],
@@ -630,7 +667,7 @@ Others: LT, BHARTIARTL, BAJFINANCE, TATASTEEL, ULTRACEMCO
 
 This:
 1. Clears your browser token
-2. Deletes today's token from Supabase (\`DELETE FROM token_store\`)
+2. Deletes today's token from Supabase (\`DELETE FROM token table\`)
 3. Redirects to login.html
 
 Next morning: open login.html → tap Login → you're back in.` },

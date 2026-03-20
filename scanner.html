@@ -1,4 +1,5 @@
-<!DOCTYPE html>
+<!DOCTY
+    </div><!-- /tbl-wrap -->PE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -18,7 +19,7 @@ h1{font-size:20px;font-weight:600;}
   margin:-20px -16px 20px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;}
 .navbar-brand{display:flex;align-items:center;gap:8px;flex-shrink:0;}
 .navbar-title{font-size:16px;font-weight:700;white-space:nowrap;}
-.navbar-centre{display:flex;align-items:center;gap:6px;flex:1;justify-content:center;flex-wrap:wrap;}
+.navbar-centre{display:flex;align-items:center;gap:6px;flex:1;justify-content:center;flex-wrap:wrap;flex-shrink:1;min-width:0;overflow:hidden;}
 .navbar-right{display:flex;align-items:center;gap:6px;flex-shrink:0;}
 .nav-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;
   border-radius:6px;border:1px solid #e0e0e0;background:#fafafa;
@@ -316,6 +317,38 @@ th[data-tip]{cursor:default;}
   border:1px solid #2a2a2a;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;}
 #chatFab:hover::after{opacity:1;}
 @media(max-width:440px){#chatPanel{width:calc(100vw - 16px);right:8px;bottom:78px;height:65dvh;}}
+
+/* ── Mobile responsive ──────────────────────────────────────────────────────── */
+.nav-desktop{ display:inline-flex; }
+.nav-mobile { display:none; }
+@media(max-width:600px){
+  .nav-desktop{ display:none !important; }
+  .nav-mobile { display:inline-flex !important; }
+  /* Navbar: no wrap, no overflow */
+  .navbar{ padding:8px 12px; gap:8px; position:relative; }
+  .navbar-brand{ gap:6px; }
+  .navbar-title{ font-size:13px; }
+  .navbar-centre{ gap:4px; }
+  .navbar-centre .chip{ font-size:10px; padding:2px 6px; }
+  /* Tabs: smaller text */
+  .tab-btn{ font-size:11px; padding:6px 10px; }
+  /* Page: no horizontal overflow */
+  .page{ padding:0 12px 80px; overflow-x:hidden; }
+  /* Scanner table: horizontal scroll within */
+  .tbl-wrap{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  /* History table: show more cols on mobile */
+  .htbl-hide-mobile{ display:table-cell !important; }
+  /* Scan row: stack buttons */
+  .scan-row{ flex-wrap:wrap; gap:8px; }
+  /* Hide version chip on mobile */
+  #versionChip{ display:none; }
+  /* Chatbot: full width, higher up */
+  #chatPanel{ width:calc(100vw - 8px);right:4px;bottom:76px;height:70dvh; }
+  #chatFab{ bottom:16px;right:16px;width:46px;height:46px; }
+  #chatFab::after{ display:none; }
+}
+/* Prevent body horizontal scroll globally */
+html,body{ max-width:100%; overflow-x:hidden; }
 </style>
 </head>
 <body>
@@ -340,18 +373,28 @@ th[data-tip]{cursor:default;}
 
     <!-- Right: action buttons -->
     <div class="navbar-right">
-      <!-- Token / login button -->
+      <!-- Token status (always visible) -->
       <button class="nav-btn" id="tokenNavBtn" onclick="handleTokenNavClick()"
               title="Upstox login status">
         <span id="tokenStatusDot" style="width:8px;height:8px;border-radius:50%;background:#e0e0e0;display:inline-block;vertical-align:middle;margin-right:4px;flex-shrink:0;"></span>
         <span id="tokenNavTxt" style="font-size:11px;">Login</span>
       </button>
-
-      <!-- Docs -->
-      <a href="readme.html" target="_blank" class="nav-btn" title="User guide">&#128214; Docs</a>
-      <a href="changelog.html" target="_blank" class="nav-btn" title="Build history">&#127959;</a>
-      <button class="nav-btn" onclick="doLogout()" title="Logout" style="color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
+      <!-- Desktop links (hidden on mobile) -->
+      <a href="readme.html" target="_blank" class="nav-btn nav-desktop" title="User guide">&#128214; Docs</a>
+      <a href="changelog.html" target="_blank" class="nav-btn nav-desktop" title="Build history">&#127959;</a>
+      <button class="nav-btn nav-desktop" onclick="doLogout()" title="Logout" style="color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
+      <!-- Hamburger (mobile only) -->
+      <button class="nav-btn nav-mobile" id="burgerBtn" onclick="toggleMobileMenu()" title="Menu"
+              style="font-size:18px;padding:4px 8px;">&#9776;</button>
     </div>
+  </div>
+  <!-- Mobile dropdown menu -->
+  <div id="mobileMenu" style="display:none;position:absolute;top:100%;right:0;left:0;
+       background:#fff;border-bottom:1px solid #e0e0e0;z-index:200;padding:8px 16px;
+       box-shadow:0 4px 12px rgba(0,0,0,.08);">
+    <a href="readme.html" target="_blank" class="nav-btn" style="display:block;margin-bottom:6px;text-align:left;">&#128214; Docs</a>
+    <a href="changelog.html" target="_blank" class="nav-btn" style="display:block;margin-bottom:6px;text-align:left;">&#127959; Changelog</a>
+    <button class="nav-btn" onclick="doLogout()" style="display:block;width:100%;text-align:left;color:#A32D2D;border-color:#F09595;margin-bottom:4px;">&#x23FB; Logout</button>
   </div>
 
   <div id="coldStartBanner" style="background:#FFF8E1;border:1px solid #FAC775;border-radius:8px;padding:10px 16px;margin-bottom:12px;font-size:12px;color:#633806;display:none;">
@@ -555,14 +598,14 @@ to see the specific analysis and reason.">Signal</th>
           <th onclick="setSort('sym')" style="min-width:90px;">Stock</th>
           <th onclick="setSort('sig')">Signal</th>
           <th class="r">Conf</th>
-          <th class="r htbl-hide-mobile">Entry</th>
-          <th class="r htbl-hide-mobile">Target</th>
-          <th class="r htbl-hide-mobile">SL</th>
+          <th class="r" style="min-width:60px;">Entry</th>
+          <th class="r" style="min-width:60px;">Target</th>
+          <th class="r" style="min-width:55px;">SL</th>
           <th class="r" style="min-width:80px;">Act. Entry</th>
           <th class="r" style="min-width:80px;">Act. Exit</th>
           <th onclick="setSort('outcome')">Outcome</th>
           <th class="r" onclick="setSort('pnl')">P&amp;L</th>
-          <th class="htbl-hide-mobile">Notes</th>
+          <th class="htbl-hide-mobile" style="display:none;">Notes</th>
           <th class="cb-col"></th>
         </tr></thead>
         <tbody id="htb"></tbody>
@@ -1026,6 +1069,19 @@ async function runDryScan(btnEl){
 
 // ─── NAVBAR FUNCTIONS ─────────────────────────────────────────────────────────
 // ── Logout ────────────────────────────────────────────────────────────────────
+function toggleMobileMenu(){
+  var m=document.getElementById('mobileMenu');
+  if(m) m.style.display=m.style.display==='none'?'block':'none';
+}
+// Close mobile menu when clicking outside
+document.addEventListener('click',function(e){
+  var m=document.getElementById('mobileMenu');
+  var b=document.getElementById('burgerBtn');
+  if(m&&b&&!m.contains(e.target)&&!b.contains(e.target)){
+    m.style.display='none';
+  }
+});
+
 function doLogout(){
   token = '';
   // Tell server to delete today's token from DB
@@ -2099,8 +2155,8 @@ Hover any gate icon to see why it passed or failed.` },
 3. **⚡ Signal reversal** — BUY flipped to SELL or vice versa
 
 **Setup required:**
-- \`TELEGRAM_BOT_TOKEN\` → from @BotFather
-- \`TELEGRAM_CHAT_ID\` → your numeric ID (visit /get-chat-id)
+- your Telegram bot token → from @BotFather
+- your Telegram chat ID → your numeric ID (visit /get-chat-id)
 - Login each morning before 9:15 AM (token must be set)
 
 Test anytime via Admin → Dry Scan → Mock.` },
@@ -2121,7 +2177,7 @@ Check the signal hover tooltip to see exactly which filter triggered.` },
   // ── ADMIN ───────────────────────────────────────────────────────────────────
   { keys: ['admin','admin tab','pin','admin pin','system status'],
     q: 'How does the Admin tab work?',
-    a: `**Admin tab is PIN-protected** via \`ADMIN_PIN\` env var in Render.
+    a: `**Admin tab is PIN-protected** via the admin PIN env var in Render.
 
 Sections (all collapsible):
 - **System Status** — Proxy ping, Alert status, Macro status, DB status
@@ -2129,7 +2185,7 @@ Sections (all collapsible):
 - **Database** — Init Supabase tables, trade stats, alert log
 - **Quick Links** — Render, Supabase, UptimeRobot, Set token form
 
-If no \`ADMIN_PIN\` set → open access (dev mode).` },
+If no the admin PIN set → open access (dev mode).` },
 
   // ── DRY SCAN ────────────────────────────────────────────────────────────────
   { keys: ['dry scan','test scan','test alert','403','dry run'],
@@ -2150,14 +2206,14 @@ For a real live scan:
 
 | Table | What it stores |
 |-------|---------------|
-| \`token_store\` | Today's Upstox token — survives Render restarts |
-| \`session_state\` | Locked signals, alerts fired today, macro cache |
-| \`trade_history\` | All your saved predictions with outcomes |
-| \`alert_log\` | Every Telegram message sent (permanent log) |
+| token table | Today's Upstox token — survives Render restarts |
+| session table | Locked signals, alerts fired today, macro cache |
+| history table | All your saved predictions with outcomes |
+| alert log table | Every Telegram message sent (permanent log) |
 
-**Setup:** Add \`DATABASE_URL\` to Render env vars (from Supabase → Settings → Database → URI). Then visit \`/db/init\` once to create tables.
+**Setup:** Add your database connection string to Render env vars (from Supabase → Settings → Database → URI). Then visit \`Admin → Database → Init tables\` once to create tables.
 
-Without DATABASE_URL → falls back to in-memory (data lost on restart).` },
+Without your database connection string → falls back to in-memory (data lost on restart).` },
 
   // ── VERSION ─────────────────────────────────────────────────────────────────
   { keys: ['version','v2.2','latest version','what version','current version'],
@@ -2198,7 +2254,7 @@ Others: LT, BHARTIARTL, BAJFINANCE, TATASTEEL, ULTRACEMCO
 
 This:
 1. Clears your browser token
-2. Deletes today's token from Supabase (\`DELETE FROM token_store\`)
+2. Deletes today's token from Supabase (\`DELETE FROM token table\`)
 3. Redirects to login.html
 
 Next morning: open login.html → tap Login → you're back in.` },
