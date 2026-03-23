@@ -664,7 +664,14 @@ document.addEventListener('click',function(e){
 // ── Logout ──────────────────────────────────────────────────────────────────────
 function doLogout(){
   if(typeof token !== 'undefined') token='';
-  fetch(PROXY+'/app/logout',{method:'POST',credentials:'include'}).catch(function(){});
+  appSessionToken = '';
+  localStorage.removeItem('nse_app_token');
+  localStorage.removeItem('nse_username');
+  fetch(PROXY+'/app/logout',{
+    method:'POST',
+    headers: {'X-Session-Token': localStorage.getItem('nse_app_token')||''},
+    credentials:'include'
+  }).catch(function(){});
   setTimeout(function(){window.location.replace('login.html');},350);
 }
 
@@ -1023,23 +1030,45 @@ async function runDryScan(btnEl){
 
 // ─── NAVBAR FUNCTIONS ─────────────────────────────────────────────────────────
 
+// ── App session token (from localStorage) ─────────────────────────────────────
+var appSessionToken = localStorage.getItem('nse_app_token') || '';
+
+function appHeaders(extra){
+  // Merge app session token into every fetch call to Render backend
+  var h = extra || {};
+  if(appSessionToken) h['X-Session-Token'] = appSessionToken;
+  return h;
+}
+
 // ── Auth guard ─────────────────────────────────────────────────────────────────
 (async function authGuard(){
+  if(!appSessionToken){
+    window.location.replace('login.html');
+    return;
+  }
   try{
-    // Check app session (cookie-based, not Upstox token)
-    var r=await fetch(PROXY+'/app/me',{credentials:'include'});
-    if(!r.ok){window.location.replace('login.html');return;}
+    var r=await fetch(PROXY+'/app/me',{
+      headers: appHeaders(),
+      credentials: 'include'
+    });
+    if(!r.ok){
+      localStorage.removeItem('nse_app_token');
+      window.location.replace('login.html');
+      return;
+    }
     var d=await r.json();
-    if(!d.authenticated){window.location.replace('login.html');return;}
-    // Show user's name in navbar
+    if(!d.authenticated){
+      localStorage.removeItem('nse_app_token');
+      window.location.replace('login.html');
+      return;
+    }
     updateTokenNavBtn(true, d.username);
-    // Also fetch the Upstox token from server for data calls
+    // Fetch Upstox token from server for data calls
     try{
-      var tr=await fetch(PROXY+'/get-token',{credentials:'include'});
+      var tr=await fetch(PROXY+'/get-token',{headers:appHeaders(),credentials:'include'});
       if(tr.ok){var td=await tr.json();if(td.token)token=td.token;}
     }catch(e2){}
   }catch(e){
-    // Server unreachable — let through (Render cold start), but warn
     console.warn('Auth guard: server unreachable', e.message);
   }
 })();

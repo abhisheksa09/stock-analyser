@@ -685,6 +685,46 @@ def bootstrap_create_admin():
         "user":    result["user"]
     })
 
+# ─── Password reset utility (admin only via ADMIN_PIN) ───────────────────────
+
+@app.route("/bootstrap/reset-password", methods=["POST"])
+def bootstrap_reset_password():
+    """
+    Reset any user's password using ADMIN_PIN env var as auth.
+    Use this to fix manually-created users with plain-text passwords.
+    Body: {"pin": "...", "username": "...", "password": "..."}
+    """
+    import db as _db_mod
+    data     = request.get_json(silent=True) or {}
+    pin      = data.get("pin", "")
+    username = (data.get("username") or "").strip().lower()
+    password = data.get("password") or ""
+
+    correct_pin = os.environ.get("ADMIN_PIN", "")
+    if not correct_pin or pin != correct_pin:
+        return jsonify({"error": "Invalid PIN"}), 403
+
+    if len(password) < 8:
+        return jsonify({"error": "Password must be >= 8 chars"}), 400
+
+    conn = _db_mod.db()
+    if not conn:
+        return jsonify({"error": "No DB connection"}), 503
+
+    try:
+        pwd_hash = _db_mod.hash_password(password)
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET pwd_hash=%s, active=TRUE WHERE username=%s RETURNING id, username, role",
+                (pwd_hash, username)
+            )
+            row = cur.fetchone()
+        if not row:
+            return jsonify({"error": f"User '{username}' not found"}), 404
+        return jsonify({"status": "ok", "message": f"Password updated for {username}", "user": dict(row)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ─── App authentication (username + password) ─────────────────────────────────
 
 @app.route("/app/login", methods=["POST"])
@@ -713,8 +753,9 @@ def app_login():
         "status":   "ok",
         "username": user["username"],
         "role":     user["role"],
+        "token":    token,          # client stores in localStorage
     })
-    return _set_session_cookie(resp, token)
+    return _set_session_cookie(resp, token)   # also set cookie as fallback
 
 
 @app.route("/app/logout", methods=["POST"])

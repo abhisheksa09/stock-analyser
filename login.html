@@ -86,34 +86,54 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 </div>
 <script>
 const PROXY='https://nse-proxy-mojx.onrender.com';
+
 async function checkSession(){
-  try{var r=await fetch(PROXY+'/app/me',{credentials:'include'});
-  if(r.ok){var d=await r.json();if(d.authenticated){window.location.replace('scanner.html');return;}}}catch(e){}
+  var token=localStorage.getItem('nse_app_token');
+  if(!token) return;
+  try{
+    var r=await fetch(PROXY+'/app/me',{
+      headers:{'X-Session-Token':token},
+      credentials:'include'
+    });
+    if(r.ok){var d=await r.json();if(d.authenticated){window.location.replace('scanner.html');return;}}
+    localStorage.removeItem('nse_app_token');
+  }catch(e){}
 }
+
 async function doLogin(){
   var u=document.getElementById('username').value.trim();
   var p=document.getElementById('password').value;
   var msg=document.getElementById('msg');
   var btn=document.getElementById('loginBtn');
   if(!u||!p){msg.textContent='Enter username and password';msg.className='msg err';return;}
-  btn.disabled=true;btn.textContent='Signing in\u2026';msg.textContent='';msg.className='msg';
+  btn.disabled=true;btn.textContent='Signing in…';msg.textContent='';msg.className='msg';
   try{
-    var r=await fetch(PROXY+'/app/login',{method:'POST',headers:{'Content-Type':'application/json'},
-      credentials:'include',body:JSON.stringify({username:u,password:p})});
+    var r=await fetch(PROXY+'/app/login',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'include',
+      body:JSON.stringify({username:u,password:p})
+    });
     var d=await r.json();
     if(r.ok&&d.status==='ok'){
-      msg.textContent='\u2713 Welcome, '+d.username+'!';msg.className='msg ok';
+      if(d.token) localStorage.setItem('nse_app_token',d.token);
+      localStorage.setItem('nse_username',d.username);
+      msg.textContent='✓ Welcome, '+d.username+'!';
+      msg.className='msg ok';
       setTimeout(function(){window.location.replace('scanner.html');},600);
     } else {
-      msg.textContent=d.error||'Login failed';msg.className='msg err';
+      msg.textContent=d.error||'Login failed';
+      msg.className='msg err';
       btn.disabled=false;btn.textContent='Sign in';
       document.getElementById('password').select();
     }
   }catch(e){
-    msg.textContent='Cannot reach server — check connection';msg.className='msg err';
+    msg.textContent='Cannot reach server — check connection';
+    msg.className='msg err';
     btn.disabled=false;btn.textContent='Sign in';
   }
 }
+
 checkSession();
 </script>
 </body>
