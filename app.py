@@ -51,7 +51,7 @@ CORS_HEADERS = {
     "Access-Control-Allow-Origin":       ALLOWED_ORIGIN,
     "Access-Control-Allow-Methods":      "GET, POST, OPTIONS, PATCH, DELETE",
     "Access-Control-Allow-Headers":      (
-        "Authorization, Content-Type, Accept, "
+        "Authorization, Content-Type, Accept, X-Session-Token, "
         "x-api-key, anthropic-version, "
         "anthropic-dangerous-direct-browser-access"
     ),
@@ -198,33 +198,72 @@ def db_status():
 @app.route("/history/trades", methods=["GET"])
 @app.route("/history/trades/", methods=["GET"])
 def get_trades():
+    """Get trade history for the current user."""
+    sess = _get_session(request)
+    if not sess:
+        return jsonify({"error": "Not authenticated"}), 401
+
     if not _has_db():
-        return jsonify({"error": "Database not configured"}), 503
-    try:
-        trades = _db_module.load_trades(
-            from_date=request.args.get("from_date"),
-            to_date=request.args.get("to_date"),
-            sym=request.args.get("sym"),
-            sig=request.args.get("sig"),
-            outcome=request.args.get("outcome"),
-            limit=int(request.args.get("limit", 500)),
-        )
-        return jsonify({"trades": trades, "stats": _db_module.get_trade_stats(), "count": len(trades)})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"trades": [], "note": "No DB configured"})
+
+    username = sess["username"]
+    # Admin can see all; viewer sees only own
+    filter_user = None if sess.get("role") == "admin" and request.args.get("all") == "1" else username
+    trades = _db_module.get_trades(
+        username=filter_user,
+        from_date=request.args.get("from_date"),
+        to_date=request.args.get("to_date"),
+        sym=request.args.get("sym"),
+        limit=int(request.args.get("limit", 500))
+    )
+    return jsonify({"trades": trades, "count": len(trades)})
 
 @app.route("/history/trades", methods=["POST"])
 @app.route("/history/trades/", methods=["POST"])
-def save_trades():
-    if not _has_db():
-        return jsonify({"error": "Database not configured"}), 503
-    try:
-        data   = request.get_json(silent=True) or {}
-        trades = data.get("trades", [data] if data.get("id") else [])
-        saved  = sum(1 for t in trades if t.get("id") and _db_module.save_trade(t))
-        return jsonify({"status": "ok", "saved": saved})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+def save_trade():
+    """Save a trade prediction. Requires session. Saves to DB per user."""
+    sess = _get_session(request)
+    if not sess:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "No data"}), 400
+
+    username = sess["username"]
+
+    if _has_db():
+        # Save to DB with username
+        from datetime import date as _date, datetime as _dt
+        now   = _dt.now(IST)
+        trade = {
+            "id":        data.get("id") or f"{int(now.timestamp())}_{data.get('sym','')}_{username[:4]}",
+            "username":  username,
+            "ist_date":  str(data.get("ist_date") or _date.today()),
+            "ist_time":  data.get("ist_time") or now.strftime("%H:%M"),
+            "sym":       data.get("sym",""),
+            "sec":       data.get("sec",""),
+            "sig":       data.get("sig",""),
+            "conf":      int(data.get("conf",0)),
+            "ltp":       data.get("ltp"),
+            "en":        data.get("en"),
+            "tg":        data.get("tg"),
+            "sl":        data.get("sl"),
+            "rr":        data.get("rr"),
+            "rsi":       data.get("rsi"),
+            "reason":    data.get("reason",""),
+            "actual_en": data.get("actual_en") or data.get("aEn"),
+            "actual_ex": data.get("actual_ex") or data.get("aEx"),
+            "outcome":   data.get("outcome","pending"),
+            "pnl":       data.get("pnl"),
+            "notes":     data.get("notes",""),
+        }
+        ok = _db_module.upsert_trade(trade)
+        if ok:
+            return jsonify({"status": "ok", "id": trade["id"]})
+        return jsonify({"error": "DB save failed"}), 500
+
+    return jsonify({"status": "ok", "note": "No DB — use localStorage"})
 
 @app.route("/history/trades/<trade_id>", methods=["PATCH"])
 @app.route("/history/trades/<trade_id>/", methods=["PATCH"])
@@ -275,62 +314,42 @@ def alert_history():
 # ── Token management ──────────────────────────────────────────────────────────
 @app.route("/set-token", methods=["POST"])
 def set_token():
-    data  = request.get_json(silent=True) or {}
-    token = data.get("token", request.form.get("token", "")).strip()
-    if not token:
-        return jsonify({"error": "token field required"}), 400
-    scanner.set_token(token)
-    scanner.STATE.check_date()
-    return jsonify({
-        "status":  "ok",
-        "message": "Token set. Scanner will use it for today's alerts.",
-        "scanning_symbols": len(scanner.STOCKS),
-        "alert_window": f"{os.environ.get('ALERT_START_IST','09:15')} - {os.environ.get('ALERT_STOP_IST','10:30')} IST",
-    })
-
-# ── Logout — clear token from memory and DB ──────────────────────────────────
-@app.route("/logout", methods=["POST"])
-@app.route("/logout/", methods=["POST"])
-def logout():
-    """
-    Clear the Upstox token from in-memory scanner and from the DB.
-    Called by the browser when the user taps Logout.
-    """
-    # Clear in-memory token
-    scanner.set_token("")
-
-    # Clear from DB if available
+    """Set today's Upstox token. Admin only."""
+    sess = _get_session(request)
+    if not sess or sess.get("role") != "admin":
+        return jsonify({"error": "Admin required"}), 403
+    data = request.get_json(silent=True) or {}
+    tok  = (data.get("token") or "").strip()
+    if not tok:
+        return jsonify({"error": "token required"}), 400
+    scanner.set_token(tok)
     if _has_db():
-        try:
-            from datetime import date as _date
-            with _db_module.cursor() as cur:
-                cur.execute(
-                    "DELETE FROM token_store WHERE ist_date = %s",
-                    (_date.today(),)
-                )
-            log.info("Token deleted from DB on logout")
-        except Exception as e:
-            log.warning("DB token delete failed: %s", e)
-
-    return jsonify({"status": "ok", "message": "Logged out"})
+        _db_module.set_token(tok, set_by=sess.get("username","admin"))
+    log.info("Upstox token set by %s", sess.get("username"))
+    return jsonify({"status": "ok", "message": "Token saved"})
 
 @app.route("/get-token")
 @app.route("/get-token/")
 def get_token_for_browser():
     """
-    Returns the current server-side Upstox token to the browser.
-    Called by the scanner UI after OAuth login to sync the token
-    into localStorage so the browser can make direct Upstox API calls.
-    Only returns the token if it is set — never returns an empty string.
+    Returns today's Upstox token stored on the server.
+    Used by scanner.html to get the token for Upstox API calls.
+    Session must be valid (checked via X-Session-Token header).
     """
-    tok = scanner.get_token()
+    # Require app session
+    sess = _get_session(request)
+    if not sess:
+        return jsonify({"error": "Not authenticated"}), 401
+    # Get from DB first, fall back to in-memory
+    tok = None
+    if _has_db():
+        tok = _db_module.get_token()
+    if not tok:
+        tok = scanner.get_token()
     if not tok:
         return jsonify({"status": "not_set",
-                        "message": "No token on server. Complete OAuth login first."}), 404
-    return jsonify({
-        "status": "ok",
-        "token":  tok,
-    })
+                        "message": "No Upstox token. Admin must complete OAuth login today."}), 404
+    return jsonify({"status": "ok", "token": tok})
 
 @app.route("/set-token-form")
 def set_token_form():
@@ -782,6 +801,46 @@ def app_me():
         "username":      sess["username"],
         "role":          sess["role"],
     })
+
+
+@app.route("/app/request-reset", methods=["POST"])
+def app_request_reset():
+    """
+    User requests password reset. Sends Telegram notification to admin.
+    No auth required — just notifies admin who then uses /bootstrap/reset-password.
+    Body: {"username": "..."}
+    """
+    data     = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    if not username:
+        return jsonify({"error": "username required"}), 400
+
+    # Check user exists
+    import db as _db_m
+    users = _db_m.get_users()
+    user  = next((u for u in users if u["username"] == username.lower()), None)
+    if not user:
+        # Don't reveal whether user exists
+        return jsonify({"status": "ok", "message": "If that user exists, admin has been notified."})
+
+    # Notify admin via Telegram
+    bot   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat  = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if bot and chat:
+        import urllib.request as _ur
+        msg = (f"🔑 Password reset requested for user: <b>{username}</b>\n\n"
+               f"Use this to reset:\n"
+               f"POST /bootstrap/reset-password\n"
+               f'{{ "pin": "YOUR_ADMIN_PIN", "username": "{username}", "password": "NewPassword" }}')
+        payload = json.dumps({"chat_id": chat, "text": msg, "parse_mode": "HTML"}).encode()
+        req = _ur.Request(f"https://api.telegram.org/bot{bot}/sendMessage",
+                          data=payload, headers={"Content-Type":"application/json"})
+        try:
+            _ur.urlopen(req, timeout=5)
+        except Exception:
+            pass
+
+    return jsonify({"status": "ok", "message": "Admin notified"})
 
 
 @app.route("/app/change-password", methods=["POST"])

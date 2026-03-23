@@ -277,8 +277,14 @@ html,body{max-width:100%;overflow-x:hidden;}
   /* Scan row */
   .scan-row{flex-wrap:wrap;gap:8px;}
   /* Chatbot */
-  #chatPanel{width:calc(100vw - 8px)!important;right:4px!important;bottom:76px!important;height:70dvh!important;}
-  #chatFab{bottom:16px!important;right:16px!important;width:46px!important;height:46px!important;}
+  #chatPanel{
+    width:calc(100vw - 8px)!important;
+    right:4px!important;left:4px!important;
+    bottom:76px!important;
+    height:calc(100dvh - 120px)!important;
+    border-radius:12px!important;
+  }
+  #chatFab{bottom:16px!important;right:16px!important;width:44px!important;height:44px!important;}
   #chatFab::after{display:none!important;}
 }
 @keyframes fabGl{0%,100%{box-shadow:0 4px 20px rgba(74,222,128,.35);}50%{box-shadow:0 4px 28px rgba(74,222,128,.65);}}
@@ -642,7 +648,46 @@ to see the specific analysis and reason.">Signal</th>
       </div>
     </div>
 
-    </div><!-- /adminContent -->
+    
+    <!-- User Management (admin only) -->
+    <div class="collapsible-wrap">
+      <div class="collapsible-hdr" onclick="toggleSection('adminUsersBody')">
+        <span class="collapsible-title">&#128100; User Management</span>
+        <span class="collapsible-arrow" id="adminUsersBody-arrow">&#9658;</span>
+      </div>
+      <div class="collapsible-body closed" id="adminUsersBody" style="max-height:0;">
+        <div style="padding:12px 14px;">
+          <div style="margin-bottom:12px;">
+            <button class="btn" onclick="loadUsers()" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#8635; Load users</button>
+          </div>
+          <div id="userListBox" style="margin-bottom:16px;"></div>
+          <div style="border-top:1px solid #f0f0f0;padding-top:14px;">
+            <div style="font-size:12px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;">Create new user</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+              <div>
+                <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Username</label>
+                <input id="newUsername" type="text" class="token-inp" placeholder="username" style="width:140px;font-size:13px;"/>
+              </div>
+              <div>
+                <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Password</label>
+                <input id="newPassword" type="password" class="token-inp" placeholder="min 8 chars" style="width:140px;font-size:13px;"/>
+              </div>
+              <div>
+                <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Role</label>
+                <select id="newRole" class="token-inp" style="font-size:13px;padding:7px 10px;border-radius:8px;border:1px solid #e0e0e0;">
+                  <option value="viewer">Viewer</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <button class="btn" onclick="createUser()" style="background:#27500A;color:#fff;border:none;">+ Create</button>
+            </div>
+            <div id="userCreateMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+</div><!-- /adminContent -->
 
   </div>
 
@@ -1705,14 +1750,34 @@ function saveH(h){localStorage.setItem(SK,JSON.stringify(h));renderHistBadge();}
 function renderHistBadge(){document.getElementById('histBadge').textContent=loadH().length;}
 
 // ─── SAVE TO HISTORY ──────────────────────────────────────────────────────────
-function saveToHistory(){
+async function saveToHistory(){
   if(!results.length){showErr('Run a scan first.');return;}
-  const h=loadH();const now=new Date();
+  const now=new Date();
   const date=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   const time=now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-  let added=0;
-  results.forEach(s=>{h.push({id:Date.now()+'_'+s.sym+'_'+Math.random().toString(36).slice(2,6),date,time,sym:s.sym,sec:s.sec,sig:s.sig,conf:s.conf,ltp:s.ltp,en:s.en,tg:s.tg,sl:s.sl,rr:s.rr,rsi:s.rsi,reason:s.reason,aEn:null,aEx:null,outcome:'pending',pnl:null,notes:''});added++;});
-  saveH(h);showOk(added+' prediction'+(added!==1?'s':'')+' saved to History tab.');
+  let added=0; const h=loadH();
+  const saves=results.map(s=>({
+    id:Date.now()+'_'+s.sym+'_'+Math.random().toString(36).slice(2,6),
+    ist_date:date,ist_time:time,
+    sym:s.sym,sec:s.sec,sig:s.sig,conf:s.conf,ltp:s.ltp,
+    en:s.en,tg:s.tg,sl:s.sl,rr:s.rr,rsi:s.rsi,reason:s.reason,
+    actual_en:null,actual_ex:null,outcome:'pending',pnl:null,notes:'',
+    // localStorage compat fields
+    date,time,aEn:null,aEx:null
+  }));
+  // Save to localStorage
+  saves.forEach(s=>{h.push(s);added++;});
+  saveH(h);
+  // Also save to DB backend
+  try{
+    await Promise.all(saves.map(s=>fetch(PROXY+'/history/trades',{
+      method:'POST',
+      headers:appHeaders({'Content-Type':'application/json'}),
+      credentials:'include',
+      body:JSON.stringify(s)
+    })));
+  }catch(e){console.warn('DB save failed:',e.message);}
+  showOk(added+' prediction'+(added!==1?'s':'')+' saved.');
 }
 
 // ─── HISTORY FILTERS + SORT ───────────────────────────────────────────────────
@@ -1728,6 +1793,24 @@ function toggleDateGroup(date,gid){if(!window._histOpenGroups)window._histOpenGr
 function parseDate(s){if(!s)return null;if(s.includes('-'))return new Date(s);return null;}
 
 // ─── RENDER HISTORY ───────────────────────────────────────────────────────────
+async function loadHistFromDB(){
+  try{
+    var r=await fetch(PROXY+'/history/trades?limit=500',{
+      headers:appHeaders(),credentials:'include'
+    });
+    if(!r.ok) return null;
+    var d=await r.json();
+    if(!d.trades||!d.trades.length) return null;
+    // Normalise DB fields to localStorage format
+    return d.trades.map(function(t){return {
+      id:t.id,date:t.ist_date,time:t.ist_time,
+      sym:t.sym,sec:t.sec,sig:t.sig,conf:t.conf,ltp:t.ltp,
+      en:t.en,tg:t.tg,sl:t.sl,rr:t.rr,rsi:t.rsi,reason:t.reason,
+      aEn:t.actual_en,aEx:t.actual_ex,outcome:t.outcome,pnl:t.pnl,notes:t.notes||''
+    };});
+  }catch(e){return null;}
+}
+
 function renderHist(){
   const all=loadH();
   renderHistBadge();renderHistStats(all);renderAccBars(all);
@@ -1783,9 +1866,9 @@ function renderHist(){
         '<td><div class="sym" style="font-size:12px;">'+h.sym+'</div><div class="sec">'+h.sec+'</div></td>'+
         '<td><span class="sig '+sigC+'" style="font-size:10px;padding:2px 7px;"><span class="dot"></span>'+h.sig+'</span></td>'+
         '<td class="r"><span style="font-weight:700;font-size:12px;color:'+cm.color+';">'+h.conf+'%</span></td>'+
-        '<td class="r htbl-hide-mobile"><span style="font-size:12px;color:#185FA5;font-weight:600;">\u20b9'+fc(h.en)+'</span></td>'+
-        '<td class="r htbl-hide-mobile"><span style="font-size:12px;color:#3B6D11;font-weight:600;">\u20b9'+fc(h.tg)+'</span></td>'+
-        '<td class="r htbl-hide-mobile"><span style="font-size:12px;color:#A32D2D;font-weight:600;">\u20b9'+fc(h.sl)+'</span></td>'+
+        '<td class="r"><span style="font-size:12px;color:#185FA5;font-weight:600;">\u20b9'+fc(h.en)+'</span></td>'+
+        '<td class="r"><span style="font-size:12px;color:#3B6D11;font-weight:600;">\u20b9'+fc(h.tg)+'</span></td>'+
+        '<td class="r"><span style="font-size:12px;color:#A32D2D;font-weight:600;">\u20b9'+fc(h.sl)+'</span></td>'+
         '<td class="r"><input class="num-inp" type="number" step="0.05" value="'+(h.aEn||'')+'" placeholder="'+fc(h.en)+'" data-id="'+h.id+'" data-field="aEn" onchange="updField(this.dataset.id,this.dataset.field,this.value)"/>'+eDiffH+'</td>'+
         '<td class="r"><input class="num-inp" type="number" step="0.05" value="'+(h.aEx||'')+'" placeholder="Exit" data-id="'+h.id+'" data-field="aEx" onchange="updField(this.dataset.id,this.dataset.field,this.value)"/>'+
           (h.aEx!==null&&h.aEn!==null?'<div style="font-size:9px;color:'+(h.pnl>=0?'#3B6D11':'#A32D2D')+';">'+(h.sig==='BUY'?'exit\u2212entry':'entry\u2212exit')+'</div>':'')+

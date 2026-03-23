@@ -77,6 +77,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     </div>
     <button class="btn-login" id="loginBtn" onclick="doLogin()">Sign in</button>
     <div class="msg" id="msg"></div>
+    <div style="text-align:center;margin-top:8px;">
+      <button onclick="document.getElementById('fpWrap').style.display=document.getElementById('fpWrap').style.display==='none'?'block':'none'"
+              style="font-size:12px;color:#888;background:none;border:none;cursor:pointer;text-decoration:underline;">
+        Forgot password?
+      </button>
+      <div id="fpWrap" style="display:none;margin-top:12px;text-align:left;border-top:1px solid #f0f0f0;padding-top:12px;">
+        <div style="font-size:12px;color:#666;margin-bottom:8px;">Contact your admin to reset your password, or enter your username and the admin will be notified.</div>
+        <div style="display:flex;gap:8px;">
+          <input id="fpUsername" type="text" style="flex:1;border:1px solid #e0e0e0;border-radius:8px;padding:8px 10px;font-size:13px;outline:none;" placeholder="Your username"/>
+          <button onclick="requestReset()" style="padding:8px 14px;border-radius:8px;border:none;background:#27500A;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Send</button>
+        </div>
+        <div id="fpMsg" style="font-size:12px;margin-top:6px;min-height:14px;"></div>
+      </div>
+    </div>
+
     <div class="chips">
       <span class="chip">30 Nifty stocks</span>
       <span class="chip">Telegram alerts</span>
@@ -86,6 +101,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 </div>
 <script>
 const PROXY='https://nse-proxy-mojx.onrender.com';
+
+async function requestReset(){
+  var u=document.getElementById('fpUsername').value.trim();
+  var msg=document.getElementById('fpMsg');
+  if(!u){msg.textContent='Enter your username';msg.style.color='#A32D2D';return;}
+  try{
+    var r=await fetch(PROXY+'/app/request-reset',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({username:u})
+    });
+    var d=await r.json();
+    if(r.ok){msg.textContent='✓ Admin has been notified via Telegram';msg.style.color='#27500A';}
+    else{msg.textContent=d.error||'Error';msg.style.color='#A32D2D';}
+  }catch(e){msg.textContent='Cannot reach server';msg.style.color='#A32D2D';}
+}
 
 async function checkSession(){
   var token=localStorage.getItem('nse_app_token');

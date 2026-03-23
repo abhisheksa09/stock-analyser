@@ -30,12 +30,22 @@ def get_connection():
                   "Env keys visible: %s",
                   [k for k in os.environ if "DATA" in k or "POST" in k or "DB" in k])
         return None
+    # Supabase pooler needs sslmode=require and no prepared statements
+    # Append sslmode if not already in URL
+    if "sslmode" not in url:
+        url = url + ("&" if "?" in url else "?") + "sslmode=require"
     try:
         if _db is None or _db.closed:
-            _db = psycopg.connect(url, row_factory=dict_row, autocommit=True)
+            _db = psycopg.connect(
+                url,
+                row_factory=dict_row,
+                autocommit=True,
+                prepare_threshold=None,   # disable prepared statements (pooler requirement)
+            )
             _DB = True
     except Exception as e:
         log.error("DB connection failed: %s", e)
+        _db = None
         return None
     return _db
 
@@ -68,6 +78,7 @@ CREATE TABLE IF NOT EXISTS session_state (
 
 CREATE TABLE IF NOT EXISTS trade_history (
     id          TEXT        PRIMARY KEY,
+    username    TEXT        NOT NULL DEFAULT 'default',
     ist_date    DATE        NOT NULL,
     ist_time    TEXT        NOT NULL,
     sym         TEXT        NOT NULL,
@@ -88,6 +99,7 @@ CREATE TABLE IF NOT EXISTS trade_history (
     notes       TEXT        NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_trade_history_user ON trade_history(username);
 
 CREATE TABLE IF NOT EXISTS alert_log (
     id          SERIAL      PRIMARY KEY,
@@ -243,17 +255,27 @@ def save_session_state(state: dict, date_=None):
         return False
 
 # ── Trade history ─────────────────────────────────────────────────────────────
-def get_trades(date_=None, limit=500):
+def get_trades(username=None, from_date=None, to_date=None, sym=None, limit=500):
     conn = db()
     if not conn:
         return []
     try:
+        where, params = [], []
+        if username:
+            where.append("username=%s"); params.append(username)
+        if from_date:
+            where.append("ist_date>=%s"); params.append(from_date)
+        if to_date:
+            where.append("ist_date<=%s"); params.append(to_date)
+        if sym:
+            where.append("sym=%s"); params.append(sym.upper())
+        sql = "SELECT * FROM trade_history"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY created_at DESC LIMIT %s"
+        params.append(limit)
         with conn.cursor() as cur:
-            if date_:
-                cur.execute("SELECT * FROM trade_history WHERE ist_date=%s ORDER BY created_at DESC LIMIT %s",
-                            (date_, limit))
-            else:
-                cur.execute("SELECT * FROM trade_history ORDER BY created_at DESC LIMIT %s", (limit,))
+            cur.execute(sql, params)
             return [dict(r) for r in cur.fetchall()]
     except Exception as e:
         log.warning("get_trades: %s", e)
@@ -267,15 +289,16 @@ def upsert_trade(trade: dict):
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO trade_history
-                    (id, ist_date, ist_time, sym, sec, sig, conf, ltp, en, tg, sl, rr,
+                    (id, username, ist_date, ist_time, sym, sec, sig, conf, ltp, en, tg, sl, rr,
                      rsi, reason, actual_en, actual_ex, outcome, pnl, notes)
                 VALUES
-                    (%(id)s,%(ist_date)s,%(ist_time)s,%(sym)s,%(sec)s,%(sig)s,%(conf)s,
+                    (%(id)s,%(username)s,%(ist_date)s,%(ist_time)s,%(sym)s,%(sec)s,%(sig)s,%(conf)s,
                      %(ltp)s,%(en)s,%(tg)s,%(sl)s,%(rr)s,%(rsi)s,%(reason)s,
                      %(actual_en)s,%(actual_ex)s,%(outcome)s,%(pnl)s,%(notes)s)
                 ON CONFLICT (id) DO UPDATE SET
                     actual_en=EXCLUDED.actual_en, actual_ex=EXCLUDED.actual_ex,
-                    outcome=EXCLUDED.outcome, pnl=EXCLUDED.pnl, notes=EXCLUDED.notes
+                    outcome=EXCLUDED.outcome, pnl=EXCLUDED.pnl, notes=EXCLUDED.notes,
+                    username=EXCLUDED.username
             """, trade)
         return True
     except Exception as e:
