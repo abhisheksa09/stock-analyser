@@ -317,6 +317,22 @@ def delete_trade(trade_id: str):
         log.warning("delete_trade: %s", e)
         return False
 
+def get_trade_stats(username=None):
+    """Quick win/loss stats for a user."""
+    trades   = get_trades(username=username, limit=2000)
+    resolved = [t for t in trades if t.get("outcome") != "pending"]
+    wins     = [t for t in resolved if t.get("pnl") and float(t["pnl"]) > 0]
+    pnls     = [float(t["pnl"]) for t in resolved if t.get("pnl") is not None]
+    return {
+        "total": len(trades),
+        "resolved": len(resolved),
+        "wins": len(wins),
+        "losses": len(resolved) - len(wins),
+        "win_rate": round(len(wins)/len(resolved)*100, 1) if resolved else 0,
+        "avg_pnl": round(sum(pnls)/len(pnls), 2) if pnls else 0,
+        "total_pnl": round(sum(pnls), 2) if pnls else 0,
+    }
+
 # ── Alert log ─────────────────────────────────────────────────────────────────
 def log_alert(sym, kind, conf, sig, message, sent, date_=None, time_=None):
     conn = db()

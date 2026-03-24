@@ -6,7 +6,7 @@
 <title>NSE Intraday Scanner</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f0;color:#1a1a1a;min-height:100vh;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f0;color:#1a1a1a;min-height:100vh;overflow-x:hidden;}
 h1{font-size:20px;font-weight:600;}
 .chip{font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid #ddd;background:#fff;color:#666}
 .chip-green{background:#EAF3DE;color:#27500A;border-color:#C0DD97;}
@@ -179,7 +179,7 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 .collapsible-title{font-size:13px;font-weight:600;}
 .collapsible-arrow{font-size:10px;color:#888;transition:transform .18s;}
 .collapsible-arrow.open{transform:rotate(90deg);}
-.collapsible-body{overflow:hidden;transition:max-height .25s ease;}
+.collapsible-
 .collapsible-body.closed{max-height:0!important;}
 .filters{display:flex;flex-direction:column;gap:6px;}
 .filter-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
@@ -694,7 +694,18 @@ to see the specific analysis and reason.">Signal</th>
 </div>
 
 
-<script>
+<script>// ── App session token (from localStorage) ─────────────────────────────────────
+var appSessionToken = localStorage.getItem('nse_app_token') || '';
+
+function appHeaders(extra){
+  // Merge app session token into every fetch call to Render backend
+  var h = extra || {};
+  if(appSessionToken) h['X-Session-Token'] = appSessionToken;
+  return h;
+}
+
+
+
 // ── Mobile menu ────────────────────────────────────────────────────────────────
 function toggleMobileMenu(){
   var m=document.getElementById('mobileMenu');
@@ -708,17 +719,69 @@ document.addEventListener('click',function(e){
 
 // ── Logout ──────────────────────────────────────────────────────────────────────
 function doLogout(){
+  var tok = appSessionToken || localStorage.getItem('nse_app_token') || '';
   if(typeof token !== 'undefined') token='';
   appSessionToken = '';
   localStorage.removeItem('nse_app_token');
   localStorage.removeItem('nse_username');
-  fetch(PROXY+'/app/logout',{
-    method:'POST',
-    headers: {'X-Session-Token': localStorage.getItem('nse_app_token')||''},
-    credentials:'include'
-  }).catch(function(){});
-  setTimeout(function(){window.location.replace('login.html');},350);
+  // Fire logout to server then redirect — don't wait
+  if(tok){
+    fetch(PROXY+'/app/logout',{
+      method:'POST',
+      headers:{'X-Session-Token':tok,'Content-Type':'application/json'},
+      credentials:'include'
+    }).catch(function(){});
+  }
+  // Immediate redirect — don't wait for server
+  window.location.href='login.html';
 }
+
+async function createUser(){
+  var msg=document.getElementById('userCreateMsg');
+  var uv=(document.getElementById('newUsername').value||'').trim();
+  var pv=document.getElementById('newPassword').value||'';
+  var rv=document.getElementById('newRole').value||'viewer';
+  if(!uv||pv.length<8){
+    msg.textContent='Username required and password >= 8 chars';
+    msg.style.color='#A32D2D';return;
+  }
+  msg.textContent='Creating…';msg.style.color='#888';
+  try{
+    var r=await fetch(PROXY+'/admin/users/create',{
+      method:'POST',
+      headers:appHeaders({'Content-Type':'application/json'}),
+      credentials:'include',
+      body:JSON.stringify({username:uv,password:pv,role:rv})
+    });
+    var d=await r.json();
+    if(r.ok){
+      msg.textContent='✓ User "'+uv+'" created';msg.style.color='#27500A';
+      document.getElementById('newUsername').value='';
+      document.getElementById('newPassword').value='';
+      setTimeout(loadUsers,600);
+    } else {
+      msg.textContent=d.error||'Error';msg.style.color='#A32D2D';
+    }
+  }catch(e){msg.textContent=e.message;msg.style.color='#A32D2D';}
+}
+
+async function deactivateUser(username){
+  if(!confirm('Disable user "'+username+'"? They will be logged out.'))return;
+  try{
+    await fetch(PROXY+'/admin/users/'+encodeURIComponent(username)+'/deactivate',
+      {method:'POST',headers:appHeaders(),credentials:'include'});
+    loadUsers();
+  }catch(e){alert('Error: '+e.message);}
+}
+
+async function activateUser(username){
+  try{
+    await fetch(PROXY+'/admin/users/'+encodeURIComponent(username)+'/activate',
+      {method:'POST',headers:appHeaders(),credentials:'include'});
+    loadUsers();
+  }catch(e){alert('Error: '+e.message);}
+}
+
 
 
 // ─── CONSTANTS ───
@@ -1075,15 +1138,6 @@ async function runDryScan(btnEl){
 
 // ─── NAVBAR FUNCTIONS ─────────────────────────────────────────────────────────
 
-// ── App session token (from localStorage) ─────────────────────────────────────
-var appSessionToken = localStorage.getItem('nse_app_token') || '';
-
-function appHeaders(extra){
-  // Merge app session token into every fetch call to Render backend
-  var h = extra || {};
-  if(appSessionToken) h['X-Session-Token'] = appSessionToken;
-  return h;
-}
 
 // ── Auth guard ─────────────────────────────────────────────────────────────────
 (async function authGuard(){
@@ -1176,7 +1230,7 @@ function openOAuthLogin(){
   );
   if(!popup){
     // Popup blocked — fallback to new tab
-    window.open('https://nse-proxy-mojx.onrender.com/auth/login', '_blank');
+    openOAuthLogin();
   }
 }
 
@@ -1347,7 +1401,14 @@ function buildSetup(sym,sec,intra,daily,ltp){
 
 // ─── SCAN ─────────────────────────────────────────────────────────────────────
 async function runScan(){
-  if(!token){showErr('Verify your token first.');return;}
+  // Auto-fetch Upstox token from server if not in memory
+  if(!token){
+    try{
+      var tr=await fetch(PROXY+'/get-token',{headers:appHeaders(),credentials:'include'});
+      if(tr.ok){var td=await tr.json();if(td.token)token=td.token;}
+    }catch(e){}
+  }
+  if(!token){showErr('No Upstox token. Admin must set it via Admin tab → Refresh Token.');return;}
   if(!sel.size){showErr('Add at least one stock.');return;}
   hideAlerts();resetSessionIfNewDay();scanCounter++;
   const btn=document.getElementById('scanBtn');
@@ -1937,15 +1998,7 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
 
 // ── Logout ──────────────────────────────────────────────────────────────────────
 </script>
-<script>
-function doLogout(){
-  token='';
-  fetch(PROXY+'/auth/logout',{method:'POST'}).catch(function(){});
-  setTimeout(function(){window.location.replace('login.html');},350);
-}
 
-
-</script>
 <div id="floatTip" style="display:none;position:fixed;background:#1a1a1a;color:#fff;font-size:12px;line-height:1.6;padding:8px 12px;border-radius:8px;white-space:pre-wrap;max-width:280px;pointer-events:none;z-index:99999;box-shadow:0 3px 14px rgba(0,0,0,.4);text-align:left;"></div>
 <script>
 // Tooltip engine — in its own script tag AFTER the floatTip div
