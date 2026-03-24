@@ -320,9 +320,14 @@ def get_token():
 @app.route("/set-token", methods=["POST"])
 @app.route("/set-token/", methods=["POST"])
 def set_token():
-    """Set Upstox token. Admin only."""
-    sess, err = _require_admin(request)
-    if err: return err
+    """Set Upstox token. Requires admin session OR ADMIN_PIN in body."""
+    sess = _get_session(request)
+    data = request.get_json(silent=True) or {}
+    # Allow PIN-based auth as fallback (for set-token-form on phone)
+    pin = data.get("_admin_pin","")
+    if not sess or sess.get("role") != "admin":
+        if not pin or pin != os.environ.get("ADMIN_PIN",""):
+            return jsonify({"error": "Admin required"}), 403
     data = request.get_json(silent=True) or {}
     tok  = (data.get("token") or "").strip()
     if not tok:
@@ -351,6 +356,42 @@ def get_chat_id():
         return jsonify({"updates": len(data.get("result",[])), "chat_ids": chats})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/set-token-form", methods=["GET"])
+@app.route("/set-token-form/", methods=["GET"])
+def set_token_form():
+    """Phone-friendly HTML form to paste the daily Upstox token. Admin only."""
+    return """<!DOCTYPE html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Set Upstox Token</title>
+<style>
+body{font-family:sans-serif;padding:24px;background:#f5f5f0;max-width:480px;margin:0 auto;}
+h2{margin-bottom:16px;}
+textarea{width:100%;height:120px;padding:10px;border-radius:8px;border:1px solid #ddd;font-size:12px;font-family:monospace;}
+button{width:100%;padding:14px;background:#27500A;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:600;margin-top:12px;cursor:pointer;}
+#msg{margin-top:10px;padding:10px;border-radius:8px;display:none;}
+.ok{background:#EAF3DE;color:#27500A;}.err{background:#FCEBEB;color:#A32D2D;}
+</style></head><body>
+<h2>&#128274; Set Upstox Token</h2>
+<p style="color:#666;margin-bottom:12px;">Paste today's Upstox access token below.</p>
+<textarea id="tok" placeholder="eyJ0eXAiOiJKV1Q..."></textarea>
+<button onclick="setTok()">Save Token</button>
+<div id="msg"></div>
+<script>
+function setTok(){
+  var t=(document.getElementById('tok').value||'').trim();
+  var msg=document.getElementById('msg');
+  if(!t){msg.textContent='Paste token first';msg.className='err';msg.style.display='block';return;}
+  fetch('/set-token',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({token:t,_admin_pin:'"""+os.environ.get("ADMIN_PIN","")+ """'})
+  }).then(r=>r.json()).then(d=>{
+    if(d.status==='ok'){msg.textContent='✓ Token saved!';msg.className='ok';}
+    else{msg.textContent='Error: '+(d.error||JSON.stringify(d));msg.className='err';}
+    msg.style.display='block';
+  }).catch(e=>{msg.textContent='Error: '+e.message;msg.className='err';msg.style.display='block';});
+}
+</script></body></html>"""
 
 
 @app.route("/test-alert", methods=["GET","POST"])

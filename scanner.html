@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTY</div>PE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -6,7 +6,7 @@
 <title>NSE Intraday Scanner</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f0;color:#1a1a1a;min-height:100vh;overflow-x:hidden;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f0;color:#1a1a1a;min-height:100vh;}
 h1{font-size:20px;font-weight:600;}
 .chip{font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid #ddd;background:#fff;color:#666}
 .chip-green{background:#EAF3DE;color:#27500A;border-color:#C0DD97;}
@@ -15,7 +15,7 @@ h1{font-size:20px;font-weight:600;}
 .chip-gray{background:#f5f5f0;color:#888;border-color:#ddd;}
 .navbar{display:flex;align-items:center;justify-content:space-between;
   gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e0e0e0;
-  margin:-20px -16px 20px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;position:relative;position:relative;}
+  margin:-20px -16px 20px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;}
 .navbar-brand{display:flex;align-items:center;gap:8px;flex-shrink:0;}
 .navbar-title{font-size:16px;font-weight:700;white-space:nowrap;}
 .navbar-centre{display:flex;align-items:center;gap:6px;flex:1;justify-content:center;flex-wrap:wrap;}
@@ -235,61 +235,29 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 [data-tip]{cursor:help;}
 th[data-tip]{cursor:default;}
 .page{max-width:1200px;margin:0 auto;padding:20px 16px;width:100%;}
-@media(max-width:640px){
-  .page{padding:12px 8px;}h1{font-size:17px;}
-  .tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap;flex-wrap:nowrap;}
-  .tab{padding:10px 14px;font-size:12px;flex-shrink:0;}
-  .counters{grid-template-columns:repeat(2,1fr);}
-  .dcards{grid-template-columns:1fr 1fr;}
-  th.hm,td.hm{display:none;}
-  .hist-stats{grid-template-columns:repeat(2,1fr);}
-  .htbl-hide-mobile{display:none;}
-  .htbl th,.htbl td{padding:6px 8px;font-size:11px;}
-  .num-inp{width:70px;}.note-inp{width:70px;}
-  .hist-toolbar{flex-direction:column;align-items:stretch;}
-  .hist-toolbar-left .btn,.hist-toolbar-left label{flex:1;text-align:center;}
-  .hist-toolbar > .btn{width:100%;}
-}
 
-/* ── Global ───────────────────────────────────────────────────────────────── */
+
+/* ── Globals ─────────────────────────────────────────────────────────────────── */
 html,body{max-width:100%;overflow-x:hidden;}
-/* ── Desktop/mobile nav ───────────────────────────────────────────────────── */
+
+/* ── Nav responsive ──────────────────────────────────────────────────────────── */
 .nav-desktop{display:inline-flex;}
 .nav-mobile{display:none;}
-/* ── Mobile responsive ────────────────────────────────────────────────────── */
-@media(max-width:600px){
+
+@media(max-width:640px){
   .nav-desktop{display:none!important;}
   .nav-mobile{display:inline-flex!important;}
-  /* Navbar: compact, no wrap, clips to screen */
-  .navbar{padding:8px 12px;gap:6px;}
+  .navbar{padding:8px 12px;gap:6px;position:relative;}
   .navbar-brand{gap:6px;flex-shrink:0;}
   .navbar-title{font-size:13px;}
-  /* Centre chips: shrink to fit, hide overflow */
   .navbar-centre{gap:4px;flex:1 1 0;min-width:0;overflow:hidden;}
   .navbar-centre .chip{font-size:10px;padding:2px 4px;white-space:nowrap;}
   #versionChip{display:none;}
-  /* Page: no horizontal scroll */
-  .page{padding:0 10px 80px;overflow-x:hidden;}
-  /* Tabs */
-  .tab-btn{font-size:11px;padding:6px 8px;}
-  /* Scanner table: scroll within wrapper */
+  .page{padding:0 10px 100px!important;overflow-x:hidden;}
   .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-  /* Scan row */
   .scan-row{flex-wrap:wrap;gap:8px;}
-  /* Chatbot */
-  #chatPanel{
-    width:calc(100vw - 8px)!important;
-    right:4px!important;left:4px!important;
-    bottom:76px!important;
-    height:calc(100dvh - 120px)!important;
-    border-radius:12px!important;
-  }
-  #chatFab{bottom:16px!important;right:16px!important;width:44px!important;height:44px!important;}
-  #chatFab::after{display:none!important;}
+  .htbl-hide-mobile{display:table-cell!important;}
 }
-@keyframes fabGl{0%,100%{box-shadow:0 4px 20px rgba(74,222,128,.35);}50%{box-shadow:0 4px 28px rgba(74,222,128,.65);}}
-#chatFab::after{content:"Ask AI";position:absolute;right:60px;background:#1a1a1a;color:#4ade80;font-size:11px;font-weight:600;padding:4px 9px;border-radius:6px;border:1px solid #2a2a2a;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;}
-#chatFab:hover::after{opacity:1;}
 </style>
 </head>
 <body>
@@ -299,7 +267,7 @@ html,body{max-width:100%;overflow-x:hidden;}
     <!-- Left: brand -->
     <div class="navbar-brand">
       <span class="navbar-title">NSE Scanner</span>
-      <span class="chip chip-gray" id="versionChip" title="App version">v2.2.0</span>
+      <span class="chip chip-gray" id="versionChip" title="App version">v2.3.0</span>
     </div>
 
     <!-- Centre: market status chips -->
@@ -314,6 +282,13 @@ html,body{max-width:100%;overflow-x:hidden;}
 
     <!-- Right: action buttons -->
     <div class="navbar-right">
+      <!-- Proxy status dot + label -->
+      <button class="nav-btn" id="proxyNavBtn" onclick="switchTab('admin')"
+              title="Cloud proxy status">
+        <span class="pdot" id="pdot" style="width:8px;height:8px;display:inline-block;vertical-align:middle;margin-right:4px;"></span>
+        <span id="proxyNavTxt" style="font-size:11px;">Proxy</span>
+      </button>
+
       <!-- Token / login button -->
       <button class="nav-btn" id="tokenNavBtn" onclick="handleTokenNavClick()"
               title="Upstox login status">
@@ -322,17 +297,17 @@ html,body{max-width:100%;overflow-x:hidden;}
       </button>
 
       <!-- Desktop links -->
-      <a href="readme.html" target="_blank" class="nav-btn nav-desktop" title="Docs">&#128214; Docs</a>
-      <a href="changelog.html" target="_blank" class="nav-btn nav-desktop" title="Changelog">&#127959;</a>
+      <a href="readme.html"   target="_blank" class="nav-btn nav-desktop">&#128214; Docs</a>
+      <a href="changelog.html" target="_blank" class="nav-btn nav-desktop">&#127959;</a>
       <button class="nav-btn nav-desktop" onclick="doLogout()" style="color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
       <!-- Hamburger (mobile only) -->
       <button class="nav-btn nav-mobile" id="burgerBtn" onclick="toggleMobileMenu()" style="font-size:18px;padding:4px 10px;">&#9776;</button>
     </div>
-    <!-- Mobile dropdown — inside navbar so position:absolute works correctly -->
-    <div id="mobileMenu" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:300;
+    <!-- Mobile dropdown — INSIDE navbar for correct absolute positioning -->
+    <div id="mobileMenu" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:400;
          background:#fff;border-bottom:2px solid #e0e0e0;padding:10px 16px;
          box-shadow:0 4px 16px rgba(0,0,0,.12);">
-      <a href="readme.html" target="_blank" class="nav-btn" style="display:flex;margin-bottom:8px;">&#128214; Docs</a>
+      <a href="readme.html"   target="_blank" class="nav-btn" style="display:flex;margin-bottom:8px;">&#128214; Docs</a>
       <a href="changelog.html" target="_blank" class="nav-btn" style="display:flex;margin-bottom:8px;">&#127959; Changelog</a>
       <button class="nav-btn" onclick="doLogout()" style="display:flex;width:100%;color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
     </div>
@@ -346,7 +321,7 @@ html,body{max-width:100%;overflow-x:hidden;}
   <div class="tabs">
     <div class="tab active" id="tab-scanner-btn" onclick="switchTab('scanner')">Scanner</div>
     <div class="tab" id="tab-history-btn" onclick="switchTab('history')">History <span class="tab-badge" id="histBadge">0</span></div>
-    <div class="tab" id="tab-admin-btn" onclick="switchTab('admin')">&#9881; Admin</div>
+    <div class="tab" id="tab-admin-btn" onclick="switchTab('admin')" style="display:none;">&#9881; Admin</div>
   </div>
 
   <!-- =========== SCANNER =========== -->
@@ -407,8 +382,8 @@ html,body{max-width:100%;overflow-x:hidden;}
       <div class="counter"><div class="counter-n" style="color:#EF9F27;" id="cW">0</div><div class="counter-l">WATCH</div></div>
     </div>
 
-    <div class="tbl-box" id="tblBox"><div class="tbl-wrap">
-      <div class="tbl-wrap"><table>
+    <div class="tbl-box" id="tblBox" style="display:none;">
+      <table>
         <thead><tr>
           <th data-tip="Stock symbol and sector. Signal history dots show previous scans. Lock = first signal of session.">Stock</th>
           <th data-tip="Signal direction for this stock.
@@ -424,7 +399,7 @@ to see the specific analysis and reason.">Signal</th>
           <th class="r" data-tip="6-gate entry checklist: Time 9:45-10:30 IST, Signal confirmed, 3/3 candles agree, Confidence above 75%, Volume above 100%, ORB breakout confirmed.">Ready?</th>
         </tr></thead>
         <tbody id="scanBody"></tbody>
-      </table></div></div>
+      </table>
     </div>
 
     <div class="empty-box" id="emptyBox">Add stocks above &#8594; click scan<br><span style="font-size:12px;">Educational only. Not financial advice.</span></div>
@@ -432,7 +407,51 @@ to see the specific analysis and reason.">Signal</th>
   </div>
 
   <!-- =========== HISTORY =========== -->
-  <div class="tab-pane" id="tab-history">
+  
+    <!-- User Management -->
+    <div class="collapsible-wrap" id="userMgmtWrap">
+      <div class="collapsible-hdr" onclick="toggleSection('userMgmtBody')">
+        <span class="collapsible-title">&#128100; User Management</span>
+        <span class="collapsible-arrow" id="userMgmtBody-arrow">&#9658;</span>
+      </div>
+      <div class="collapsible-body closed" id="userMgmtBody" style="max-height:0;">
+        <div style="padding:12px 14px;">
+
+          <!-- Users list -->
+          <div style="margin-bottom:12px;">
+            <button class="btn" onclick="loadUsers()" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#8635; Load users</button>
+          </div>
+          <div id="userListBox" style="margin-bottom:18px;overflow-x:auto;"></div>
+
+          <!-- Create user -->
+          <div style="border-top:1px solid #f0f0f0;padding-top:14px;">
+            <div style="font-size:12px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;">Create new user</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+              <div>
+                <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Username</label>
+                <input id="newUsername" type="text" class="token-inp" placeholder="username" style="width:130px;font-size:13px;"/>
+              </div>
+              <div>
+                <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Password (8+ chars)</label>
+                <input id="newPassword" type="password" class="token-inp" placeholder="password" style="width:140px;font-size:13px;"/>
+              </div>
+              <div>
+                <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Role</label>
+                <select id="newRole" style="font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid #e0e0e0;background:#fff;">
+                  <option value="viewer">Viewer</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <button class="btn" onclick="createUser()" style="background:#27500A;color:#fff;border:none;">+ Create</button>
+            </div>
+            <div id="userCreateMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+<div class="tab-pane" id="tab-history">
 
     <div class="hist-stats">
       <div class="hstat"><div class="hstat-n" id="hTotal">0</div><div class="hstat-l">Predictions</div></div>
@@ -539,9 +558,9 @@ to see the specific analysis and reason.">Signal</th>
           <th onclick="setSort('sym')" style="min-width:90px;">Stock</th>
           <th onclick="setSort('sig')">Signal</th>
           <th class="r">Conf</th>
-          <th class="r">Entry</th>
-          <th class="r">Target</th>
-          <th class="r">SL</th>
+          <th class="r htbl-hide-mobile">Entry</th>
+          <th class="r htbl-hide-mobile">Target</th>
+          <th class="r htbl-hide-mobile">SL</th>
           <th class="r" style="min-width:80px;">Act. Entry</th>
           <th class="r" style="min-width:80px;">Act. Exit</th>
           <th onclick="setSort('outcome')">Outcome</th>
@@ -575,6 +594,9 @@ to see the specific analysis and reason.">Signal</th>
             </button>
           </div>
           <div id="adminPinMsg" class="tok-msg" style="margin-top:10px;text-align:center;"></div>
+          <p style="font-size:11px;color:#aaa;margin-top:12px;">
+            Set <code>ADMIN_PIN</code> in Render env vars to change PIN.
+          </p>
         </div>
       </div>
     </div>
@@ -591,10 +613,10 @@ to see the specific analysis and reason.">Signal</th>
     <div class="card">
       <div class="card-title">System Status</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-        <button class="btn" onclick="checkProxyAdmin()" style="display:inline-flex;align-items:center;gap:6px;"><span class="pdot" id="pdot" style="width:8px;height:8px;display:inline-block;"></span><span id="proxyNavTxt">Proxy</span></button>
         <button class="btn" onclick="adminLoad('alert-status','adminStatusBox')">&#128200; Alert status</button>
         <button class="btn" onclick="adminLoad('macro-status','adminStatusBox')">&#127758; Macro status</button>
         <button class="btn" onclick="adminLoad('db/status','adminStatusBox')">&#128451; DB status</button>
+        <button class="btn" onclick="adminLoad('auth/status','adminStatusBox')">&#128274; Auth status</button>
         <button class="btn" onclick="adminLoad('ping','adminStatusBox')">&#128997; Ping</button>
       </div>
       <pre id="adminStatusBox" style="background:#1a1a1a;color:#a8ff78;padding:14px;border-radius:8px;
@@ -648,223 +670,54 @@ to see the specific analysis and reason.">Signal</th>
       </div>
     </div>
 
-    
-    <!-- User Management (admin only) -->
-    <div class="collapsible-wrap">
-      <div class="collapsible-hdr" onclick="toggleSection('adminUsersBody')">
-        <span class="collapsible-title">&#128100; User Management</span>
-        <span class="collapsible-arrow" id="adminUsersBody-arrow">&#9658;</span>
-      </div>
-      <div class="collapsible-body closed" id="adminUsersBody" style="max-height:0;">
-        <div style="padding:12px 14px;">
-          <div style="margin-bottom:12px;">
-            <button class="btn" onclick="loadUsers()" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#8635; Load users</button>
-          </div>
-          <div id="userListBox" style="margin-bottom:16px;"></div>
-          <div style="border-top:1px solid #f0f0f0;padding-top:14px;">
-            <div style="font-size:12px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;">Create new user</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
-              <div>
-                <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Username</label>
-                <input id="newUsername" type="text" class="token-inp" placeholder="username" style="width:140px;font-size:13px;"/>
-              </div>
-              <div>
-                <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Password</label>
-                <input id="newPassword" type="password" class="token-inp" placeholder="min 8 chars" style="width:140px;font-size:13px;"/>
-              </div>
-              <div>
-                <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Role</label>
-                <select id="newRole" class="token-inp" style="font-size:13px;padding:7px 10px;border-radius:8px;border:1px solid #e0e0e0;">
-                  <option value="viewer">Viewer</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <button class="btn" onclick="createUser()" style="background:#27500A;color:#fff;border:none;">+ Create</button>
-            </div>
-            <div id="userCreateMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-</div><!-- /adminContent -->
+    </div><!-- /adminContent -->
 
   </div>
 
 </div>
 
+<script>
+// ── Global functions (accessible from HTML onclick attributes) ─────────────────
 
-<script>// ── App session token (from localStorage) ─────────────────────────────────────
 var appSessionToken = localStorage.getItem('nse_app_token') || '';
 
 function appHeaders(extra){
-  // Merge app session token into every fetch call to Render backend
-  var h = extra || {};
+  var h = Object.assign({}, extra || {});
   if(appSessionToken) h['X-Session-Token'] = appSessionToken;
   return h;
 }
 
-
-
-// ── Mobile menu ────────────────────────────────────────────────────────────────
 function toggleMobileMenu(){
-  var m=document.getElementById('mobileMenu');
-  if(m) m.style.display=(m.style.display==='none'||m.style.display==='')?'block':'none';
+  var m = document.getElementById('mobileMenu');
+  if(!m) return;
+  m.style.display = (m.style.display === 'none' || m.style.display === '') ? 'block' : 'none';
 }
-document.addEventListener('click',function(e){
-  var m=document.getElementById('mobileMenu'),b=document.getElementById('burgerBtn');
-  if(m&&b&&!m.contains(e.target)&&!b.contains(e.target)&&m.style.display!=='none')
-    m.style.display='none';
+document.addEventListener('click', function(e){
+  var m = document.getElementById('mobileMenu'), b = document.getElementById('burgerBtn');
+  if(m && b && !m.contains(e.target) && !b.contains(e.target) && m.style.display !== 'none')
+    m.style.display = 'none';
 });
 
-// ── Logout ──────────────────────────────────────────────────────────────────────
 function doLogout(){
   var tok = appSessionToken || localStorage.getItem('nse_app_token') || '';
-  if(typeof token !== 'undefined') token='';
   appSessionToken = '';
+  if(typeof token !== 'undefined') token = '';
   localStorage.removeItem('nse_app_token');
   localStorage.removeItem('nse_username');
-  // Fire logout to server then redirect — don't wait
-  if(tok){
-    fetch(PROXY+'/app/logout',{
-      method:'POST',
-      headers:{'X-Session-Token':tok,'Content-Type':'application/json'},
-      credentials:'include'
-    }).catch(function(){});
-  }
-  // Immediate redirect — don't wait for server
-  window.location.href='login.html';
+  if(tok) fetch('https://nse-proxy-mojx.onrender.com/app/logout',{
+    method:'POST', headers:{'X-Session-Token':tok}, credentials:'include'
+  }).catch(function(){});
+  window.location.href = 'login.html';
 }
 
-async function createUser(){
-  var msg=document.getElementById('userCreateMsg');
-  var uv=(document.getElementById('newUsername').value||'').trim();
-  var pv=document.getElementById('newPassword').value||'';
-  var rv=document.getElementById('newRole').value||'viewer';
-  if(!uv||pv.length<8){
-    msg.textContent='Username required and password >= 8 chars';
-    msg.style.color='#A32D2D';return;
-  }
-  msg.textContent='Creating…';msg.style.color='#888';
-  try{
-    var r=await fetch(PROXY+'/admin/users/create',{
-      method:'POST',
-      headers:appHeaders({'Content-Type':'application/json'}),
-      credentials:'include',
-      body:JSON.stringify({username:uv,password:pv,role:rv})
-    });
-    var d=await r.json();
-    if(r.ok){
-      msg.textContent='✓ User "'+uv+'" created';msg.style.color='#27500A';
-      document.getElementById('newUsername').value='';
-      document.getElementById('newPassword').value='';
-      setTimeout(loadUsers,600);
-    } else {
-      msg.textContent=d.error||'Error';msg.style.color='#A32D2D';
-    }
-  }catch(e){msg.textContent=e.message;msg.style.color='#A32D2D';}
-}
-
-async function deactivateUser(username){
-  if(!confirm('Disable user "'+username+'"? They will be logged out.'))return;
-  try{
-    await fetch(PROXY+'/admin/users/'+encodeURIComponent(username)+'/deactivate',
-      {method:'POST',headers:appHeaders(),credentials:'include'});
-    loadUsers();
-  }catch(e){alert('Error: '+e.message);}
-}
-
-async function activateUser(username){
-  try{
-    await fetch(PROXY+'/admin/users/'+encodeURIComponent(username)+'/activate',
-      {method:'POST',headers:appHeaders(),credentials:'include'});
-    loadUsers();
-  }catch(e){alert('Error: '+e.message);}
-}
-
-
-// ── User management ───────────────────────────────────────────────────────────
-async function loadUsers(){
-  var box=document.getElementById('userListBox');
-  if(!box) return;
-  box.innerHTML='<span style="color:#888;font-size:12px;">Loading…</span>';
-  try{
-    var r=await fetch(PROXY+'/admin/users',{headers:appHeaders(),credentials:'include'});
-    var d=await r.json();
-    if(!r.ok){box.innerHTML='<span style="color:#A32D2D;">'+(d.error||'Error')+'</span>';return;}
-    if(!d.users||!d.users.length){box.innerHTML='<span style="color:#888;font-size:12px;">No users.</span>';return;}
-    var tbl=document.createElement('table');
-    tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px;';
-    var hdr=document.createElement('tr');
-    hdr.style.borderBottom='2px solid #e0e0e0';
-    ['User','Role','Last login','Active',''].forEach(function(t){
-      var th=document.createElement('th');
-      th.style.cssText='padding:5px 8px;text-align:left;font-weight:600;color:#666;';
-      th.textContent=t; hdr.appendChild(th);
-    });
-    tbl.appendChild(hdr);
-    d.users.forEach(function(u){
-      var ll=u.last_login?new Date(u.last_login).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'Never';
-      var tr=document.createElement('tr');
-      tr.style.borderBottom='1px solid #f5f5f0';
-      var td1=document.createElement('td'); td1.style.cssText='padding:6px 8px;font-weight:600;'; td1.textContent=u.username;
-      var td2=document.createElement('td'); td2.style.padding='6px 8px';
-      var badge=document.createElement('span');
-      badge.style.cssText='background:'+(u.role==='admin'?'#EAF3DE':'#f0f0f0')+';color:'+(u.role==='admin'?'#27500A':'#555')+';padding:2px 7px;border-radius:4px;font-size:11px;';
-      badge.textContent=u.role; td2.appendChild(badge);
-      var td3=document.createElement('td'); td3.style.cssText='padding:6px 8px;color:#888;font-size:11px;'; td3.textContent=ll;
-      var td4=document.createElement('td'); td4.style.cssText='padding:6px 8px;text-align:center;';
-      td4.innerHTML='<span style="color:'+(u.active?'#639922':'#E24B4A')+'">'+(u.active?'✓':'✗')+'</span>';
-      var td5=document.createElement('td'); td5.style.cssText='padding:6px 8px;text-align:center;';
-      var btn=document.createElement('button'); btn.className='btn';
-      if(u.active){
-        btn.textContent='Disable';
-        btn.style.cssText='font-size:11px;padding:3px 8px;background:#FCEBEB;color:#A32D2D;border-color:#F09595;';
-        btn.addEventListener('click',function(){ deactivateUser(u.username); });
-      } else {
-        btn.textContent='Enable';
-        btn.style.cssText='font-size:11px;padding:3px 8px;background:#EAF3DE;color:#27500A;border-color:#C0DD97;';
-        btn.addEventListener('click',function(){ activateUser(u.username); });
-      }
-      td5.appendChild(btn);
-      [td1,td2,td3,td4,td5].forEach(function(td){ tr.appendChild(td); });
-      tbl.appendChild(tr);
-    });
-    box.innerHTML=''; box.appendChild(tbl);
-  }catch(e){box.innerHTML='<span style="color:#A32D2D;">'+e.message+'</span>';}
-}
-
-// ── Proxy/admin check ─────────────────────────────────────────────────────────
-async function checkProxyAdmin(){
-  const dot=document.getElementById('pdot');
-  const txt=document.getElementById('proxyNavTxt');
-  if(dot) dot.style.background='#EF9F27';
-  if(txt) txt.textContent='Checking…';
-  try{
-    const r=await fetch(PROXY+'/ping',{headers:appHeaders(),credentials:'include'});
-    const d=await r.json();
-    if(r.ok && d.status==='ok'){
-      if(dot) dot.style.background='#639922';
-      if(txt) txt.textContent='Proxy OK';
-      if(d.token_set){
-        document.getElementById('tokenStatusDot').style.background='#639922';
-      }
-    } else {
-      if(dot) dot.style.background='#E24B4A';
-      if(txt) txt.textContent='Proxy down';
-    }
-  }catch(e){
-    if(dot) dot.style.background='#E24B4A';
-    if(txt) txt.textContent='Unreachable';
-  }
-}
-
+</script>
+<script>
 
 // ─── CONSTANTS ───
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const PROXY = 'https://nse-proxy-mojx.onrender.com';
-const APP_VERSION = 'v2.2.0';
+const APP_VERSION = 'v2.3.0';
 const SK = 'nse_v2';
 
 const STOCKS = [
@@ -1057,6 +910,55 @@ function getSignalMeta(sym,currentSig){
   return{reversed,locked,history};
 }
 
+// ── Auth guard ─────────────────────────────────────────────────────────────────
+(async function authGuard(){
+  if(!appSessionToken){
+    window.location.replace('login.html');
+    return;
+  }
+  try{
+    var r = await fetch(PROXY+'/app/me',{
+      headers: appHeaders(), credentials: 'include'
+    });
+    if(!r.ok){
+      localStorage.removeItem('nse_app_token');
+      window.location.replace('login.html');
+      return;
+    }
+    var d = await r.json();
+    if(!d.authenticated){
+      localStorage.removeItem('nse_app_token');
+      window.location.replace('login.html');
+      return;
+    }
+    // Update navbar with username
+    updateTokenNavBtn(true, d.username);
+    document.getElementById('tokenStatusDot').style.background = '#639922';
+    // Show admin tab only for admin role
+    if(d.role === 'admin'){
+      var adminBtn = document.getElementById('tab-admin-btn');
+      if(adminBtn) adminBtn.style.display = '';
+    }
+    // Fetch Upstox token from server
+    try{
+      var tr = await fetch(PROXY+'/get-token',{headers:appHeaders(),credentials:'include'});
+      if(tr.ok){
+        var td = await tr.json();
+        if(td.token){
+          token = td.token;
+          var dc = document.getElementById('dataChip');
+          if(dc){dc.textContent='Token active';dc.className='chip chip-blue';}
+        } else {
+          var dc2 = document.getElementById('dataChip');
+          if(dc2){dc2.textContent='No Upstox token';dc2.className='chip chip-amber';}
+        }
+      }
+    }catch(e2){}
+  }catch(e){
+    console.warn('Auth guard server unreachable:', e.message);
+  }
+})();
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 (function init(){
   const now=new Date(),utcM=now.getUTCHours()*60+now.getUTCMinutes(),istM=(utcM+330)%1440;
@@ -1213,54 +1115,6 @@ async function runDryScan(btnEl){
 }
 
 // ─── NAVBAR FUNCTIONS ─────────────────────────────────────────────────────────
-
-
-// ── Auth guard ─────────────────────────────────────────────────────────────────
-(async function authGuard(){
-  if(!appSessionToken){
-    window.location.replace('login.html');
-    return;
-  }
-  try{
-    var r=await fetch(PROXY+'/app/me',{
-      headers: appHeaders(),
-      credentials: 'include'
-    });
-    if(!r.ok){
-      localStorage.removeItem('nse_app_token');
-      window.location.replace('login.html');
-      return;
-    }
-    var d=await r.json();
-    if(!d.authenticated){
-      localStorage.removeItem('nse_app_token');
-      window.location.replace('login.html');
-      return;
-    }
-    // Update navbar with username
-    var displayName = d.username || 'User';
-    updateTokenNavBtn(true, displayName);
-    var dot = document.getElementById('tokenStatusDot');
-    if(dot) dot.style.background = '#639922';
-    // Fetch Upstox token from server for data calls
-    try{
-      var tr=await fetch(PROXY+'/get-token',{headers:appHeaders(),credentials:'include'});
-      if(tr.ok){
-        var td=await tr.json();
-        if(td.token){
-          token=td.token;
-          var dc=document.getElementById('dataChip');
-          if(dc){dc.textContent='Token active';dc.className='chip chip-blue';}
-        } else {
-          var dc2=document.getElementById('dataChip');
-          if(dc2){dc2.textContent='No Upstox token';dc2.className='chip chip-amber';}
-        }
-      }
-    }catch(e2){}
-  }catch(e){
-    console.warn('Auth guard: server unreachable', e.message);
-  }
-})();
 function handleTokenNavClick(){
   // If token set → go to Admin tab; if not → open OAuth login
   const dot = document.getElementById('tokenStatusDot');
@@ -1299,7 +1153,7 @@ function updateTokenNavBtn(ok, name){
   if(ok){
     if(txt) txt.textContent = name ? name.split(' ')[0] : 'Logged in';
     btn.style.borderColor='#C0DD97';btn.style.color='#27500A';
-    btn.title = 'Logged in as '+(name||'user')+'';
+    btn.title = 'Logged in as '+(name||'user')+' — click for Admin';
   } else {
     if(txt) txt.textContent = 'Login';
     btn.style.borderColor='#e0e0e0';btn.style.color='#555';
@@ -1320,7 +1174,7 @@ function openOAuthLogin(){
   );
   if(!popup){
     // Popup blocked — fallback to new tab
-    openOAuthLogin();
+    window.open('https://nse-proxy-mojx.onrender.com/auth/login', '_blank');
   }
 }
 
@@ -1413,17 +1267,6 @@ function vwap(c){let tv=0,v=0;c.forEach(x=>{const tp=(x[2]+x[3]+x[4])/3;tv+=tp*x
 function atr14(c){if(c.length<2)return 0;const t=[];for(let i=1;i<c.length;i++){const h=c[i][2],l=c[i][3],p=c[i-1][4];t.push(Math.max(h-l,Math.abs(h-p),Math.abs(l-p)));}const s=t.slice(-14);return +(s.reduce((a,b)=>a+b,0)/s.length).toFixed(2);}
 
 // ─── BUILD SETUP ──────────────────────────────────────────────────────────────
-function confTip(s){
-  var lines=[];
-  lines.push('Confidence: '+s.conf+'%');lines.push('');
-  if(s.confBD&&s.confBD.length){lines.push('Factor breakdown:');s.confBD.forEach(function(b){lines.push('  '+b);});lines.push('');}
-  var pen=s.ctxWarnings?s.ctxWarnings.slice():[];
-  if(s.marketBlocked)pen.unshift('Hard block: market direction opposes signal');
-  if(pen.length){lines.push('Market/macro adjustments:');pen.forEach(function(p){lines.push('  '+p);});lines.push('');}
-  if(s.confirmCount!==undefined)lines.push('Candles: '+s.confirmCount+'/3'+(s.confirmCount<3?' — −20%':' ✓'));
-  lines.push('');lines.push('Verdict: '+(s.conf>=75?'✓ Green — full size':s.conf>=55?'◑ Amber — half size':'✗ Red — skip'));
-  return lines.join('|NEWLINE|');
-}
 function sigTip(s){
   // Rich tooltip explaining exactly why this signal was inferred
   var lines = [];
@@ -1491,14 +1334,16 @@ function buildSetup(sym,sec,intra,daily,ltp){
 
 // ─── SCAN ─────────────────────────────────────────────────────────────────────
 async function runScan(){
-  // Auto-fetch Upstox token from server if not in memory
   if(!token){
     try{
-      var tr=await fetch(PROXY+'/get-token',{headers:appHeaders(),credentials:'include'});
-      if(tr.ok){var td=await tr.json();if(td.token)token=td.token;}
-    }catch(e){}
+      var _tr=await fetch(PROXY+'/get-token',{headers:appHeaders(),credentials:'include'});
+      if(_tr.ok){var _td=await _tr.json();if(_td.token)token=_td.token;}
+    }catch(_e){}
+    if(!token){
+      showErr('No Upstox token — Admin must complete daily OAuth login in Admin tab.');
+      return;
+    }
   }
-  if(!token){showErr('No Upstox token. Admin must set it via Admin tab → Refresh Token.');return;}
   if(!sel.size){showErr('Add at least one stock.');return;}
   hideAlerts();resetSessionIfNewDay();scanCounter++;
   const btn=document.getElementById('scanBtn');
@@ -1656,7 +1501,7 @@ function renderScanTable(){
     tr.className='drow'+(_meta.reversed?' evt-row-flag':'');tr.id='sr'+i;
     tr.innerHTML=
       '<td><div class="sym">'+s.sym+evtBadgeHTML(s.sym)+'</div><div class="sec">'+s.sec+'</div>'+sigHistoryHTML(s.sym,s.sig)+lockedSigHTML(s.sym,s.sig)+'</td>'+
-      '<td data-tip="'+sigTip(s).replace(/"/g,'&quot;')+'"><div style="display:flex;flex-direction:column;align-items:flex-start;gap:3px;">'+(function(){var _n=new Date(),_um=_n.getUTCHours()*60+_n.getUTCMinutes(),_im=(_um+330)%1440,_ah=_im<555||_im>=930;return _ah?'<span style="font-size:9px;color:#aaa;background:#f5f5f0;border:1px solid #ddd;border-radius:3px;padding:1px 4px;">After hours</span>':'';})()+'<span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+'<div style="margin-top:1px;">'+confirmBadgeHTML(s)+'</div></div></td>'+
+      '<td data-tip="'+sigTip(s).replace(/"/g,'&quot;')+'">'+(function(){const _n=new Date();const _um=_n.getUTCHours()*60+_n.getUTCMinutes();const _im=(_um+330)%1440;const _ah=_im<555||_im>=930;return _ah?'<span style="font-size:10px;color:#aaa;background:#f5f5f0;border:1px solid #e0e0e0;border-radius:4px;padding:1px 6px;margin-right:4px;">After hours</span>':'';})()+' <span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+confirmBadgeHTML(s)+'</td>'+
       '<td class="r" data-tip="Last traded price.\n% change vs yesterday close.\nGreen = up, Red = down."><div class="ltp">\u20b9'+fc(s.ltp)+'</div><div class="'+(s.chg>=0?'pos':'neg')+'">'+(s.chg>=0?'+':'')+s.chg+'%</div></td>'+
       '<td class="r"><div class="ev">\u2197 \u20b9'+fc(s.en)+'</div><div class="tgt">\u2713 \u20b9'+fc(s.tg)+'</div><div class="slv">\u2717 \u20b9'+fc(s.sl)+'</div></td>'+
       '<td class="r hm" data-tip="Risk:Reward ratio.\nHow much you gain vs how much you risk.\n>=2:1 Good (green)\n1.5-2:1 Acceptable (amber)\n<1.5 Skip (red)\nAlways aim for 2:1 minimum."><span class="rr '+rrC+'">'+(isNaN(s.rr)?'N/A':s.rr+':1')+'</span></td>'+
@@ -1716,7 +1561,7 @@ const ADMIN_SESSION_KEY = 'nse_admin_session';
 async function checkAdminAccess(){
   // Always verify with server — never auto-unlock from localStorage alone
   const storedTok = localStorage.getItem(ADMIN_SESSION_KEY)||'';
-  if(storedTok){ showAdminContent(); } else { showAdminGate(); }
+  showAdminGate(); // show gate immediately while we check
   try{
     const r = await fetch(PROXY+'/admin/check',{
       method:'POST',
@@ -1901,33 +1746,122 @@ function saveH(h){localStorage.setItem(SK,JSON.stringify(h));renderHistBadge();}
 function renderHistBadge(){document.getElementById('histBadge').textContent=loadH().length;}
 
 // ─── SAVE TO HISTORY ──────────────────────────────────────────────────────────
+// ── User management ───────────────────────────────────────────────────────────
+async function loadUsers(){
+  var box = document.getElementById('userListBox');
+  if(!box) return;
+  box.innerHTML = '<span style="color:#888;font-size:12px;">Loading…</span>';
+  try{
+    var r = await fetch(PROXY+'/admin/users',{headers:appHeaders(),credentials:'include'});
+    var d = await r.json();
+    if(!r.ok){box.innerHTML='<span style="color:#A32D2D;">'+(d.error||'Error')+'</span>';return;}
+    if(!d.users||!d.users.length){box.innerHTML='<span style="color:#888;font-size:12px;">No users yet.</span>';return;}
+    var tbl = document.createElement('table');
+    tbl.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px;';
+    var hdr = document.createElement('tr');
+    hdr.style.borderBottom = '2px solid #e0e0e0';
+    ['User','Role','Last login','✓','⚙'].forEach(function(t){
+      var th = document.createElement('th');
+      th.style.cssText = 'padding:5px 8px;text-align:left;font-weight:600;color:#666;font-size:11px;text-transform:uppercase;';
+      th.textContent = t; hdr.appendChild(th);
+    });
+    tbl.appendChild(hdr);
+    d.users.forEach(function(u){
+      var ll = u.last_login ? new Date(u.last_login).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : 'Never';
+      var tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid #f5f5f0';
+      var cells = [
+        (function(){ var td=document.createElement('td'); td.style.cssText='padding:6px 8px;font-weight:600;'; td.textContent=u.username; return td; })(),
+        (function(){ var td=document.createElement('td'); td.style.padding='6px 8px';
+          var sp=document.createElement('span');
+          sp.style.cssText='background:'+(u.role==='admin'?'#EAF3DE':'#f0f0f0')+';color:'+(u.role==='admin'?'#27500A':'#555')+';padding:2px 7px;border-radius:4px;font-size:11px;';
+          sp.textContent=u.role; td.appendChild(sp); return td; })(),
+        (function(){ var td=document.createElement('td'); td.style.cssText='padding:6px 8px;color:#888;font-size:11px;'; td.textContent=ll; return td; })(),
+        (function(){ var td=document.createElement('td'); td.style.cssText='padding:6px 8px;text-align:center;';
+          td.innerHTML='<span style="color:'+(u.active?'#639922':'#E24B4A')+'">'+(u.active?'✓':'✗')+'</span>'; return td; })(),
+        (function(){ var td=document.createElement('td'); td.style.cssText='padding:6px 8px;text-align:center;';
+          var btn=document.createElement('button'); btn.className='btn';
+          if(u.active){ btn.textContent='Disable'; btn.style.cssText='font-size:11px;padding:3px 8px;background:#FCEBEB;color:#A32D2D;border-color:#F09595;';
+            btn.addEventListener('click',function(){ deactivateUser(u.username); }); }
+          else { btn.textContent='Enable'; btn.style.cssText='font-size:11px;padding:3px 8px;background:#EAF3DE;color:#27500A;border-color:#C0DD97;';
+            btn.addEventListener('click',function(){ activateUser(u.username); }); }
+          td.appendChild(btn); return td; })()
+      ];
+      cells.forEach(function(td){ tr.appendChild(td); });
+      tbl.appendChild(tr);
+    });
+    box.innerHTML = ''; box.appendChild(tbl);
+  }catch(e){ box.innerHTML = '<span style="color:#A32D2D;">'+e.message+'</span>'; }
+}
+
+async function createUser(){
+  var u    = document.getElementById('newUsername').value.trim();
+  var p    = document.getElementById('newPassword').value;
+  var role = document.getElementById('newRole').value;
+  var msg  = document.getElementById('userCreateMsg');
+  if(!u || p.length < 8){ msg.textContent='Username required + password ≥8 chars'; msg.style.color='#A32D2D'; return; }
+  try{
+    var r = await fetch(PROXY+'/admin/users/create',{
+      method:'POST', headers:appHeaders({'Content-Type':'application/json'}), credentials:'include',
+      body: JSON.stringify({username:u,password:p,role:role})
+    });
+    var d = await r.json();
+    if(r.ok){ msg.textContent='✓ User "'+u+'" created'; msg.style.color='#27500A';
+      document.getElementById('newUsername').value='';
+      document.getElementById('newPassword').value='';
+      loadUsers(); }
+    else { msg.textContent = d.error||'Error'; msg.style.color='#A32D2D'; }
+  }catch(e){ msg.textContent=e.message; msg.style.color='#A32D2D'; }
+}
+
+async function deactivateUser(username){
+  if(!confirm('Disable user "'+username+'"?')) return;
+  try{ var r=await fetch(PROXY+'/admin/users/'+encodeURIComponent(username)+'/deactivate',
+    {method:'POST',headers:appHeaders(),credentials:'include'});
+    if(r.ok) loadUsers(); }catch(e){ alert(e.message); }
+}
+
+async function activateUser(username){
+  try{ var r=await fetch(PROXY+'/admin/users/'+encodeURIComponent(username)+'/activate',
+    {method:'POST',headers:appHeaders(),credentials:'include'});
+    if(r.ok) loadUsers(); }catch(e){ alert(e.message); }
+}
+
+async function checkProxyAdmin(){
+  var dot=document.getElementById('pdot'), txt=document.getElementById('proxyNavTxt');
+  if(dot) dot.style.background='#EF9F27';
+  try{
+    var r=await fetch(PROXY+'/ping',{headers:appHeaders(),credentials:'include'});
+    var d=await r.json();
+    if(r.ok&&d.status==='ok'){
+      if(dot) dot.style.background='#639922';
+      if(txt) txt.textContent='Proxy OK';
+    } else { if(dot) dot.style.background='#E24B4A'; if(txt) txt.textContent='Down'; }
+  }catch(e){ if(dot) dot.style.background='#E24B4A'; if(txt) txt.textContent='Unreachable'; }
+}
+
 async function saveToHistory(){
   if(!results.length){showErr('Run a scan first.');return;}
   const now=new Date();
   const date=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   const time=now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-  let added=0; const h=loadH();
+  const h=loadH(); let added=0;
   const saves=results.map(s=>({
     id:Date.now()+'_'+s.sym+'_'+Math.random().toString(36).slice(2,6),
-    ist_date:date,ist_time:time,
+    ist_date:date,ist_time:time,date,time,
     sym:s.sym,sec:s.sec,sig:s.sig,conf:s.conf,ltp:s.ltp,
     en:s.en,tg:s.tg,sl:s.sl,rr:s.rr,rsi:s.rsi,reason:s.reason,
-    actual_en:null,actual_ex:null,outcome:'pending',pnl:null,notes:'',
-    // localStorage compat fields
-    date,time,aEn:null,aEx:null
+    aEn:null,aEx:null,actual_en:null,actual_ex:null,outcome:'pending',pnl:null,notes:''
   }));
-  // Save to localStorage
   saves.forEach(s=>{h.push(s);added++;});
   saveH(h);
-  // Also save to DB backend
-  try{
-    await Promise.all(saves.map(s=>fetch(PROXY+'/history/trades',{
-      method:'POST',
+  // Also save to DB
+  saves.forEach(function(s){
+    fetch(PROXY+'/history/trades',{method:'POST',
       headers:appHeaders({'Content-Type':'application/json'}),
-      credentials:'include',
-      body:JSON.stringify(s)
-    })));
-  }catch(e){console.warn('DB save failed:',e.message);}
+      credentials:'include',body:JSON.stringify(s)
+    }).catch(function(){});
+  });
   showOk(added+' prediction'+(added!==1?'s':'')+' saved.');
 }
 
@@ -1944,36 +1878,7 @@ function toggleDateGroup(date,gid){if(!window._histOpenGroups)window._histOpenGr
 function parseDate(s){if(!s)return null;if(s.includes('-'))return new Date(s);return null;}
 
 // ─── RENDER HISTORY ───────────────────────────────────────────────────────────
-async function loadHistFromDB(){
-  try{
-    var r=await fetch(PROXY+'/history/trades?limit=500',{
-      headers:appHeaders(),credentials:'include'
-    });
-    if(!r.ok) return null;
-    var d=await r.json();
-    if(!d.trades||!d.trades.length) return null;
-    // Normalise DB fields to localStorage format
-    return d.trades.map(function(t){return {
-      id:t.id,date:t.ist_date,time:t.ist_time,
-      sym:t.sym,sec:t.sec,sig:t.sig,conf:t.conf,ltp:t.ltp,
-      en:t.en,tg:t.tg,sl:t.sl,rr:t.rr,rsi:t.rsi,reason:t.reason,
-      aEn:t.actual_en,aEx:t.actual_ex,outcome:t.outcome,pnl:t.pnl,notes:t.notes||''
-    };});
-  }catch(e){return null;}
-}
-
 function renderHist(){
-  // Try to load from DB (server) and merge with localStorage
-  loadHistFromDB().then(function(dbRows){
-    if(dbRows && dbRows.length > 0){
-      // Replace localStorage with DB data (DB is authoritative)
-      saveH(dbRows);
-    }
-    _renderHistInternal();
-  }).catch(function(){ _renderHistInternal(); });
-}
-
-function _renderHistInternal(){
   const all=loadH();
   renderHistBadge();renderHistStats(all);renderAccBars(all);
   let rows=[...all];
@@ -2028,9 +1933,9 @@ function _renderHistInternal(){
         '<td><div class="sym" style="font-size:12px;">'+h.sym+'</div><div class="sec">'+h.sec+'</div></td>'+
         '<td><span class="sig '+sigC+'" style="font-size:10px;padding:2px 7px;"><span class="dot"></span>'+h.sig+'</span></td>'+
         '<td class="r"><span style="font-weight:700;font-size:12px;color:'+cm.color+';">'+h.conf+'%</span></td>'+
-        '<td class="r"><span style="font-size:12px;color:#185FA5;font-weight:600;">\u20b9'+fc(h.en)+'</span></td>'+
-        '<td class="r"><span style="font-size:12px;color:#3B6D11;font-weight:600;">\u20b9'+fc(h.tg)+'</span></td>'+
-        '<td class="r"><span style="font-size:12px;color:#A32D2D;font-weight:600;">\u20b9'+fc(h.sl)+'</span></td>'+
+        '<td class="r htbl-hide-mobile"><span style="font-size:12px;color:#185FA5;font-weight:600;">\u20b9'+fc(h.en)+'</span></td>'+
+        '<td class="r htbl-hide-mobile"><span style="font-size:12px;color:#3B6D11;font-weight:600;">\u20b9'+fc(h.tg)+'</span></td>'+
+        '<td class="r htbl-hide-mobile"><span style="font-size:12px;color:#A32D2D;font-weight:600;">\u20b9'+fc(h.sl)+'</span></td>'+
         '<td class="r"><input class="num-inp" type="number" step="0.05" value="'+(h.aEn||'')+'" placeholder="'+fc(h.en)+'" data-id="'+h.id+'" data-field="aEn" onchange="updField(this.dataset.id,this.dataset.field,this.value)"/>'+eDiffH+'</td>'+
         '<td class="r"><input class="num-inp" type="number" step="0.05" value="'+(h.aEx||'')+'" placeholder="Exit" data-id="'+h.id+'" data-field="aEx" onchange="updField(this.dataset.id,this.dataset.field,this.value)"/>'+
           (h.aEx!==null&&h.aEn!==null?'<div style="font-size:9px;color:'+(h.pnl>=0?'#3B6D11':'#A32D2D')+';">'+(h.sig==='BUY'?'exit\u2212entry':'entry\u2212exit')+'</div>':'')+
@@ -2096,10 +2001,7 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
 
 
 
-
-// ── Logout ──────────────────────────────────────────────────────────────────────
 </script>
-
 <div id="floatTip" style="display:none;position:fixed;background:#1a1a1a;color:#fff;font-size:12px;line-height:1.6;padding:8px 12px;border-radius:8px;white-space:pre-wrap;max-width:280px;pointer-events:none;z-index:99999;box-shadow:0 3px 14px rgba(0,0,0,.4);text-align:left;"></div>
 <script>
 // Tooltip engine — in its own script tag AFTER the floatTip div
@@ -2131,337 +2033,5 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
   document.addEventListener('scroll',hide,true);
 })();
 </script>
-
-  <div id="chatPanel">
-    <div class="cp-hdr"><div class="cp-title"><span>&#129302;</span><span>Scanner Assistant</span></div><button class="cp-x" onclick="cpToggle()" title="Close (Esc)">&#10005;</button></div>
-    <div class="cp-msgs" id="cpMsgs"></div>
-    <div class="cp-sugs" id="cpSugs">
-      <button class="cp-sug" onclick="cpAsk('How does confidence score work?')">Confidence</button>
-      <button class="cp-sug" onclick="cpAsk('What is ORB?')">ORB</button>
-      <button class="cp-sug" onclick="cpAsk('Why is my signal WATCH?')">WATCH signal</button>
-      <button class="cp-sug" onclick="cpAsk('How do Telegram alerts fire?')">Alerts</button>
-      <button class="cp-sug" onclick="cpAsk('What are the 4 macro layers?')">Macro</button>
-    </div>
-    <div class="cp-foot">
-      <textarea class="cp-inp" id="cpInp" rows="1" placeholder="Ask about the scanner…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();cpSend();}" oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,72)+'px'"></textarea>
-      <button class="cp-btn" id="cpBtn" onclick="cpSend()">&#8593;</button>
-    </div>
-  </div>
-  <div id="chatFab" onclick="cpToggle()" title="Ask the Scanner Assistant"><span style="font-size:22px;line-height:1;pointer-events:none;">&#129302;</span></div>
-  <script>
-var cpH=[],cpBusy=false,cpOpn=false;
-const CP_KB = [
-
-  // ── LOGIN / AUTH ────────────────────────────────────────────────────────────
-  { keys: ['login','upstox','auth','oauth','token','morning','how to start','get started'],
-    q: 'How do I log in each morning?',
-    a: `**Morning routine (3 steps)**
-
-1. Open [login.html](login.html) on your phone
-2. Tap **🔐 Login** → Upstox OTP screen → tap Authorize
-3. Popup closes automatically → you're in
-
-The scanner auto-detects your session next time — if you logged in today, opening the scanner redirects straight in without needing to login again.
-
-**Token persists** in Supabase DB so Render restarts won't log you out.` },
-
-  // ── SIGNAL ──────────────────────────────────────────────────────────────────
-  { keys: ['buy signal','what is buy','buy means','buy decision'],
-    q: 'What does a BUY signal mean?',
-    a: `**BUY signal conditions (all 3 must be true):**
-
-- RSI(14) < 40 — oversold, momentum turning up
-- Price above VWAP — institutional buying pressure
-- Price above ORB High — opening range breakout confirmed
-
-**What to do:** place a limit order at the Entry price shown. Use the Stop Loss and Target shown in the expanded row.` },
-
-  { keys: ['sell signal','what is sell','sell means','sell decision'],
-    q: 'What does a SELL signal mean?',
-    a: `**SELL signal conditions (all 3 must be true):**
-
-- RSI(14) > 60 — overbought, momentum turning down
-- Price below VWAP — selling pressure dominant
-- Price below ORB Low — opening range breakdown confirmed
-
-Note: SELL means shorting the stock intraday. Only trade this if your broker and account allow intraday short selling.` },
-
-  { keys: ['watch','watch signal','why watch','watch means'],
-    q: 'Why is my signal showing WATCH?',
-    a: `**WATCH means mixed signals — skip this stock today.**
-
-Common causes:
-- Price is between ORB High and ORB Low (still in range)
-- RSI is neutral (40–60) — no clear momentum
-- Price near VWAP — no directional conviction
-- Nifty ±0.5% hard block — market too volatile (this overrides BUY/SELL to WATCH)
-
-**What to do:** wait for a cleaner setup or pick a different stock. WATCH signals have confidence capped at 45%.` },
-
-  // ── CONFIDENCE ──────────────────────────────────────────────────────────────
-  { keys: ['confidence','score','percent','how confidence','what is confidence','63%','78%','45%','55%','75%'],
-    q: 'How is the confidence score calculated?',
-    a: `**Confidence score = 6 weighted factors (0–100%)**
-
-| Factor | Weight | Full score if… |
-|--------|--------|---------------|
-| ORB breakout | 25% | Clean break above/below ORB |
-| Volume | 20% | ≥150% of 20-day average |
-| VWAP alignment | 20% | Price on correct side of VWAP |
-| RSI alignment | 15% | RSI in ideal range for signal |
-| Risk:Reward | 15% | R:R ≥ 2:1 |
-| ATR/volatility | 5% | Daily range in healthy zone |
-
-**Then adjusted by:**
-- Market context: Nifty trend, sector, gap, day trend (±5–15%)
-- Macro penalties: crude, gold, FII flows, news sentiment (–50% to +8%)
-- Candle confirmation: –20% if last 3 candles disagree
-
-**Verdict:**
-- ≥75% 🟢 Green — full position size
-- 55–74% 🟡 Amber — half position size
-- <55% 🔴 Red — skip this trade
-
-Hover the confidence cell in any row to see the exact breakdown for that stock.` },
-
-  // ── ORB ─────────────────────────────────────────────────────────────────────
-  { keys: ['orb','opening range','breakout','breakdown','first 15','9:15','9:30'],
-    q: 'What is ORB?',
-    a: `**ORB = Opening Range Breakout**
-
-The first 15 candles of the day (9:15–9:30 AM IST) define the opening range:
-- **ORB High** = highest price in those 15 minutes
-- **ORB Low** = lowest price in those 15 minutes
-
-**Breakout** (BUY signal): price closes above ORB High → bullish momentum  
-**Breakdown** (SELL signal): price closes below ORB Low → bearish momentum  
-**Inside range**: price still between ORB High and Low → WATCH, wait
-
-ORB has 25% weight in the confidence score — it's the most important single factor.` },
-
-  // ── VWAP ────────────────────────────────────────────────────────────────────
-  { keys: ['vwap','volume weighted','above vwap','below vwap'],
-    q: 'What is VWAP?',
-    a: `**VWAP = Volume Weighted Average Price**
-
-Calculated from all intraday 1-minute candles: sum of (price × volume) ÷ total volume.
-
-- **Price above VWAP** → institutions are net buyers → bullish (✓ for BUY)
-- **Price below VWAP** → institutions are net sellers → bearish (✓ for SELL)
-
-VWAP resets every day at 9:15 AM. It's a real-time institutional reference line.
-
-Weight in confidence: **20%**` },
-
-  // ── RSI ─────────────────────────────────────────────────────────────────────
-  { keys: ['rsi','relative strength','oversold','overbought','rsi 14'],
-    q: 'What does RSI mean in this scanner?',
-    a: `**RSI(14) = 14-period Relative Strength Index** (calculated from daily closes)
-
-- **RSI < 30** → Oversold — strong buying opportunity for BUY signals
-- **RSI 30–40** → Mildly oversold — good for BUY  
-- **RSI 40–60** → Neutral — ideal zone, both directions possible
-- **RSI 60–70** → Mildly overbought — good for SELL
-- **RSI > 70** → Overbought — strong SELL zone, caution for BUY
-
-Weight in confidence: **15%**
-
-The scanner requires RSI < 40 for BUY and RSI > 60 for SELL — not just direction, but magnitude.` },
-
-  // ── ATR ─────────────────────────────────────────────────────────────────────
-  { keys: ['atr','average true range','stop loss calculation','target calculation','volatility'],
-    q: 'What is ATR and how is it used?',
-    a: `**ATR = Average True Range** (14-day average daily range in ₹)
-
-Used to set **position-specific** stop loss and target:
-
-- **Target** = Entry + (ATR × 2) for BUY, Entry − (ATR × 2) for SELL
-- **Stop Loss** = below ORB Low for BUY, above ORB High for SELL
-
-Example: Stock at ₹1200, ATR = ₹18  
-→ Target = ₹1200 + ₹36 = ₹1236  
-→ R:R = ₹36 gain / ₹12 risk = 3:1
-
-A higher ATR means wider stop loss but also larger targets. Weight in confidence: **5%** (used mainly for R:R calculation).` },
-
-  // ── MACRO ───────────────────────────────────────────────────────────────────
-  { keys: ['macro','4 layer','macro layer','crude','oil','gold','fii','dii','news','rbi','fed'],
-    q: 'How does the macro intelligence work?',
-    a: `**4 macro layers run every 30 minutes and adjust confidence:**
-
-**Layer 1 — Economic calendar** (Investing.com)  
-High-impact event (RBI, Fed, Budget) within 30 min → **–50%** on all signals
-
-**Layer 2 — Yahoo Finance proxies**
-- Crude (BZ=F) +2% spike → –12% on Auto/FMCG/Pharma BUYs, +8% on Energy
-- Gold (GC=F) +1.5% rally → –10% on ALL equity BUYs
-- USD/INR +0.5% weakening → –10% on Auto/FMCG, +8% on IT BUYs
-- S&P futures <–1.5% → –15% on all BUYs
-- VIX >30 → –20%, VIX >25 → –10%
-
-**Layer 3 — NSE FII/DII flows**  
-FII net sellers >₹500 Cr → **–10%** on BUYs; buyers → **+5%**
-
-**Layer 4 — NewsAPI + Claude Haiku**  
-Headlines classified as bearish (high confidence) → **–15%** on BUYs
-
-All penalties are additive. Final = max(5, min(100, base + all_adjustments))` },
-
-  // ── READY COLUMN ────────────────────────────────────────────────────────────
-  { keys: ['ready','readiness','6 gate','gate','green ready','ready column','checklist'],
-    q: 'How do I read the Ready? column?',
-    a: `**Ready? = 6-gate checklist. All must pass for a trade.**
-
-| Gate | Condition |
-|------|-----------|
-| ⏱ Time | 9:45–10:30 AM IST (prime window) |
-| 📊 Signal | BUY or SELL (not WATCH) |
-| 🕯 Candles | 3/3 recent candles confirm VWAP side |
-| 💯 Confidence | ≥75% |
-| 📈 Volume | ≥100% of 20-day average |
-| 🔺 ORB | Clean breakout/breakdown confirmed |
-
-🟢 **Green** = all 6 pass → full position  
-🟡 **Amber** = most pass, confidence 55–74% → half position  
-🔴 **Red** = one or more fails → skip
-
-Hover any gate icon to see why it passed or failed.` },
-
-  // ── ALERTS ──────────────────────────────────────────────────────────────────
-  { keys: ['telegram','alert','notification','when does alert','alert fire','9:15','10:30'],
-    q: 'How do Telegram alerts work?',
-    a: `**Alerts fire automatically 9:15–10:30 AM IST, every 5 minutes.**
-
-3 triggers (each fires once per stock per session):
-
-1. **🟢 Green Ready** — first time a stock hits Green verdict
-2. **📈 Confidence crossed 75%** — was below, now above 75%
-3. **⚡ Signal reversal** — BUY flipped to SELL or vice versa
-
-**Setup required:**
-- your Telegram bot token → from @BotFather
-- your Telegram chat ID → your numeric ID (visit /get-chat-id)
-- Login each morning before 9:15 AM (token must be set)
-
-Test anytime via Admin → Dry Scan → Mock.` },
-
-  // ── MARKET FILTERS ──────────────────────────────────────────────────────────
-  { keys: ['nifty block','nifty 0.5','market filter','blocked','sector','gap filter','market context'],
-    q: 'Why did my signal get blocked?',
-    a: `**Market context filters run before macro:**
-
-- **Nifty ±0.5% hard block** → if Nifty moves >0.5% either way, ALL counter-trend signals forced to WATCH. This is not a penalty — it completely overrides the signal. Most common reason for unexpected WATCH.
-- **Sector headwind** → –15% if your stock's sector index is going against the signal
-- **Sector tailwind** → +5% bonus
-- **Gap filter** → –10% if stock opened with a gap against the signal direction
-- **Day trend** → ±5–10% based on stock's intraday direction vs signal
-
-Check the signal hover tooltip to see exactly which filter triggered.` },
-
-  // ── ADMIN ───────────────────────────────────────────────────────────────────
-  { keys: ['admin','admin tab','pin','admin pin','system status'],
-    q: 'How does the Admin tab work?',
-    a: `**Admin tab is PIN-protected** via the admin PIN env var in Render.
-
-Sections (all collapsible):
-- **System Status** — Proxy ping, Alert status, Macro status, DB status
-- **Dry Scan** — Test scan with symbol autocomplete; outside market hours auto-uses mock
-- **Database** — Init Supabase tables, trade stats, alert log
-- **Quick Links** — Render, Supabase, UptimeRobot, Set token form
-
-If no the admin PIN set → open access (dev mode).` },
-
-  // ── DRY SCAN ────────────────────────────────────────────────────────────────
-  { keys: ['dry scan','test scan','test alert','403','dry run'],
-    q: 'Why does dry scan give a 403 error?',
-    a: `**Upstox data APIs only work during market hours (9:00–15:40 IST).**
-
-Outside market hours → dry scan automatically switches to **Mock mode** and sends a test Telegram alert with synthetic data. This is normal and expected.
-
-For a real live scan:
-1. Login fresh this morning (token must be today's)
-2. Run dry scan between 9:00 AM and 3:40 PM IST
-3. If still 403 during market hours → logout and login again to get a fresh token` },
-
-  // ── DATABASE ────────────────────────────────────────────────────────────────
-  { keys: ['database','supabase','db','persist','restart','token lost'],
-    q: 'How does the database work?',
-    a: `**Supabase PostgreSQL (free tier) stores 4 things:**
-
-| Table | What it stores |
-|-------|---------------|
-| token table | Today's Upstox token — survives Render restarts |
-| session table | Locked signals, alerts fired today, macro cache |
-| history table | All your saved predictions with outcomes |
-| alert log table | Every Telegram message sent (permanent log) |
-
-**Setup:** Add your database connection string to Render env vars (from Supabase → Settings → Database → URI). Then visit \`Admin → Database → Init tables\` once to create tables.
-
-Without your database connection string → falls back to in-memory (data lost on restart).` },
-
-  // ── VERSION ─────────────────────────────────────────────────────────────────
-  { keys: ['version','v2.2','latest version','what version','current version'],
-    q: 'What version is the scanner?',
-    a: `**Current version: v2.2.0**
-
-Key milestones:
-- v0.1–v0.4: Local scanner with ORB/VWAP/RSI/confidence
-- v1.0: Cloud (GitHub Pages + Render)
-- v1.1: Telegram alerts
-- v1.2: Market context filters (Nifty block, sector, gap)
-- v1.3: 4-layer macro intelligence
-- v1.8: Security audit, OAuth popup auto-close
-- v1.9: Admin PIN, collapsible UI, AI disabled
-- v2.0: Supabase DB (token/session/history persist)
-- v2.1: Separate login.html, auth guard, logout
-- v2.2: Embedded chatbot, confTip breakdown, auto-mock dry scan` },
-
-  // ── STOCKS ──────────────────────────────────────────────────────────────────
-  { keys: ['stocks','30 stocks','which stocks','nifty 50','add stock','more stocks'],
-    q: 'Which stocks does the scanner cover?',
-    a: `**30 most liquid Nifty 50 stocks** (hardcoded with Upstox ISINs):
-
-Banking: HDFCBANK, ICICIBANK, SBIN, KOTAKBANK, AXISBANK, INDUSINDBK  
-IT: TCS, INFY, WIPRO, HCLTECH, TECHM  
-Energy: RELIANCE, NTPC, ONGC, COALINDIA  
-Auto: MARUTI, TATAMOTORS, BAJAJAUTO  
-Pharma: SUNPHARMA, DRREDDY, CIPLA  
-Consumer: HINDUNILVR, ITC, TITAN, ASIANPAINT  
-Others: LT, BHARTIARTL, BAJFINANCE, TATASTEEL, ULTRACEMCO  
-
-**To add more stocks:** add an entry to \`STOCKS\` in signals.py with the Upstox instrument key (\`NSE_EQ|<ISIN>\`). The ISIN for any stock is on nseindia.com.` },
-
-  // ── LOGOUT ──────────────────────────────────────────────────────────────────
-  { keys: ['logout','sign out','log out','switch account'],
-    q: 'How do I logout?',
-    a: `Click the **⏻ Logout** button in the top-right navbar.
-
-This:
-1. Clears your browser token
-2. Deletes today's token from Supabase (\`DELETE FROM token table\`)
-3. Redirects to login.html
-
-Next morning: open login.html → tap Login → you're back in.` },
-
-];
-
-function cpToggle(){
-  cpOpn=!cpOpn;var p=document.getElementById('chatPanel');
-  if(cpOpn){p.classList.add('cp-open');if(!cpH.length)cpBot("<strong>Hi! I’m your Scanner Assistant.</strong><br>Ask me anything about signals, confidence, ORB, VWAP, macro, alerts, or login.");setTimeout(function(){var i=document.getElementById('cpInp');if(i)i.focus();},240);}
-  else p.classList.remove('cp-open');
-}
-document.addEventListener('keydown',function(e){if(e.key==='Escape'&&cpOpn)cpToggle();});
-function cpBot(html){var d=document.createElement('div');d.className='cp-b';d.innerHTML=html;var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;}
-function cpUser(txt){var d=document.createElement('div');d.className='cp-u';d.textContent=txt;var m=document.getElementById('cpMsgs');m.appendChild(d);m.scrollTop=m.scrollHeight;}
-function cpMd(t){return t.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/^#{1,3} (.+)$/gm,'<strong style="display:block;margin:8px 0 4px;color:#27500A;font-size:11px;text-transform:uppercase;">$1</strong>').replace(/^[-*] (.+)$/gm,'<li>$1</li>').replace(/(<li>[\s\S]*?<\/li>)/g,'<ul style="padding-left:14px;margin:4px 0;">$1</ul>').replace(/`([^`]+)`/g,'<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:11px;">$1</code>').replace(/\n\n/g,'<br><br>').replace(/\n/g,'<br>');}
-function cpAsk(q){document.getElementById('cpInp').value=q;cpSend();}
-function cpSend(){
-  if(cpBusy)return;var inp=document.getElementById('cpInp'),txt=inp.value.trim();if(!txt)return;
-  inp.value='';inp.style.height='auto';cpBusy=true;document.getElementById('cpBtn').disabled=true;
-  document.getElementById('cpSugs').style.display='none';
-  cpUser(txt);
-  setTimeout(function(){cpBot(cpMd(cpAnswer(txt)));cpBusy=false;document.getElementById('cpBtn').disabled=false;document.getElementById('cpInp').focus();},180);
-}
-  </script>
 </body>
 </html>
