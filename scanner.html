@@ -1,3 +1,4 @@
+<!DOCTY</div>PE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -168,7 +169,7 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 .gate-icon{font-size:11px;width:14px;flex-shrink:0;font-weight:700;}
 .gate-ok{color:#639922;}.gate-fail{color:#E24B4A;}.gate-warn{color:#EF9F27;}
 .gate-label{color:#666;}
-.hist-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;}
+.hist-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;width:100%;}
 .hstat{background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:10px 14px;text-align:center;}
 .hstat-n{font-size:20px;font-weight:700;}.hstat-l{font-size:11px;color:#888;}
 .n-green{color:#639922;}.n-red{color:#E24B4A;}
@@ -178,8 +179,12 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 .collapsible-title{font-size:13px;font-weight:600;}
 .collapsible-arrow{font-size:10px;color:#888;transition:transform .18s;}
 .collapsible-arrow.open{transform:rotate(90deg);}
-.collapsible-
-.collapsible-body.closed{max-height:0!important;}
+.collapsible-body{
+  overflow:hidden;
+  transition:max-height .25s ease;
+  background:#fafaf8;
+}
+.collapsible-body.closed{max-height:0!important;overflow:hidden;}
 .filters{display:flex;flex-direction:column;gap:6px;}
 .filter-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 .filter-lbl{font-size:12px;font-weight:600;color:#888;min-width:80px;}
@@ -237,7 +242,7 @@ th[data-tip]{cursor:default;}
 
 
 /* ── Globals ─────────────────────────────────────────────────────────────────── */
-html,body{max-width:100%;overflow-x:hidden;}
+html,
 
 /* ── Nav responsive ──────────────────────────────────────────────────────────── */
 .nav-desktop{display:inline-flex;}
@@ -256,6 +261,9 @@ html,body{max-width:100%;overflow-x:hidden;}
   .tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
   .scan-row{flex-wrap:wrap;gap:8px;}
   .htbl-hide-mobile{display:table-cell!important;}
+
+  .hist-stats{grid-template-columns:repeat(2,1fr);}
+  .hist-stats .hstat:last-child{grid-column:1/-1;}
 }
 </style>
 </head>
