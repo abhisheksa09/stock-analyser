@@ -321,22 +321,28 @@ def get_token():
 @app.route("/set-token/", methods=["POST"])
 def set_token():
     """Set Upstox token. Requires admin session OR ADMIN_PIN in body."""
-    sess = _get_session(request)
-    data = request.get_json(silent=True) or {}
-    # Allow PIN-based auth as fallback (for set-token-form on phone)
-    pin = data.get("_admin_pin","")
-    if not sess or sess.get("role") != "admin":
-        if not pin or pin != os.environ.get("ADMIN_PIN",""):
-            return jsonify({"error": "Admin required"}), 403
+    # Read body ONCE
     data = request.get_json(silent=True) or {}
     tok  = (data.get("token") or "").strip()
     if not tok:
-        return jsonify({"error": "token required"}), 400
+        return jsonify({"error": "token field required in JSON body"}), 400
+
+    # Auth: admin session OR ADMIN_PIN in body (for set-token-form)
+    sess = _get_session(request)
+    pin  = data.get("_admin_pin", "")
+    admin_pin = os.environ.get("ADMIN_PIN", "")
+    is_admin_sess = sess and sess.get("role") == "admin"
+    is_pin_auth   = bool(pin and admin_pin and pin == admin_pin)
+
+    if not is_admin_sess and not is_pin_auth:
+        return jsonify({"error": "Admin session or valid ADMIN_PIN required"}), 403
+
     scanner.set_token(tok)
     if _has_db():
-        _db_module.set_token(tok, set_by=sess.get("username", "admin"))
-    log.info("Upstox token set by %s", sess.get("username"))
-    return jsonify({"status": "ok", "message": "Token saved"})
+        set_by = sess["username"] if sess else "pin_auth"
+        _db_module.set_token(tok, set_by=set_by)
+    log.info("Upstox token set (len=%d)", len(tok))
+    return jsonify({"status": "ok", "message": "Token saved. Scanner will use it immediately."})
 
 
 @app.route("/get-chat-id")

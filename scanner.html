@@ -610,6 +610,44 @@ to see the specific analysis and reason.">Signal</th>
 
     <!-- Admin content (hidden until PIN entered) -->
     <div id="adminContent" style="display:none;">
+    <!-- Upstox Token — most important daily action -->
+    <div class="card" style="border-left:4px solid #27500A;">
+      <div class="card-title" style="color:#27500A;">&#128274; Upstox Token (Daily)</div>
+      <p style="font-size:12px;color:#666;margin-bottom:14px;line-height:1.5;">
+        Set once each morning before 9:15 AM IST. Token lasts until 3:30 AM next day.
+        All users share this single server-side token.
+      </p>
+      <!-- Status -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <span class="pdot" id="pdot" style="width:10px;height:10px;display:inline-block;flex-shrink:0;"></span>
+        <span id="proxyNavTxt" style="font-size:13px;color:#666;">Checking&hellip;</span>
+        <button class="btn" onclick="checkProxyAdmin()" style="font-size:11px;padding:4px 10px;margin-left:auto;">&#8635; Check</button>
+      </div>
+      <!-- OAuth login -->
+      <button id="oauthBtn" class="btn" onclick="openOAuthLogin()"
+              style="background:#27500A;color:#fff;border:none;width:100%;padding:11px;font-size:14px;font-weight:600;margin-bottom:10px;">
+        &#128274; Login with Upstox (OAuth)
+      </button>
+      <!-- Manual token paste -->
+      <div style="margin-top:4px;">
+        <button onclick="toggleManualToken()"
+                style="font-size:12px;color:#888;background:none;border:none;cursor:pointer;text-decoration:underline;padding:0;">
+          Or paste token manually
+        </button>
+        <div id="manualTokenWrap" style="display:none;margin-top:10px;">
+          <div style="display:flex;gap:8px;">
+            <input id="tokenInput" type="password" class="token-inp"
+                   placeholder="Paste access token (eyJ...)"
+                   style="flex:1;font-size:12px;font-family:monospace;"/>
+            <button class="btn" onclick="verifyToken()"
+                    style="background:#27500A;color:#fff;border:none;white-space:nowrap;">Set token</button>
+          </div>
+          <div id="tokenMsg" style="font-size:12px;margin-top:6px;min-height:16px;"></div>
+          <div id="tokenStatusTxt" style="font-size:12px;margin-top:4px;color:#888;"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="card" style="border-left:4px solid #185FA5;">
       <div class="card-title" style="color:#185FA5;">&#9881; Admin Panel</div>
       <p style="font-size:13px;color:#666;margin-bottom:0;">System controls, diagnostics and testing.</p>
@@ -1246,19 +1284,28 @@ async function verifyToken(){
   const t=document.getElementById('tokenInput').value.trim();
   const msg=document.getElementById('tokenMsg');
   if(!t){msg.textContent='Paste token first.';msg.style.color='#A32D2D';return;}
-  msg.textContent='Verifying\u2026';msg.style.color='#888';token=t;
+  msg.textContent='Saving…';msg.style.color='#888';
   try{
-    const d=await api('/v2/user/profile');
-    if(d.data){
-      msg.textContent='';
-      setTokenStatusUI(true, d.data.user_name||d.data.email||'user');
+    // Save to server (server uses this for all scans)
+    const r=await fetch(PROXY+'/set-token',{
+      method:'POST',
+      headers:appHeaders({'Content-Type':'application/json'}),
+      credentials:'include',
+      body:JSON.stringify({token:t})
+    });
+    const d=await r.json();
+    if(r.ok && d.status==='ok'){
+      token=t;
+      msg.textContent='✓ Token saved on server';msg.style.color='#27500A';
+      document.getElementById('tokenStatusDot').style.background='#639922';
+      var dc=document.getElementById('dataChip');
+      if(dc){dc.textContent='Token active';dc.className='chip chip-blue';}
+      setTokenStatusUI(true,'Admin');
     } else {
-      token='';msg.textContent='\u2717 Invalid token';msg.style.color='#A32D2D';
-      setTokenStatusUI(false,'');
+      msg.textContent='✗ '+(d.error||'Failed');msg.style.color='#A32D2D';
     }
   } catch(e){
-    token='';msg.textContent='\u2717 '+e.message;msg.style.color='#A32D2D';
-    setTokenStatusUI(false,'');
+    msg.textContent='✗ '+e.message;msg.style.color='#A32D2D';
   }
 }
 
@@ -1638,7 +1685,7 @@ async function adminLoad(endpoint, boxId){
   box.style.display='block';
   box.textContent='Loading '+endpoint+'…';
   try{
-    const r=await fetch(PROXY+'/'+endpoint);
+    const r=await fetch(PROXY+'/'+endpoint, {headers:appHeaders(), credentials:'include'});
     const d=await r.json();
     box.textContent=JSON.stringify(d,null,2);
   }catch(e){
@@ -1650,7 +1697,7 @@ async function adminFetch(endpoint,method,msgId){
   const msg=msgId?document.getElementById(msgId):null;
   if(msg){msg.textContent='Sending…';msg.style.color='#888';}
   try{
-    const r=await fetch(PROXY+endpoint,{method:method||'GET'});
+    const r=await fetch(PROXY+endpoint,{method:method||'GET',headers:appHeaders(),credentials:'include'});
     const d=await r.json();
     if(msg){
       msg.textContent=r.ok?'✓ '+(d.message||d.status||JSON.stringify(d)):'✗ '+(d.error||JSON.stringify(d));
