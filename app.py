@@ -356,13 +356,25 @@ def get_chat_id():
 @app.route("/test-alert", methods=["GET","POST"])
 def test_alert():
     """Send a test Telegram message."""
-    result = scanner.send_test_alert()
-    return jsonify(result)
+    sent = scanner.send_telegram(
+        "🔔 <b>NSE Scanner — Test Alert</b>\n\nBot is working correctly!"
+    )
+    return jsonify({"status":"ok" if sent else "error",
+                    "telegram_sent":sent,
+                    "message":"Test alert sent" if sent else "Failed — check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID"})
 
 
 @app.route("/alert-status")
 def alert_status():
-    return jsonify(scanner.get_status())
+    tok = scanner.get_token()
+    return jsonify({
+        "token_set": bool(tok),
+        "token_preview": tok[:12]+"..." if tok else None,
+        "session_date": scanner.STATE.date,
+        "locked_signals": scanner.STATE.locked_sig,
+        "alerted_count": len(scanner.STATE.alerted),
+        "db_available": _has_db(),
+    })
 
 # ─── Upstox proxy (/v2/*) ─────────────────────────────────────────────────────
 @app.route("/v2/<path:subpath>", methods=["GET","POST","OPTIONS"])
@@ -659,8 +671,28 @@ def dry_scan():
         return jsonify({"error": "Not authenticated"}), 401
     sym  = request.args.get("sym","HDFCBANK").upper()
     mock = request.args.get("mock","0") == "1"
-    result = scanner.dry_scan_one(sym, mock=mock)
-    return jsonify(result)
+    tok  = scanner.get_token()
+    if not tok and not mock:
+        return jsonify({"error":"No Upstox token — complete OAuth first"}), 403
+    # Run a single-stock scan using signals module
+    try:
+        from signals import build_setup, get_ltp, get_intraday, get_daily, STOCKS as ALL_STOCKS
+        stock = next((s for s in ALL_STOCKS if s["sym"]==sym), None)
+        if not stock:
+            return jsonify({"error": f"Unknown symbol: {sym}"}), 400
+        if mock:
+            import random
+            s = {"sym":sym,"sec":stock["sec"],"ltp":1000.0,"chg":0.5,"sig":"BUY",
+                 "conf":72,"en":1002.0,"tg":1025.0,"sl":988.0,"rr":1.77,
+                 "rsi":45,"reason":"Mock scan (no token)","market_blocked":False}
+        else:
+            ltp   = get_ltp(stock["ikey"], tok)
+            intra = get_intraday(stock["ikey"], tok)
+            daily = get_daily(stock["ikey"], tok)
+            s     = build_setup(sym, stock["sec"], intra, daily, ltp)
+        return jsonify({"status":"ok","sym":sym,"result":s})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ─── Scheduler ────────────────────────────────────────────────────────────────
 def start_scheduler():
@@ -669,7 +701,7 @@ def start_scheduler():
     start_h = int(os.environ.get("ALERT_START_IST","9").split(":")[0])
     stop_h  = int(os.environ.get("ALERT_STOP_IST","10").split(":")[0])
     interval= int(os.environ.get("SCAN_INTERVAL_MINS","5"))
-    sched.add_job(scanner.scheduled_scan, CronTrigger(
+    sched.add_job(scanner.run_scan, CronTrigger(
         hour=f"{start_h}-{stop_h}", minute=f"*/{interval}", timezone=IST
     ))
     # Daily cleanup of expired sessions at midnight

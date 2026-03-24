@@ -783,6 +783,82 @@ async function activateUser(username){
 }
 
 
+// ── User management ───────────────────────────────────────────────────────────
+async function loadUsers(){
+  var box=document.getElementById('userListBox');
+  if(!box) return;
+  box.innerHTML='<span style="color:#888;font-size:12px;">Loading…</span>';
+  try{
+    var r=await fetch(PROXY+'/admin/users',{headers:appHeaders(),credentials:'include'});
+    var d=await r.json();
+    if(!r.ok){box.innerHTML='<span style="color:#A32D2D;">'+(d.error||'Error')+'</span>';return;}
+    if(!d.users||!d.users.length){box.innerHTML='<span style="color:#888;font-size:12px;">No users.</span>';return;}
+    var tbl=document.createElement('table');
+    tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px;';
+    var hdr=document.createElement('tr');
+    hdr.style.borderBottom='2px solid #e0e0e0';
+    ['User','Role','Last login','Active',''].forEach(function(t){
+      var th=document.createElement('th');
+      th.style.cssText='padding:5px 8px;text-align:left;font-weight:600;color:#666;';
+      th.textContent=t; hdr.appendChild(th);
+    });
+    tbl.appendChild(hdr);
+    d.users.forEach(function(u){
+      var ll=u.last_login?new Date(u.last_login).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'Never';
+      var tr=document.createElement('tr');
+      tr.style.borderBottom='1px solid #f5f5f0';
+      var td1=document.createElement('td'); td1.style.cssText='padding:6px 8px;font-weight:600;'; td1.textContent=u.username;
+      var td2=document.createElement('td'); td2.style.padding='6px 8px';
+      var badge=document.createElement('span');
+      badge.style.cssText='background:'+(u.role==='admin'?'#EAF3DE':'#f0f0f0')+';color:'+(u.role==='admin'?'#27500A':'#555')+';padding:2px 7px;border-radius:4px;font-size:11px;';
+      badge.textContent=u.role; td2.appendChild(badge);
+      var td3=document.createElement('td'); td3.style.cssText='padding:6px 8px;color:#888;font-size:11px;'; td3.textContent=ll;
+      var td4=document.createElement('td'); td4.style.cssText='padding:6px 8px;text-align:center;';
+      td4.innerHTML='<span style="color:'+(u.active?'#639922':'#E24B4A')+'">'+(u.active?'✓':'✗')+'</span>';
+      var td5=document.createElement('td'); td5.style.cssText='padding:6px 8px;text-align:center;';
+      var btn=document.createElement('button'); btn.className='btn';
+      if(u.active){
+        btn.textContent='Disable';
+        btn.style.cssText='font-size:11px;padding:3px 8px;background:#FCEBEB;color:#A32D2D;border-color:#F09595;';
+        btn.addEventListener('click',function(){ deactivateUser(u.username); });
+      } else {
+        btn.textContent='Enable';
+        btn.style.cssText='font-size:11px;padding:3px 8px;background:#EAF3DE;color:#27500A;border-color:#C0DD97;';
+        btn.addEventListener('click',function(){ activateUser(u.username); });
+      }
+      td5.appendChild(btn);
+      [td1,td2,td3,td4,td5].forEach(function(td){ tr.appendChild(td); });
+      tbl.appendChild(tr);
+    });
+    box.innerHTML=''; box.appendChild(tbl);
+  }catch(e){box.innerHTML='<span style="color:#A32D2D;">'+e.message+'</span>';}
+}
+
+// ── Proxy/admin check ─────────────────────────────────────────────────────────
+async function checkProxyAdmin(){
+  const dot=document.getElementById('pdot');
+  const txt=document.getElementById('proxyNavTxt');
+  if(dot) dot.style.background='#EF9F27';
+  if(txt) txt.textContent='Checking…';
+  try{
+    const r=await fetch(PROXY+'/ping',{headers:appHeaders(),credentials:'include'});
+    const d=await r.json();
+    if(r.ok && d.status==='ok'){
+      if(dot) dot.style.background='#639922';
+      if(txt) txt.textContent='Proxy OK';
+      if(d.token_set){
+        document.getElementById('tokenStatusDot').style.background='#639922';
+      }
+    } else {
+      if(dot) dot.style.background='#E24B4A';
+      if(txt) txt.textContent='Proxy down';
+    }
+  }catch(e){
+    if(dot) dot.style.background='#E24B4A';
+    if(txt) txt.textContent='Unreachable';
+  }
+}
+
 
 // ─── CONSTANTS ───
 
@@ -1161,11 +1237,25 @@ async function runDryScan(btnEl){
       window.location.replace('login.html');
       return;
     }
-    updateTokenNavBtn(true, d.username);
+    // Update navbar with username
+    var displayName = d.username || 'User';
+    updateTokenNavBtn(true, displayName);
+    var dot = document.getElementById('tokenStatusDot');
+    if(dot) dot.style.background = '#639922';
     // Fetch Upstox token from server for data calls
     try{
       var tr=await fetch(PROXY+'/get-token',{headers:appHeaders(),credentials:'include'});
-      if(tr.ok){var td=await tr.json();if(td.token)token=td.token;}
+      if(tr.ok){
+        var td=await tr.json();
+        if(td.token){
+          token=td.token;
+          var dc=document.getElementById('dataChip');
+          if(dc){dc.textContent='Token active';dc.className='chip chip-blue';}
+        } else {
+          var dc2=document.getElementById('dataChip');
+          if(dc2){dc2.textContent='No Upstox token';dc2.className='chip chip-amber';}
+        }
+      }
     }catch(e2){}
   }catch(e){
     console.warn('Auth guard: server unreachable', e.message);
@@ -1873,6 +1963,17 @@ async function loadHistFromDB(){
 }
 
 function renderHist(){
+  // Try to load from DB (server) and merge with localStorage
+  loadHistFromDB().then(function(dbRows){
+    if(dbRows && dbRows.length > 0){
+      // Replace localStorage with DB data (DB is authoritative)
+      saveH(dbRows);
+    }
+    _renderHistInternal();
+  }).catch(function(){ _renderHistInternal(); });
+}
+
+function _renderHistInternal(){
   const all=loadH();
   renderHistBadge();renderHistStats(all);renderAccBars(all);
   let rows=[...all];

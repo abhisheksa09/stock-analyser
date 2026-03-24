@@ -569,3 +569,28 @@ def db_status():
         return {"connected": True, "tables": counts, "date": str(today_ist())}
     except Exception as e:
         return {"connected": False, "error": str(e)}
+
+# ── Compatibility aliases (used by scanner.py) ────────────────────────────────
+def db_available() -> bool:
+    """True if DB connection is working."""
+    return get_connection() is not None
+
+def load_token(date_=None) -> str | None:
+    """Alias for get_token()."""
+    return get_token(date_)
+
+def save_token(token: str, set_by: str = "api", date_=None):
+    """Alias for set_token()."""
+    return set_token(token, set_by=set_by, date_=date_)
+
+def load_session(date_str: str) -> dict:
+    """Alias for get_session_state(). Returns dict always (never None)."""
+    result = get_session_state(date_str)
+    if result is None:
+        return {"ist_date": date_str, "locked_signals": {},
+                "alerted": [], "prev_confidence": {}, "macro_cache": None}
+    return result
+
+def save_session(state: dict):
+    """Alias for save_session_state()."""
+    return save_session_state(state)
