@@ -732,10 +732,16 @@ def auth_callback():
         "redirect_uri": redirect_uri, "grant_type": "authorization_code"
     }).encode()
     req = urllib.request.Request(
-        "https://api.upstox.com/v2/login/authorization/token",
-        data=payload,
-        headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
-        method="POST"
+    "https://api.upstox.com/v2/login/authorization/token",
+    data=payload,
+    headers={
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Origin": "https://api.upstox.com",
+        "Referer": "https://api.upstox.com/"
+    },
+    method="POST"
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
