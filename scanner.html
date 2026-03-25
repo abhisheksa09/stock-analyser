@@ -663,9 +663,15 @@ document.addEventListener('click',function(e){
 
 // ── Logout ──────────────────────────────────────────────────────────────────────
 function doLogout(){
-  if(typeof token !== 'undefined') token='';
-  fetch(PROXY+'/app/logout',{method:'POST',credentials:'include'}).catch(function(){});
-  setTimeout(function(){window.location.replace('login.html');},350);
+  var tok = appSessionToken || localStorage.getItem('nse_app_token') || '';
+  appSessionToken = '';
+  if(typeof token !== 'undefined') token = '';
+  localStorage.removeItem('nse_app_token');
+  localStorage.removeItem('nse_username');
+  if(tok) fetch('https://nse-proxy-mojx.onrender.com/app/logout',{
+    method:'POST', headers:{'X-Session-Token':tok}, credentials:'include'
+  }).catch(function(){});
+  window.location.href = 'login.html';
 }
 
 
