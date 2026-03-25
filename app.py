@@ -461,6 +461,80 @@ def upstox_proxy(subpath):
     except Exception as e:
         return jsonify({"errors": [{"message": str(e)}]}), 502
 
+
+# ─── Upstox data endpoints (instrument_key as query param — avoids | in path) ──
+
+@app.route("/upstox/ltp")
+def upstox_ltp():
+    """GET /upstox/ltp?ikey=NSE_EQ|INE040A01034"""
+    sess = _get_session(request)
+    if not sess:
+        return jsonify({"error": "Not authenticated"}), 401
+    ikey = request.args.get("ikey", "")
+    if not ikey:
+        return jsonify({"error": "ikey required"}), 400
+    tok = scanner.get_token() or (_has_db() and _db_module.get_token())
+    if not tok:
+        return jsonify({"errors": [{"message": "No Upstox token"}]}), 403
+    url = f"https://api.upstox.com/v2/market-quote/ltp?instrument_key={urllib.parse.quote(ikey, safe='')}"
+    return _upstox_get(url, tok)
+
+
+@app.route("/upstox/intraday")
+def upstox_intraday():
+    """GET /upstox/intraday?ikey=NSE_EQ|INE040A01034&interval=1minute"""
+    sess = _get_session(request)
+    if not sess:
+        return jsonify({"error": "Not authenticated"}), 401
+    ikey     = request.args.get("ikey", "")
+    interval = request.args.get("interval", "1minute")
+    if not ikey:
+        return jsonify({"error": "ikey required"}), 400
+    tok = scanner.get_token() or (_has_db() and _db_module.get_token())
+    if not tok:
+        return jsonify({"errors": [{"message": "No Upstox token"}]}), 403
+    url = (f"https://api.upstox.com/v2/historical-candle/intraday/"
+           f"{urllib.parse.quote(ikey, safe='')}/{interval}")
+    return _upstox_get(url, tok)
+
+
+@app.route("/upstox/daily")
+def upstox_daily():
+    """GET /upstox/daily?ikey=NSE_EQ|INE040A01034&from=2026-01-01&to=2026-03-25"""
+    sess = _get_session(request)
+    if not sess:
+        return jsonify({"error": "Not authenticated"}), 401
+    ikey    = request.args.get("ikey", "")
+    to_date = request.args.get("to",   "")
+    fr_date = request.args.get("from", "")
+    if not ikey:
+        return jsonify({"error": "ikey required"}), 400
+    tok = scanner.get_token() or (_has_db() and _db_module.get_token())
+    if not tok:
+        return jsonify({"errors": [{"message": "No Upstox token"}]}), 403
+    url = (f"https://api.upstox.com/v2/historical-candle/"
+           f"{urllib.parse.quote(ikey, safe='')}/day/{to_date}/{fr_date}")
+    return _upstox_get(url, tok)
+
+
+def _upstox_get(url, tok):
+    """Make a GET request to Upstox and return the response."""
+    headers = {
+        "Authorization": f"Bearer {tok}",
+        "Accept":        "application/json",
+    }
+    try:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = resp.read()
+            return cors(Response(body, status=resp.status, content_type="application/json"))
+    except urllib.error.HTTPError as e:
+        body = e.read()
+        log.warning("Upstox %s → %d: %s", url, e.code, body[:200])
+        return cors(Response(body, status=e.code, content_type="application/json"))
+    except Exception as e:
+        return jsonify({"errors": [{"message": str(e)}]}), 502
+
 # ─── Trade history ────────────────────────────────────────────────────────────
 @app.route("/history/trades", methods=["GET"])
 @app.route("/history/trades/", methods=["GET"])

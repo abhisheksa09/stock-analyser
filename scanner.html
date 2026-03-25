@@ -850,8 +850,8 @@ async function fetchMarketContext() {
     const today = new Date().toISOString().split('T')[0];
     const from  = new Date(Date.now()-35*864e5).toISOString().split('T')[0];
     const [ltpD, dailyD] = await Promise.all([
-      api('/v2/market-quote/ltp?instrument_key='+encodeURIComponent(nKey)),
-      api('/v2/historical-candle/'+encodeURIComponent(nKey)+'/day/'+today+'/'+from)
+      apiQ('/upstox/ltp','ikey='+encodeURIComponent(nKey)),
+      apiQ('/upstox/daily','ikey='+encodeURIComponent(nKey)+'&to='+today+'&from='+from)
     ]);
     const nLTP   = Object.values(ltpD.data||{})[0]?.last_price || 0;
     const nPrevC = dailyD.data?.candles?.[0]?.[4] || nLTP;
@@ -863,8 +863,8 @@ async function fetchMarketContext() {
       Object.entries(INDEX_KEYS).filter(([k])=>k!=='NIFTY50').map(async([name,ikey])=>{
         try {
           const [sL,sD] = await Promise.all([
-            api('/v2/market-quote/ltp?instrument_key='+encodeURIComponent(ikey)),
-            api('/v2/historical-candle/'+encodeURIComponent(ikey)+'/day/'+today+'/'+from)
+            apiQ('/upstox/ltp','ikey='+encodeURIComponent(ikey)),
+          apiQ('/upstox/daily','ikey='+encodeURIComponent(ikey)+'&to='+today+'&from='+from)
           ]);
           const sLV = Object.values(sL.data||{})[0]?.last_price||0;
           const sPC = sD.data?.candles?.[0]?.[4]||sLV;
@@ -1312,9 +1312,30 @@ async function verifyToken(){
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 async function api(path,opts={}){const hdrs=Object.assign({'Authorization':'Bearer '+token,'Accept':'application/json'},appHeaders(),opts.headers||{});const res=await fetch(PROXY+path,{...opts,headers:hdrs,credentials:'include'});const data=await res.json();if(!res.ok)throw new Error(data?.errors?.[0]?.message||data?.message||'HTTP '+res.status);return data;}
-async function getLTP(ikey){const d=await api('/v2/market-quote/ltp?instrument_key='+encodeURIComponent(ikey));const k=Object.keys(d.data||{})[0],ltp=d.data?.[k]?.last_price;if(!ltp)throw new Error('No LTP');return ltp;}
-async function getIntra(ikey){const d=await api('/v2/historical-candle/intraday/'+encodeURIComponent(ikey)+'/1minute');return d.data?.candles||[];}
-async function getDaily(ikey){const to=new Date().toISOString().split('T')[0];const from=new Date(Date.now()-35*864e5).toISOString().split('T')[0];const d=await api('/v2/historical-candle/'+encodeURIComponent(ikey)+'/day/'+to+'/'+from);return d.data?.candles||[];}
+async function apiQ(path,qs){
+  // Use query-param based endpoints (avoids | in URL path breaking gunicorn)
+  const url=PROXY+path+(qs?'?'+qs:'');
+  const hdrs=appHeaders({'Accept':'application/json'});
+  const res=await fetch(url,{headers:hdrs,credentials:'include'});
+  const data=await res.json();
+  if(!res.ok)throw new Error(data?.errors?.[0]?.message||data?.message||'HTTP '+res.status);
+  return data;
+}
+async function getLTP(ikey){
+  const d=await apiQ('/upstox/ltp','ikey='+encodeURIComponent(ikey));
+  const k=Object.keys(d.data||{})[0],ltp=d.data?.[k]?.last_price;
+  if(!ltp)throw new Error('No LTP for '+ikey);return ltp;
+}
+async function getIntra(ikey){
+  const d=await apiQ('/upstox/intraday','ikey='+encodeURIComponent(ikey)+'&interval=1minute');
+  return d.data?.candles||[];
+}
+async function getDaily(ikey){
+  const to=new Date().toISOString().split('T')[0];
+  const from=new Date(Date.now()-35*864e5).toISOString().split('T')[0];
+  const d=await apiQ('/upstox/daily','ikey='+encodeURIComponent(ikey)+'&to='+to+'&from='+from);
+  return d.data?.candles||[];
+}
 
 // ─── INDICATORS ───────────────────────────────────────────────────────────────
 function rsi14(closes){if(closes.length<15)return 50;let g=0,l=0;for(let i=closes.length-14;i<closes.length;i++){const d=closes[i]-closes[i-1];d>0?g+=d:l+=Math.abs(d);}return +(100-100/(1+(g/14)/((l/14)||.001))).toFixed(1);}
