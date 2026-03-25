@@ -7,203 +7,114 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-  background:#f5f5f0;color:#1a1a1a;min-height:100dvh;
-  display:flex;align-items:center;justify-content:center;padding:20px;}
-.card{width:100%;max-width:380px;background:#fff;border:1px solid #e0e0e0;
-  border-radius:20px;padding:36px;box-shadow:0 4px 32px rgba(0,0,0,.07);
-  animation:fadeUp .3s ease;}
+  background:#f5f5f0;color:#1a1a1a;min-height:100dvh;display:flex;flex-direction:column;}
+.topbar{display:flex;align-items:center;justify-content:space-between;
+  padding:14px 24px;border-bottom:1px solid #e0e0e0;background:#fff;}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand-icon{font-size:20px;}.brand-name{font-size:15px;font-weight:700;letter-spacing:-.02em;}
+.brand-ver{font-size:10px;color:#aaa;border:1px solid #e0e0e0;border-radius:20px;padding:2px 8px;background:#fafafa;}
+.top-links{display:flex;gap:8px;}
+.top-link{font-size:12px;color:#666;text-decoration:none;padding:5px 12px;border:1px solid #ddd;
+  border-radius:20px;background:#fff;transition:all .15s;}
+.top-link:hover{border-color:#27500A;color:#27500A;background:#EAF3DE;}
+.main{flex:1;display:flex;align-items:center;justify-content:center;padding:40px 24px;}
+.card{width:100%;max-width:380px;background:#fff;border:1px solid #e0e0e0;border-radius:20px;
+  padding:40px 36px;box-shadow:0 4px 32px rgba(0,0,0,.07);animation:fadeUp .3s ease;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
-.brand{text-align:center;margin-bottom:28px;}
-.brand-icon{width:64px;height:64px;border-radius:18px;background:#EAF3DE;
-  border:2px solid #C0DD97;margin:0 auto 14px;display:flex;align-items:center;
-  justify-content:center;font-size:28px;}
-.brand h1{font-size:20px;font-weight:700;letter-spacing:-.03em;margin-bottom:6px;}
-.brand p{font-size:13px;color:#888;}
-.divider{height:1px;background:#f0f0f0;margin:0 0 20px;}
+.hero{text-align:center;margin-bottom:28px;}
+.hero-icon{width:68px;height:68px;border-radius:20px;background:#EAF3DE;border:2px solid #C0DD97;
+  margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-size:30px;}
+.hero h1{font-size:22px;font-weight:700;letter-spacing:-.03em;margin-bottom:6px;}
+.hero p{font-size:13px;color:#888;line-height:1.5;}
+.divider{height:1px;background:#f0f0f0;margin:0 0 22px;}
 .field{margin-bottom:14px;}
-.field label{display:block;font-size:11px;font-weight:600;color:#888;
-  text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px;}
-.field input{width:100%;border:1px solid #e0e0e0;border-radius:10px;
-  padding:10px 14px;font-size:14px;font-family:inherit;outline:none;
-  background:#fafafa;transition:border-color .15s;}
+.field label{display:block;font-size:12px;font-weight:600;color:#666;
+  text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
+.field input{width:100%;border:1px solid #e0e0e0;border-radius:10px;padding:10px 14px;
+  font-size:14px;font-family:inherit;outline:none;transition:border-color .15s;background:#fafafa;}
 .field input:focus{border-color:#27500A;background:#fff;}
-.btn-primary{width:100%;padding:12px;border-radius:11px;border:none;
-  background:#27500A;color:#fff;font-size:14px;font-weight:600;
-  cursor:pointer;margin-top:6px;transition:background .15s;font-family:inherit;}
-.btn-primary:hover{background:#1a3d07;}
-.btn-primary:disabled{background:#aaa;cursor:not-allowed;}
-.msg{font-size:13px;min-height:18px;margin-top:10px;text-align:center;
-  padding:8px;border-radius:8px;}
-.msg.err{color:#A32D2D;background:#FCEBEB;}
-.msg.ok{color:#27500A;background:#EAF3DE;}
-.divider-sm{height:1px;background:#f0f0f0;margin:20px 0;}
-.reset-section{text-align:center;}
-.reset-toggle{font-size:12px;color:#888;background:none;border:none;
-  cursor:pointer;text-decoration:underline;padding:0;}
-.reset-form{display:none;margin-top:14px;text-align:left;
-  border:1px solid #e8e8e8;border-radius:12px;padding:16px;}
-.reset-form .field{margin-bottom:10px;}
-.reset-form h3{font-size:13px;font-weight:600;color:#444;margin-bottom:14px;}
-.btn-secondary{width:100%;padding:10px;border-radius:10px;border:1px solid #27500A;
-  background:#EAF3DE;color:#27500A;font-size:13px;font-weight:600;
-  cursor:pointer;font-family:inherit;transition:background .15s;}
-.btn-secondary:hover{background:#d5eabc;}
+.btn-login{width:100%;padding:13px 20px;border-radius:12px;border:none;
+  background:#27500A;color:#fff;font-size:14px;font-weight:600;cursor:pointer;
+  margin-top:8px;transition:background .15s,transform .12s;font-family:inherit;}
+.btn-login:hover{background:#1a3d07;transform:translateY(-1px);}
+.btn-login:disabled{background:#aaa;transform:none;cursor:not-allowed;}
+.msg{font-size:13px;min-height:18px;margin-top:10px;text-align:center;}
+.msg.err{color:#A32D2D;}.msg.ok{color:#27500A;}
 .chips{display:flex;justify-content:center;gap:8px;margin-top:20px;flex-wrap:wrap;}
-.chip{font-size:11px;padding:3px 10px;border-radius:20px;
-  border:1px solid #e0e0e0;color:#888;background:#fafafa;}
+.chip{font-size:11px;padding:4px 11px;border-radius:20px;border:1px solid #e0e0e0;
+  color:#888;background:#fafafa;}
 </style>
 </head>
 <body>
-<div class="card">
+<div class="topbar">
   <div class="brand">
-    <div class="brand-icon">&#128200;</div>
-    <h1>NSE Intraday Scanner</h1>
-    <p>Real-time signals &middot; Macro intelligence</p>
+    <span class="brand-icon">&#128200;</span>
+    <span class="brand-name">NSE Scanner</span>
+    <span class="brand-ver">v2.2.0</span>
   </div>
-  <div class="divider"></div>
-
-  <!-- Login form -->
-  <div id="loginSection">
+  <div class="top-links">
+    <a href="readme.html" class="top-link">&#128214; Docs</a>
+    <a href="changelog.html" class="top-link">&#127959; Changelog</a>
+  </div>
+</div>
+<div class="main">
+  <div class="card">
+    <div class="hero">
+      <div class="hero-icon">&#128200;</div>
+      <h1>NSE Intraday Scanner</h1>
+      <p>Real-time signals &middot; Macro intelligence &middot; Telegram alerts</p>
+    </div>
+    <div class="divider"></div>
     <div class="field">
       <label>Username</label>
-      <input id="username" type="text" autocomplete="username"
-             placeholder="Enter username" autofocus
-             onkeydown="if(event.key==='Enter')document.getElementById('password').focus()"/>
+      <input id="username" type="text" autocomplete="username" placeholder="Enter username"
+             autofocus onkeydown="if(event.key==='Enter')document.getElementById('password').focus()"/>
     </div>
     <div class="field">
       <label>Password</label>
-      <input id="password" type="password" autocomplete="current-password"
-             placeholder="Enter password"
+      <input id="password" type="password" autocomplete="current-password" placeholder="Enter password"
              onkeydown="if(event.key==='Enter')doLogin()"/>
     </div>
-    <button class="btn-primary" id="loginBtn" onclick="doLogin()">Sign in</button>
-    <div class="msg" id="loginMsg"></div>
-  </div>
-
-  <div class="divider-sm"></div>
-
-  <!-- Forgot password -->
-  <div style="text-align:center;margin-top:6px;">
-    <a href="password-reset.html" style="font-size:12px;color:#888;text-decoration:underline;">
-      Forgot password?
-    </a>
-  </div>
-
-  
-
-  <div class="chips">
-    <span class="chip">30 Nifty stocks</span>
-    <span class="chip">Telegram alerts</span>
-    <span class="chip">4-layer macro</span>
+    <button class="btn-login" id="loginBtn" onclick="doLogin()">Sign in</button>
+    <div class="msg" id="msg"></div>
+    <div class="chips">
+      <span class="chip">30 Nifty stocks</span>
+      <span class="chip">Telegram alerts</span>
+      <span class="chip">4-layer macro</span>
+    </div>
   </div>
 </div>
-
 <script>
-const PROXY = 'https://nse-proxy-mojx.onrender.com';
-
-// Auto-redirect if already logged in
-(async function(){
-  var tok = localStorage.getItem('nse_app_token');
-  if(!tok) return;
-  try{
-    var r = await fetch(PROXY+'/app/me',{
-      headers:{'X-Session-Token':tok}, credentials:'include'
-    });
-    if(r.ok){var d=await r.json();if(d.authenticated) window.location.replace('scanner.html');}
-    else localStorage.removeItem('nse_app_token');
-  }catch(e){}
-})();
-
+const PROXY='https://nse-proxy-mojx.onrender.com';
+async function checkSession(){
+  try{var r=await fetch(PROXY+'/app/me',{credentials:'include'});
+  if(r.ok){var d=await r.json();if(d.authenticated){window.location.replace('scanner.html');return;}}}catch(e){}
+}
 async function doLogin(){
-  var u   = document.getElementById('username').value.trim();
-  var p   = document.getElementById('password').value;
-  var msg = document.getElementById('loginMsg');
-  var btn = document.getElementById('loginBtn');
-  msg.textContent=''; msg.className='msg';
+  var u=document.getElementById('username').value.trim();
+  var p=document.getElementById('password').value;
+  var msg=document.getElementById('msg');
+  var btn=document.getElementById('loginBtn');
   if(!u||!p){msg.textContent='Enter username and password';msg.className='msg err';return;}
-  btn.disabled=true; btn.textContent='Signing in…';
+  btn.disabled=true;btn.textContent='Signing in\u2026';msg.textContent='';msg.className='msg';
   try{
-    var r = await fetch(PROXY+'/app/login',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      credentials:'include',
-      body:JSON.stringify({username:u, password:p})
-    });
-    var d = await r.json();
-    if(r.ok && d.status==='ok'){
-      if(d.token) localStorage.setItem('nse_app_token', d.token);
-      localStorage.setItem('nse_username', d.username);
-      msg.textContent='✓ Welcome, '+d.username+'!'; msg.className='msg ok';
-      setTimeout(function(){ window.location.replace('scanner.html'); }, 500);
-    }else{
-      msg.textContent = d.error || 'Invalid credentials';
-      msg.className='msg err';
-      btn.disabled=false; btn.textContent='Sign in';
-      document.getElementById('password').value='';
-      document.getElementById('password').focus();
+    var r=await fetch(PROXY+'/app/login',{method:'POST',headers:{'Content-Type':'application/json'},
+      credentials:'include',body:JSON.stringify({username:u,password:p})});
+    var d=await r.json();
+    if(r.ok&&d.status==='ok'){
+      msg.textContent='\u2713 Welcome, '+d.username+'!';msg.className='msg ok';
+      setTimeout(function(){window.location.replace('scanner.html');},600);
+    } else {
+      msg.textContent=d.error||'Login failed';msg.className='msg err';
+      btn.disabled=false;btn.textContent='Sign in';
+      document.getElementById('password').select();
     }
   }catch(e){
-    msg.textContent='Cannot reach server. Try again.';
-    msg.className='msg err';
-    btn.disabled=false; btn.textContent='Sign in';
+    msg.textContent='Cannot reach server — check connection';msg.className='msg err';
+    btn.disabled=false;btn.textContent='Sign in';
   }
 }
-
-
-
-async function sendResetRequest(){
-  var u   = document.getElementById('resetUsername').value.trim();
-  var r2  = document.getElementById('resetReason').value.trim();
-  var msg = document.getElementById('resetMsg');
-  msg.textContent=''; msg.className='msg';
-  if(!u){msg.textContent='Enter your username';msg.className='msg err';return;}
-  try{
-    var r = await fetch(PROXY+'/app/request-reset',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({username:u, reason:r2})
-    });
-    var d = await r.json();
-    if(r.ok){
-      msg.textContent='✓ Admin has been notified via Telegram. Check back soon.';
-      msg.className='msg ok';
-      document.getElementById('resetUsername').value='';
-      document.getElementById('resetReason').value='';
-    }else{
-      msg.textContent=d.error||'Request failed';
-      msg.className='msg err';
-    }
-  }catch(e){
-    msg.textContent='Cannot reach server';
-    msg.className='msg err';
-  }
-}
-
-function toggleForgot(){
-  var w=document.getElementById('forgotWrap');
-  if(!w) return;
-  w.style.display=w.style.display==='none'?'block':'none';
-  if(w.style.display==='block') setTimeout(function(){document.getElementById('fpUser').focus();},100);
-}
-
-async function doForgot(){
-  var u=document.getElementById('fpUser').value.trim();
-  var msg=document.getElementById('fpMsg');
-  if(!u){msg.textContent='Enter your username';msg.style.color='#A32D2D';return;}
-  msg.textContent='Sending…';msg.style.color='#888';
-  try{
-    await fetch(PROXY+'/app/request-reset',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({username:u})
-    });
-    msg.textContent='✓ Admin notified. They will reset your password.';
-    msg.style.color='#27500A';
-  }catch(e){
-    msg.textContent='Cannot reach server';msg.style.color='#A32D2D';
-  }
-}
-
+checkSession();
 </script>
 </body>
 </html>

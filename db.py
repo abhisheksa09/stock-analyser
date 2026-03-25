@@ -30,22 +30,12 @@ def get_connection():
                   "Env keys visible: %s",
                   [k for k in os.environ if "DATA" in k or "POST" in k or "DB" in k])
         return None
-    # Supabase pooler needs sslmode=require and no prepared statements
-    # Append sslmode if not already in URL
-    if "sslmode" not in url:
-        url = url + ("&" if "?" in url else "?") + "sslmode=require"
     try:
         if _db is None or _db.closed:
-            _db = psycopg.connect(
-                url,
-                row_factory=dict_row,
-                autocommit=True,
-                prepare_threshold=None,   # disable prepared statements (pooler requirement)
-            )
+            _db = psycopg.connect(url, row_factory=dict_row, autocommit=True)
             _DB = True
     except Exception as e:
         log.error("DB connection failed: %s", e)
-        _db = None
         return None
     return _db
 
@@ -78,7 +68,6 @@ CREATE TABLE IF NOT EXISTS session_state (
 
 CREATE TABLE IF NOT EXISTS trade_history (
     id          TEXT        PRIMARY KEY,
-    username    TEXT        NOT NULL DEFAULT 'default',
     ist_date    DATE        NOT NULL,
     ist_time    TEXT        NOT NULL,
     sym         TEXT        NOT NULL,
@@ -99,7 +88,6 @@ CREATE TABLE IF NOT EXISTS trade_history (
     notes       TEXT        NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_trade_history_user ON trade_history(username);
 
 CREATE TABLE IF NOT EXISTS alert_log (
     id          SERIAL      PRIMARY KEY,
@@ -255,27 +243,17 @@ def save_session_state(state: dict, date_=None):
         return False
 
 # ── Trade history ─────────────────────────────────────────────────────────────
-def get_trades(username=None, from_date=None, to_date=None, sym=None, limit=500):
+def get_trades(date_=None, limit=500):
     conn = db()
     if not conn:
         return []
     try:
-        where, params = [], []
-        if username:
-            where.append("username=%s"); params.append(username)
-        if from_date:
-            where.append("ist_date>=%s"); params.append(from_date)
-        if to_date:
-            where.append("ist_date<=%s"); params.append(to_date)
-        if sym:
-            where.append("sym=%s"); params.append(sym.upper())
-        sql = "SELECT * FROM trade_history"
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY created_at DESC LIMIT %s"
-        params.append(limit)
         with conn.cursor() as cur:
-            cur.execute(sql, params)
+            if date_:
+                cur.execute("SELECT * FROM trade_history WHERE ist_date=%s ORDER BY created_at DESC LIMIT %s",
+                            (date_, limit))
+            else:
+                cur.execute("SELECT * FROM trade_history ORDER BY created_at DESC LIMIT %s", (limit,))
             return [dict(r) for r in cur.fetchall()]
     except Exception as e:
         log.warning("get_trades: %s", e)
@@ -289,16 +267,15 @@ def upsert_trade(trade: dict):
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO trade_history
-                    (id, username, ist_date, ist_time, sym, sec, sig, conf, ltp, en, tg, sl, rr,
+                    (id, ist_date, ist_time, sym, sec, sig, conf, ltp, en, tg, sl, rr,
                      rsi, reason, actual_en, actual_ex, outcome, pnl, notes)
                 VALUES
-                    (%(id)s,%(username)s,%(ist_date)s,%(ist_time)s,%(sym)s,%(sec)s,%(sig)s,%(conf)s,
+                    (%(id)s,%(ist_date)s,%(ist_time)s,%(sym)s,%(sec)s,%(sig)s,%(conf)s,
                      %(ltp)s,%(en)s,%(tg)s,%(sl)s,%(rr)s,%(rsi)s,%(reason)s,
                      %(actual_en)s,%(actual_ex)s,%(outcome)s,%(pnl)s,%(notes)s)
                 ON CONFLICT (id) DO UPDATE SET
                     actual_en=EXCLUDED.actual_en, actual_ex=EXCLUDED.actual_ex,
-                    outcome=EXCLUDED.outcome, pnl=EXCLUDED.pnl, notes=EXCLUDED.notes,
-                    username=EXCLUDED.username
+                    outcome=EXCLUDED.outcome, pnl=EXCLUDED.pnl, notes=EXCLUDED.notes
             """, trade)
         return True
     except Exception as e:
@@ -316,22 +293,6 @@ def delete_trade(trade_id: str):
     except Exception as e:
         log.warning("delete_trade: %s", e)
         return False
-
-def get_trade_stats(username=None):
-    """Quick win/loss stats for a user."""
-    trades   = get_trades(username=username, limit=2000)
-    resolved = [t for t in trades if t.get("outcome") != "pending"]
-    wins     = [t for t in resolved if t.get("pnl") and float(t["pnl"]) > 0]
-    pnls     = [float(t["pnl"]) for t in resolved if t.get("pnl") is not None]
-    return {
-        "total": len(trades),
-        "resolved": len(resolved),
-        "wins": len(wins),
-        "losses": len(resolved) - len(wins),
-        "win_rate": round(len(wins)/len(resolved)*100, 1) if resolved else 0,
-        "avg_pnl": round(sum(pnls)/len(pnls), 2) if pnls else 0,
-        "total_pnl": round(sum(pnls), 2) if pnls else 0,
-    }
 
 # ── Alert log ─────────────────────────────────────────────────────────────────
 def log_alert(sym, kind, conf, sig, message, sent, date_=None, time_=None):
@@ -569,28 +530,3 @@ def db_status():
         return {"connected": True, "tables": counts, "date": str(today_ist())}
     except Exception as e:
         return {"connected": False, "error": str(e)}
-
-# ── Compatibility aliases (used by scanner.py) ────────────────────────────────
-def db_available() -> bool:
-    """True if DB connection is working."""
-    return get_connection() is not None
-
-def load_token(date_=None) -> str | None:
-    """Alias for get_token()."""
-    return get_token(date_)
-
-def save_token(token: str, set_by: str = "api", date_=None):
-    """Alias for set_token()."""
-    return set_token(token, set_by=set_by, date_=date_)
-
-def load_session(date_str: str) -> dict:
-    """Alias for get_session_state(). Returns dict always (never None)."""
-    result = get_session_state(date_str)
-    if result is None:
-        return {"ist_date": date_str, "locked_signals": {},
-                "alerted": [], "prev_confidence": {}, "macro_cache": None}
-    return result
-
-def save_session(state: dict):
-    """Alias for save_session_state()."""
-    return save_session_state(state)
