@@ -1,6 +1,5 @@
 """
 signals.py — NSE signal computation with market context filters
-Version : v1.8.0
 Shared between app.py (proxy) and scanner.py (alert engine)
 
 Filters added:
@@ -226,20 +225,6 @@ def conf_score(s):
     pct = round(tot / max_w * 100)
     return min(pct, 45) if s["sig"] == "WATCH" else pct
 
-def conf_score_with_breakdown(s):
-    """Returns (total_conf, breakdown_list) for tooltip display."""
-    tot = max_w = 0.0
-    breakdown = []
-    for name, w, fn in CF:
-        sc     = fn(s)
-        earned = round(sc * w)
-        tot   += sc * w
-        max_w += w
-        breakdown.append(f"{name}: {earned}/{w}")
-    pct = round(tot / max_w * 100)
-    final = min(pct, 45) if s["sig"] == "WATCH" else pct
-    return final, breakdown
-
 # ─── Build setup with market context ─────────────────────────────────────────
 
 def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
@@ -303,123 +288,96 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
 
     # ── Market context filters ───────────────────────────────────────────────
     ctx_warnings   = []   # human-readable list of what was overridden
-    conf_penalties = 0
-    ctx_penalties  = []    # total % to subtract from confidence
+    conf_penalties = 0    # total % to subtract from confidence
     market_blocked = False
 
     if market_ctx and sig != "WATCH":
         nifty_chg  = market_ctx.get("nifty_chg",  0.0)
         sector_chg = market_ctx.get("sector_chg", 0.0)
+        m_bias     = market_ctx.get("market_bias", "neutral")
         s_bias     = market_ctx.get("sector_bias", "neutral")
 
-        # ── Key insight ──────────────────────────────────────────────────────
-        # By the time we reach filters, signal logic has already confirmed:
-        #   BUY  → ltp above VWAP (av=True) AND above ORB High (bo=True)
-        #   SELL → ltp below VWAP (av=False) AND below ORB Low (bd=True)
-        # So the stock's INTRADAY direction is validated by the signal itself.
-        # `chg` (daily % vs prev close) reflects yesterday→today, not intraday
-        # trend. Use `chg` only to detect relative strength vs Nifty.
-
-        # ── Filter 1: Nifty hard block ────────────────────────────────────────
-        # Hard block only when Nifty is extreme AND stock daily chg confirms it.
-        # Do NOT block based on Nifty alone — stock may be showing divergence.
-        if sig == "BUY" and nifty_chg <= -1.5 and chg <= -0.5:
+        # ── Filter 1: Market hard block ──────────────────────────────────────
+        # Nifty down >1% → hard block BUY (would be swimming against the tide)
+        # Nifty up  >1% → hard block SELL
+        if sig == "BUY" and nifty_chg <= -1.0:
             sig    = "WATCH"
-            reason = (f"BUY blocked — Nifty {nifty_chg:+.1f}% and stock "
-                      f"{chg:+.1f}% both down. Market tide too strong against long.")
+            reason = (f"BUY blocked — Nifty is {nifty_chg:+.1f}% today. "
+                      f"Market too bearish for long trades.")
             market_blocked = True
-            ctx_warnings.append(
-                f"Hard block: Nifty {nifty_chg:+.1f}% + stock {chg:+.1f}% — "
-                f"strong bearish tide, long risky"
-            )
+            ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% — BUY blocked")
 
-        elif sig == "SELL" and nifty_chg >= +1.5 and chg >= +0.5:
+        elif sig == "SELL" and nifty_chg >= +1.0:
             sig    = "WATCH"
-            reason = (f"SELL blocked — Nifty {nifty_chg:+.1f}% and stock "
-                      f"{chg:+.1f}% both up strongly. Shorting into rising tide.")
+            reason = (f"SELL blocked — Nifty is {nifty_chg:+.1f}% today. "
+                      f"Market too bullish for short trades.")
             market_blocked = True
-            ctx_warnings.append(
-                f"Hard block: Nifty {nifty_chg:+.1f}% + stock {chg:+.1f}% — "
-                f"strong bullish tide, short very risky"
-            )
+            ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% — SELL blocked")
 
         if not market_blocked:
-            # ── Filter 2: Nifty tide — penalty / bonus on confidence ──────────
-            # Nifty is the market tide. Going against a strong tide is harder.
-            # But the stock's own intraday technicals (already validated) still matter.
-            if sig == "BUY":
-                if   nifty_chg <= -1.5: conf_penalties += 15; ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% strong down — tide against BUY (-15% conf)")
-                elif nifty_chg <= -0.4: conf_penalties +=  8; ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% mild down — caution on BUY (-8% conf)")
-                elif nifty_chg >= +1.5: conf_penalties -= 10; ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% strong up — tide with BUY (+10% conf)")
-                elif nifty_chg >= +0.4: conf_penalties -=  5; ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% mild up — supports BUY (+5% conf)")
-            elif sig == "SELL":
-                if   nifty_chg >= +1.5: conf_penalties += 15; ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% strong up — tide against SELL (-15% conf)")
-                elif nifty_chg >= +0.4: conf_penalties +=  8; ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% mild up — caution on SELL (-8% conf)")
-                elif nifty_chg <= -1.5: conf_penalties -= 10; ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% strong down — tide with SELL (+10% conf)")
-                elif nifty_chg <= -0.4: conf_penalties -=  5; ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% mild down — supports SELL (+5% conf)")
-
-            # ── Filter 3: Relative strength (stock vs Nifty) ─────────────────
-            # rel > 0: stock outperforming Nifty  (strong relative to market)
-            # rel < 0: stock underperforming Nifty (weak relative to market)
-            rel = chg - nifty_chg
-            if sig == "BUY":
-                # Stock already confirmed intraday bullish (above VWAP + ORB)
-                # If ALSO outperforming Nifty on the day → genuine strength
-                if rel >= +1.5:
-                    conf_penalties -= 8
-                    ctx_warnings.append(
-                        f"Stock outperforming Nifty by {rel:+.1f}% — relative strength (+8% conf)"
-                    )
-                # If lagging Nifty badly despite being intraday bullish →
-                # question the durability of the move (but don't penalise harshly —
-                # the intraday setup is valid, just the daily context is weak)
-                elif rel <= -1.5:
-                    conf_penalties += 8
-                    ctx_warnings.append(
-                        f"Stock lagging Nifty by {rel:+.1f}% despite intraday BUY setup (-8% conf)"
-                    )
-            elif sig == "SELL":
-                # Stock already confirmed intraday bearish (below VWAP + ORB)
-                # If ALSO underperforming Nifty on the day → double confirmation
-                if rel <= -1.5:
-                    conf_penalties -= 8
-                    ctx_warnings.append(
-                        f"Stock underperforming Nifty by {rel:+.1f}% — relative weakness confirms SELL (+8% conf)"
-                    )
-                # TATAMOTORS case: Nifty +1%, stock +1%, but SELL signal
-                # Stock is intraday weak (below VWAP, below ORB) but daily is positive
-                # rel = 0 here → no adjustment. The +1% daily is from gap-up open,
-                # not current intraday strength. Signal stands. ✓
-                #
-                # If stock is strongly outperforming Nifty AND signal is SELL →
-                # unusual divergence. Stock may be reversing from a high. Mild caution.
-                elif rel >= +2.0:
-                    conf_penalties += 8
-                    ctx_warnings.append(
-                        f"Stock outperforming Nifty by {rel:+.1f}% despite intraday SELL setup (-8% conf)"
-                    )
-
-            # ── Filter 4: Sector headwind / tailwind ──────────────────────────
+            # ── Filter 2: Sector headwind penalty ────────────────────────────
+            # Stock trying to go BUY but its sector index is red → -15% confidence
+            # Stock trying to go SELL but sector is green → -15% confidence
             if sig == "BUY" and s_bias == "bearish":
-                conf_penalties += 12
-                ctx_warnings.append(f"Sector ({sec}) {sector_chg:+.1f}% — sector headwind (-12% conf)")
+                conf_penalties += 15
+                ctx_warnings.append(
+                    f"Sector ({sec}) index {sector_chg:+.1f}% — headwind for BUY (-15% conf)"
+                )
             elif sig == "SELL" and s_bias == "bullish":
-                conf_penalties += 12
-                ctx_warnings.append(f"Sector ({sec}) {sector_chg:+.1f}% — sector headwind (-12% conf)")
+                conf_penalties += 15
+                ctx_warnings.append(
+                    f"Sector ({sec}) index {sector_chg:+.1f}% — headwind for SELL (-15% conf)"
+                )
+            # Sector tailwind bonus: sector agrees with signal → +5% confidence
             elif sig == "BUY" and s_bias == "bullish":
-                conf_penalties -= 5
-                ctx_warnings.append(f"Sector ({sec}) {sector_chg:+.1f}% — sector tailwind (+5% conf)")
+                conf_penalties -= 5   # negative penalty = bonus
+                ctx_warnings.append(
+                    f"Sector ({sec}) index {sector_chg:+.1f}% — tailwind for BUY (+5% conf)"
+                )
             elif sig == "SELL" and s_bias == "bearish":
                 conf_penalties -= 5
-                ctx_warnings.append(f"Sector ({sec}) {sector_chg:+.1f}% — sector tailwind (+5% conf)")
+                ctx_warnings.append(
+                    f"Sector ({sec}) index {sector_chg:+.1f}% — tailwind for SELL (+5% conf)"
+                )
 
-            # ── Filter 5: Gap filter ──────────────────────────────────────────
+            # ── Filter 3: Gap filter ──────────────────────────────────────────
+            # BUY after a gap-down open = stock opening weak, recovery may stall
+            # SELL after a gap-up open = stock opened strong, short risky
             if sig == "BUY" and gap_pct <= -0.5:
                 conf_penalties += 10
-                ctx_warnings.append(f"Gap-down open {gap_pct:+.1f}% — recovery may stall (-10% conf)")
+                ctx_warnings.append(
+                    f"Gap-down open {gap_pct:+.1f}% — BUY recovery may stall (-10% conf)"
+                )
             elif sig == "SELL" and gap_pct >= +0.5:
                 conf_penalties += 10
-                ctx_warnings.append(f"Gap-up open {gap_pct:+.1f}% — selling into gap strength (-10% conf)")
+                ctx_warnings.append(
+                    f"Gap-up open {gap_pct:+.1f}% — SELL into strength is risky (-10% conf)"
+                )
+
+            # ── Filter 4: Day trend ───────────────────────────────────────────
+            # Stock net negative on day vs prev close on a BUY → weak momentum
+            # Stock net positive on day on a SELL → selling into strength
+            if sig == "BUY" and chg <= -0.5:
+                conf_penalties += 10
+                ctx_warnings.append(
+                    f"Stock {chg:+.1f}% on day — net negative reduces BUY confidence (-10% conf)"
+                )
+            elif sig == "SELL" and chg >= +0.5:
+                conf_penalties += 10
+                ctx_warnings.append(
+                    f"Stock {chg:+.1f}% on day — net positive reduces SELL confidence (-10% conf)"
+                )
+            # Day trend bonus: stock moving with signal
+            elif sig == "BUY" and chg >= +0.5:
+                conf_penalties -= 5
+                ctx_warnings.append(
+                    f"Stock {chg:+.1f}% on day — momentum supports BUY (+5% conf)"
+                )
+            elif sig == "SELL" and chg <= -0.5:
+                conf_penalties -= 5
+                ctx_warnings.append(
+                    f"Stock {chg:+.1f}% on day — momentum supports SELL (+5% conf)"
+                )
 
     # ── Candle confirmation ───────────────────────────────────────────────────
     confirmed     = True
@@ -456,7 +414,7 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
     )
 
     # Base confidence
-    conf, conf_bd = conf_score_with_breakdown(s)
+    conf = conf_score(s)
 
     # Apply market context penalties/bonuses
     if not market_blocked:
@@ -467,13 +425,7 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
         conf = max(5, conf - 20)
         s["reason"] += f" ⚠ ({confirm_count}/{CONFIRM_CANDLES} candles confirm)"
 
-    s["conf"]        = conf
-    s["confBD"]       = conf_bd     # factor breakdown list
-    # Build macro impact summary string for tooltip
-    if s.get("ctxWarnings"):
-        s["macroImpact"] = " | ".join(s["ctxWarnings"][:3])
-    else:
-        s["macroImpact"] = ""
+    s["conf"] = conf
     return s
 
 # ─── Readiness check ──────────────────────────────────────────────────────────

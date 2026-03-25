@@ -1,6 +1,5 @@
 """
 scanner.py — Scheduled NSE alert scanner with Telegram Bot API
-Version : v1.8.0
 Runs inside the same Render.com Flask process via APScheduler.
 
 Triggers Telegram alerts when:

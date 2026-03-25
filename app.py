@@ -1,6 +1,5 @@
 """
 NSE Intraday Scanner — Cloud Proxy + Alert Engine
-Version : v2.0.0
 Hosted on Render.com at: https://nse-proxy-mojx.onrender.com
 Frontend at: https://abhisheksa09.github.io/stock-analyser/nse_scanner.html
 
@@ -25,16 +24,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import scanner
 import macro as macro_module
-import db as _db_module   # db layer — used via _db_module.init_db() etc.
-
-# Initialise DB connection at startup (non-fatal if DATABASE_URL not set)
-def _get_db():
-    """Return psycopg2 connection or None."""
-    return _db_module.get_connection()
-
-def _has_db():
-    """True if DATABASE_URL is set and connection works."""
-    return _get_db() is not None
 
 log = logging.getLogger("app")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [app] %(message)s")
@@ -48,15 +37,14 @@ ALLOWED_ORIGIN = "https://abhisheksa09.github.io"
 IST            = timezone(timedelta(hours=5, minutes=30))
 
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin":       ALLOWED_ORIGIN,
-    "Access-Control-Allow-Methods":      "GET, POST, OPTIONS, PATCH, DELETE",
-    "Access-Control-Allow-Headers":      (
+    "Access-Control-Allow-Origin":  ALLOWED_ORIGIN,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": (
         "Authorization, Content-Type, Accept, "
         "x-api-key, anthropic-version, "
         "anthropic-dangerous-direct-browser-access"
     ),
-    "Access-Control-Allow-Credentials":  "true",   # needed for session cookies
-    "Access-Control-Max-Age":            "86400",
+    "Access-Control-Max-Age": "86400",
 }
 
 def cors(r):
@@ -72,205 +60,9 @@ def add_cors(r): return cors(r)
 def options_handler(path): return cors(Response(status=204))
 
 # ── Health ────────────────────────────────────────────────────────────────────
-# ─── App session helpers ──────────────────────────────────────────────────────
-SESSION_COOKIE  = "nse_session"
-SESSION_TTL_SEC = 30 * 24 * 3600    # 30 days
-
-def _get_session(request) -> dict | None:
-    """Extract and validate the browser session token from cookie or header."""
-    token = (request.cookies.get(SESSION_COOKIE) or
-             request.headers.get("X-Session-Token", ""))
-    if not token:
-        return None
-    return _db_module.validate_app_session(token)
-
-def _require_session(request):
-    """Returns (session_dict, None) or (None, error_response)."""
-    sess = _get_session(request)
-    if not sess:
-        return None, (jsonify({"error": "Not authenticated", "code": "AUTH_REQUIRED"}), 401)
-    return sess, None
-
-def _require_admin(request):
-    """Returns (session_dict, None) or (None, error_response). Admin role required."""
-    sess, err = _require_session(request)
-    if err:
-        return None, err
-    if sess.get("role") != "admin":
-        return None, (jsonify({"error": "Admin role required", "code": "FORBIDDEN"}), 403)
-    return sess, None
-
-def _set_session_cookie(response, token: str):
-    """Attach session cookie to a Flask response."""
-    response.set_cookie(
-        SESSION_COOKIE, token,
-        max_age=SESSION_TTL_SEC,
-        httponly=True,
-        secure=True,            # HTTPS only (Render always uses HTTPS)
-        samesite="None",        # cross-site (GitHub Pages → Render)
-        path="/"
-    )
-    return response
-
-def _clear_session_cookie(response):
-    response.delete_cookie(SESSION_COOKIE, path="/", samesite="None", secure=True)
-    return response
-
 @app.route("/ping")
 def ping():
-    return jsonify({"status": "ok", "proxy": "upstox-render", "alerts": "active", "version": "v2.0.0"})
-
-# ── Admin PIN authentication ──────────────────────────────────────────────────
-import hashlib as _hashlib, secrets as _secrets
-
-# Simple in-memory session tokens (cleared on restart — acceptable for personal use)
-_admin_sessions = set()
-
-def _check_pin(pin: str) -> bool:
-    """Verify PIN against ADMIN_PIN env var. Returns True if correct."""
-    correct = os.environ.get("ADMIN_PIN", "").strip()
-    if not correct:
-        return True   # no PIN set = open access (dev mode)
-    return _secrets.compare_digest(pin.strip(), correct)
-
-@app.route("/admin/verify", methods=["POST"])
-@app.route("/admin/verify/", methods=["POST"])
-def admin_verify():
-    """
-    Verify admin PIN. Returns a session token on success.
-    Body: {"pin": "1234"}
-    """
-    data = request.get_json(silent=True) or {}
-    pin  = data.get("pin", "")
-    if not _check_pin(pin):
-        return jsonify({"ok": False, "error": "Incorrect PIN"}), 401
-    # Generate a session token
-    tok = _secrets.token_hex(16)
-    _admin_sessions.add(tok)
-    return jsonify({"ok": True, "session_token": tok})
-
-@app.route("/admin/check", methods=["GET", "POST"])
-@app.route("/admin/check/", methods=["GET", "POST"])
-def admin_check():
-    """Check if a session token is still valid."""
-    tok = (request.headers.get("X-Admin-Token") or
-           (request.get_json(silent=True) or {}).get("session_token", ""))
-    no_pin = not os.environ.get("ADMIN_PIN", "").strip()
-    valid  = no_pin or tok in _admin_sessions
-    return jsonify({"ok": valid, "pin_required": not no_pin})
-
-# ── Database endpoints ───────────────────────────────────────────────────────
-@app.route("/db/init")
-@app.route("/db/init/")
-def db_init():
-    import os as _os
-    db_url = _os.environ.get("DATABASE_URL", "")
-    # Diagnostic: show what env sees (mask password)
-    if not db_url:
-        # List all env vars containing 'database' or 'postgres' or 'supabase'
-        hints = {k: v[:8]+"..." for k,v in _os.environ.items()
-                 if any(x in k.lower() for x in ["database","postgres","supabase","db_"])}
-        return jsonify({
-            "error": "DATABASE_URL not set",
-            "hint": "Check Render env var name is exactly DATABASE_URL (case-sensitive)",
-            "similar_vars_found": hints or "none",
-            "total_env_vars": len(_os.environ)
-        }), 503
-    if not _has_db():
-        return jsonify({
-            "error": "DATABASE_URL set but connection failed",
-            "url_prefix": db_url[:25] + "...",
-            "hint": "Check the URL format: postgresql://user:pass@host:port/dbname"
-        }), 503
-    try:
-        result = _db_module.init_db()
-        return jsonify({"status": "ok", "message": "All tables created successfully.", "detail": result})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/db/status")
-@app.route("/db/status/")
-def db_status():
-    result = _db_module.db_status()
-    code = 200 if result.get("connected") else 503
-    return jsonify(result), code
-
-@app.route("/history/trades", methods=["GET"])
-@app.route("/history/trades/", methods=["GET"])
-def get_trades():
-    if not _has_db():
-        return jsonify({"error": "Database not configured"}), 503
-    try:
-        trades = _db_module.load_trades(
-            from_date=request.args.get("from_date"),
-            to_date=request.args.get("to_date"),
-            sym=request.args.get("sym"),
-            sig=request.args.get("sig"),
-            outcome=request.args.get("outcome"),
-            limit=int(request.args.get("limit", 500)),
-        )
-        return jsonify({"trades": trades, "stats": _db_module.get_trade_stats(), "count": len(trades)})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/history/trades", methods=["POST"])
-@app.route("/history/trades/", methods=["POST"])
-def save_trades():
-    if not _has_db():
-        return jsonify({"error": "Database not configured"}), 503
-    try:
-        data   = request.get_json(silent=True) or {}
-        trades = data.get("trades", [data] if data.get("id") else [])
-        saved  = sum(1 for t in trades if t.get("id") and _db_module.save_trade(t))
-        return jsonify({"status": "ok", "saved": saved})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/history/trades/<trade_id>", methods=["PATCH"])
-@app.route("/history/trades/<trade_id>/", methods=["PATCH"])
-def update_trade_route(trade_id):
-    if not _has_db():
-        return jsonify({"error": "Database not configured"}), 503
-    try:
-        _db_module.update_trade(trade_id, request.get_json(silent=True) or {})
-        return jsonify({"status": "ok"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/history/trades/<trade_id>", methods=["DELETE"])
-@app.route("/history/trades/<trade_id>/", methods=["DELETE"])
-def delete_trade_route(trade_id):
-    if not _has_db():
-        return jsonify({"error": "Database not configured"}), 503
-    try:
-        _db_module.delete_trade(trade_id)
-        return jsonify({"status": "ok"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/history/stats")
-@app.route("/history/stats/")
-def trade_stats():
-    if not _has_db():
-        return jsonify({"error": "Database not configured"}), 503
-    try:
-        return jsonify(_db_module.get_trade_stats(from_date=request.args.get("from_date")))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/history/alerts")
-@app.route("/history/alerts/")
-def alert_history():
-    if not _has_db():
-        return jsonify({"error": "Database not configured"}), 503
-    try:
-        return jsonify(_db_module.load_alert_log(
-            from_date=request.args.get("from_date"),
-            sym=request.args.get("sym"),
-            limit=int(request.args.get("limit", 100)),
-        ))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return jsonify({"status": "ok", "proxy": "upstox-render", "alerts": "active"})
 
 # ── Token management ──────────────────────────────────────────────────────────
 @app.route("/set-token", methods=["POST"])
@@ -287,32 +79,6 @@ def set_token():
         "scanning_symbols": len(scanner.STOCKS),
         "alert_window": f"{os.environ.get('ALERT_START_IST','09:15')} - {os.environ.get('ALERT_STOP_IST','10:30')} IST",
     })
-
-# ── Logout — clear token from memory and DB ──────────────────────────────────
-@app.route("/logout", methods=["POST"])
-@app.route("/logout/", methods=["POST"])
-def logout():
-    """
-    Clear the Upstox token from in-memory scanner and from the DB.
-    Called by the browser when the user taps Logout.
-    """
-    # Clear in-memory token
-    scanner.set_token("")
-
-    # Clear from DB if available
-    if _has_db():
-        try:
-            from datetime import date as _date
-            with _db_module.cursor() as cur:
-                cur.execute(
-                    "DELETE FROM token_store WHERE ist_date = %s",
-                    (_date.today(),)
-                )
-            log.info("Token deleted from DB on logout")
-        except Exception as e:
-            log.warning("DB token delete failed: %s", e)
-
-    return jsonify({"status": "ok", "message": "Logged out"})
 
 @app.route("/get-token")
 @app.route("/get-token/")
@@ -498,21 +264,9 @@ def dry_scan():
     """
     import time as _time
 
-    # Accept token from: 1) request header (browser passes its fresh token)
-    #                    2) server-side scanner token (from DB/OAuth)
-    #                    3) fall back to mock if neither available
-    header_token = request.headers.get("Authorization", "").replace("Bearer ", "").strip()
-    server_token = scanner.get_token()
-    token        = header_token or server_token
-    sym_req      = request.args.get("sym", "").upper().strip()
-    # Auto-switch to mock outside Upstox market hours (9:00-15:40 IST)
-    from datetime import datetime, timezone, timedelta
-    _ist   = timezone(timedelta(hours=5, minutes=30))
-    _now   = datetime.now(_ist)
-    _mins  = _now.hour * 60 + _now.minute
-    _mkt_open = 540 <= _mins <= 940   # 9:00–15:40 IST
-    force_mock = request.args.get("mock", "0") == "1"
-    use_mock   = force_mock or not token or not _mkt_open
+    token    = scanner.get_token()
+    sym_req  = request.args.get("sym", "").upper().strip()
+    use_mock = request.args.get("mock", "0") == "1" or not token
 
     from signals import STOCKS, build_setup, is_ready
     from scanner import send_telegram, format_alert, STATE
@@ -587,9 +341,7 @@ def dry_scan():
                 _time.sleep(1)
 
         except Exception as e:
-            err = str(e)
-            hint = " — Token may be expired. Login again via OAuth." if "403" in err or "401" in err else ""
-            results.append({"sym": sym, "error": err + hint})
+            results.append({"sym": sym, "error": str(e)})
 
     # If nothing was green, force send an alert for the highest confidence result
     if alert_sent is None and results:
@@ -617,12 +369,12 @@ def dry_scan():
         "results":     results,
         "alert_sent":  alert_sent,
         "tip": (
-            "No token set — used mock data." if use_mock and not token else
-            "Outside market hours (9:00–15:40 IST) — used mock data. Try live scan between 9–3:30 PM IST." if use_mock and not _mkt_open else
-            "Live data used. Check your Telegram for the alert." if not use_mock else
+            "No token set — used mock data. Call POST /set-token first for live data."
+            if use_mock and not token else
+            "Live data used. Check your Telegram for the alert."
+            if not use_mock else
             "Mock data used. Check your Telegram for the alert."
         ),
-        "market_open": _mkt_open,
     })
 
 # ── Upstox OAuth (mobile-friendly token flow) ────────────────────────────────
@@ -649,204 +401,6 @@ OAUTH_REDIRECT    = RENDER_BASE_URL + "/auth/callback"
 # Store last OAuth attempt result for debugging
 _last_oauth = {"status": "never attempted", "detail": "", "time": ""}
 
-# ─── Bootstrap (first-time setup only) ───────────────────────────────────────
-
-@app.route("/bootstrap/create-admin", methods=["POST"])
-def bootstrap_create_admin():
-    """
-    One-time endpoint to create the first admin user.
-    Only works when the users table is EMPTY — self-disables after first use.
-    No PIN required: security comes from the table being empty.
-    Body: {"username": "...", "password": "..."}
-    """
-    import db as _db_mod
-    data     = request.get_json(silent=True) or {}
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
-
-    if not username or len(password) < 8:
-        return jsonify({"error": "username required, password must be >= 8 chars"}), 400
-
-    # Only allow if no users exist yet
-    existing = _db_mod.get_users()
-    if existing:
-        return jsonify({
-            "error": "Bootstrap already done. Users exist.",
-            "users": [u["username"] for u in existing]
-        }), 409
-
-    result = _db_mod.create_user(username, password, "admin")
-    if "error" in result:
-        return jsonify(result), 400
-
-    return jsonify({
-        "status":  "ok",
-        "message": f"Admin user '{username}' created. Login at login.html",
-        "user":    result["user"]
-    })
-
-# ─── App authentication (username + password) ─────────────────────────────────
-
-@app.route("/app/login", methods=["POST"])
-def app_login():
-    """
-    Login with username + password.
-    Returns a session cookie valid for 30 days.
-    Body: {"username": "...", "password": "..."}
-    """
-    data     = request.get_json(silent=True) or {}
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
-
-    if not username or not password:
-        return jsonify({"error": "username and password required"}), 400
-
-    user = _db_module.authenticate_user(username, password)
-    if not user:
-        return jsonify({"error": "Invalid username or password"}), 401
-
-    token = _db_module.create_app_session(user)
-    if not token:
-        return jsonify({"error": "Could not create session"}), 500
-
-    resp = jsonify({
-        "status":   "ok",
-        "username": user["username"],
-        "role":     user["role"],
-    })
-    return _set_session_cookie(resp, token)
-
-
-@app.route("/app/logout", methods=["POST"])
-def app_logout():
-    """Revoke current session cookie."""
-    token = request.cookies.get(SESSION_COOKIE, "")
-    if token:
-        _db_module.revoke_app_session(token)
-    resp = jsonify({"status": "ok"})
-    return _clear_session_cookie(resp)
-
-
-@app.route("/app/me")
-def app_me():
-    """
-    Returns current session info.
-    Used by scanner.html on load to check if user is logged in.
-    """
-    sess = _get_session(request)
-    if not sess:
-        return jsonify({"authenticated": False}), 401
-    return jsonify({
-        "authenticated": True,
-        "username":      sess["username"],
-        "role":          sess["role"],
-    })
-
-
-@app.route("/app/change-password", methods=["POST"])
-def app_change_password():
-    """Change own password. Body: {"current": "...", "new": "..."}"""
-    sess, err = _require_session(request)
-    if err:
-        return err
-
-    data     = request.get_json(silent=True) or {}
-    current  = data.get("current") or ""
-    new_pwd  = data.get("new") or ""
-
-    if len(new_pwd) < 8:
-        return jsonify({"error": "New password must be at least 8 characters"}), 400
-
-    # Verify current password
-    user = _db_module.authenticate_user(sess["username"], current)
-    if not user:
-        return jsonify({"error": "Current password incorrect"}), 401
-
-    # Update
-    conn = _db_module.db()
-    if not conn:
-        return jsonify({"error": "No DB connection"}), 503
-    try:
-        pwd_hash = _db_module.hash_password(new_pwd)
-        with conn.cursor() as cur:
-            cur.execute("UPDATE users SET pwd_hash=%s WHERE username=%s",
-                        (pwd_hash, sess["username"]))
-        # Revoke all other sessions (force re-login on other devices)
-        _db_module.revoke_all_sessions(sess["username"])
-        # Re-issue a fresh session for current device
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM users WHERE username=%s", (sess["username"],))
-            user = dict(cur.fetchone())
-        new_token = _db_module.create_app_session(user)
-        resp = jsonify({"status": "ok", "message": "Password changed. Other sessions revoked."})
-        return _set_session_cookie(resp, new_token)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-# ─── Admin user management ─────────────────────────────────────────────────────
-
-@app.route("/admin/users", methods=["GET"])
-def admin_list_users():
-    """List all users. Admin only."""
-    sess, err = _require_admin(request)
-    if err: return err
-    return jsonify({"users": _db_module.get_users()})
-
-
-@app.route("/admin/users/create", methods=["POST"])
-def admin_create_user():
-    """Create a new user. Admin only.
-    Body: {"username": "...", "password": "...", "role": "viewer|admin"}
-    """
-    sess, err = _require_admin(request)
-    if err: return err
-
-    data     = request.get_json(silent=True) or {}
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
-    role     = data.get("role", "viewer")
-
-    if not username or len(password) < 8:
-        return jsonify({"error": "username required and password >= 8 chars"}), 400
-    if role not in ("admin", "viewer"):
-        return jsonify({"error": "role must be admin or viewer"}), 400
-
-    result = _db_module.create_user(username, password, role)
-    if "error" in result:
-        return jsonify(result), 409
-    return jsonify(result)
-
-
-@app.route("/admin/users/<username>/deactivate", methods=["POST"])
-def admin_deactivate_user(username):
-    """Deactivate a user account. Admin only."""
-    sess, err = _require_admin(request)
-    if err: return err
-    _db_module.set_user_active(username, False)
-    _db_module.revoke_all_sessions(username)
-    return jsonify({"status": "ok", "username": username, "active": False})
-
-
-@app.route("/admin/users/<username>/activate", methods=["POST"])
-def admin_activate_user(username):
-    """Re-activate a user account. Admin only."""
-    sess, err = _require_admin(request)
-    if err: return err
-    _db_module.set_user_active(username, True)
-    return jsonify({"status": "ok", "username": username, "active": True})
-
-
-@app.route("/admin/sessions/cleanup", methods=["POST"])
-def admin_cleanup_sessions():
-    """Remove expired sessions. Admin only."""
-    sess, err = _require_admin(request)
-    if err: return err
-    removed = _db_module.cleanup_expired_sessions()
-    return jsonify({"status": "ok", "removed": removed})
-
-
-# ─── Upstox OAuth (admin only — token refresh) ─────────────────────────────
 @app.route("/auth/login")
 def auth_login():
     """
@@ -1057,27 +611,6 @@ def _auth_page(success: bool, title: str, message: str) -> str:
 </html>"""
 
 # ── OAuth debug status ───────────────────────────────────────────────────────
-@app.route("/auth/logout", methods=["POST"])
-@app.route("/auth/logout/", methods=["POST"])
-def auth_logout():
-    """
-    Clear the server-side token so the next authGuard check redirects to login.
-    Deletes today's token from Supabase and clears scanner in-memory token.
-    """
-    scanner.set_token("")          # clear in-memory
-    if _has_db():
-        try:
-            from datetime import date
-            with _db_module.cursor() as cur:
-                cur.execute(
-                    "DELETE FROM token_store WHERE ist_date = %s",
-                    (date.today(),)
-                )
-            log.info("Token deleted from DB on logout")
-        except Exception as e:
-            log.warning("DB token delete failed: %s", e)
-    return jsonify({"status": "ok", "message": "Logged out"})
-
 @app.route("/auth/status")
 def auth_status():
     """Shows the result of the last OAuth login attempt. Useful for debugging."""
@@ -1112,82 +645,6 @@ def nse_corporate_actions():
         return jsonify([])
 
 # ── Anthropic proxy ───────────────────────────────────────────────────────────
-# ── Scanner chatbot endpoint ──────────────────────────────────────────────────
-@app.route("/chat", methods=["POST"])
-@app.route("/chat/", methods=["POST"])
-def scanner_chat():
-    """Proxy chat to Anthropic claude-haiku-4-5 with NSE Scanner system prompt embedded."""
-    import json as _jsc, urllib.request as _urc
-
-    ak = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not ak:
-        return jsonify({
-            "error": {
-                "type": "configuration_error",
-                "message": "Chatbot not configured. Add ANTHROPIC_API_KEY to Render environment variables, then redeploy."
-            }
-        }), 503
-
-    body     = request.get_json(silent=True) or {}
-    messages = body.get("messages", [])
-    max_tok  = min(int(body.get("max_tokens", 1024)), 2048)
-
-    SYSTEM = (
-        "You are the NSE Intraday Scanner Assistant. Answer questions about this specific app. "
-        "App: scanner.html on GitHub Pages + Flask on Render (nse-proxy-mojx.onrender.com) v2.2.0. "
-        "SIGNALS: 30 Nifty stocks. BUY=RSI<40+above VWAP+above ORB High. SELL=RSI>60+below VWAP+below ORB Low. "
-        "CONFIDENCE: 6 factors: ORB 25%+Volume 20%+VWAP 20%+RSI 15%+RR 15%+ATR 5%. "
-        "Green>=75%(full size), Amber 55-74%(half), Red<55%(skip). "
-        "MARKET FILTERS: Nifty+-0.5% HARD BLOCK. Sector headwind -15%. Gap -10%. Day trend +-10%. "
-        "MACRO LAYERS (30min cache): "
-        "1-Calendar: high-impact event+-30min=-50%. "
-        "2-Yahoo Finance: crude/gold/USDINR/SPX/VIX/DXY sector-specific penalties. "
-        "3-FII/DII: net sellers>500Cr=-10%. "
-        "4-NewsAPI+Claude Haiku sentiment: +-5 to +-15%. "
-        "ALERTS: APScheduler every 5min 9:15-10:30 IST. 3 triggers: Green Ready/conf crossed 75%/signal reversal. "
-        "OAUTH: /auth/login->Upstox->popup auto-closes->dot turns green. "
-        "DB: Supabase PostgreSQL. Tables: token_store/session_state/trade_history/alert_log. "
-        "ADMIN: PIN-protected (ADMIN_PIN env var). Collapsible cards: System Status/Dry Scan/Database/Quick Links. "
-        "COMMON ISSUES: 403=token expired login again. Orange dot=Render sleeping. Version stuck=clear cache ?v=N. "
-        "FILES: app.py/scanner.py/signals.py/macro.py/db.py. "
-        "Use markdown formatting. Be specific with numbers and thresholds."
-    )
-
-    payload = _jsc.dumps({
-        "model": "claude-haiku-4-5-20251001",
-        "max_tokens": max_tok,
-        "system": SYSTEM,
-        "messages": messages,
-    }).encode("utf-8")
-
-    req = _urc.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": ak,
-            "anthropic-version": "2023-06-01",
-        },
-        method="POST",
-    )
-    try:
-        with _urc.urlopen(req, timeout=30) as r:
-            resp_body = r.read()
-            resp_data = _jsc.loads(resp_body)
-            return jsonify(resp_data)
-    except _urc.HTTPError as e:
-        body = e.read().decode(errors="replace")
-        log.error("Anthropic API error %d: %s", e.code, body[:200])
-        try:
-            err_data = _jsc.loads(body)
-            msg = err_data.get("error", {}).get("message", body[:100])
-        except Exception:
-            msg = body[:100]
-        return jsonify({"error": {"type": "api_error", "message": msg}}), e.code
-    except Exception as e:
-        log.error("Chat endpoint error: %s", e)
-        return jsonify({"error": {"type": "server_error", "message": str(e)}}), 500
-
 @app.route("/ai/<path:subpath>", methods=["GET", "POST"])
 def ai_proxy(subpath):
     target = f"{ANTHROPIC_BASE}/{subpath}"
