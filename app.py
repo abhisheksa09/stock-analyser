@@ -740,13 +740,11 @@ def auth_callback():
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
             data = json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode()
+        return f"<h2>Token exchange failed</h2><pre>{error_body}</pre>", e.code
     except Exception as e:
-        try:
-            error_body = e.read().decode()
-        except:
-            error_body = str(e)
-    
-        return f"<h2>Token exchange failed</h2><pre>{error_body}</pre>", 500
+        return f"<h2>Token exchange failed</h2><pre>{str(e)}</pre>", 500
     tok = data.get("access_token","")
     if not tok:
         return f"<h2>No access_token in response: {data}</h2>", 500
