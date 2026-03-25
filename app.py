@@ -43,7 +43,8 @@ def add_cors(r): return cors(r)
 
 @app.route("/", defaults={"path": ""}, methods=["OPTIONS"])
 @app.route("/<path:path>", methods=["OPTIONS"])
-def options_handler(path=""): return cors(Response("", 204))
+def options_handler(path=""):
+    return cors(Response("", 204))
 
 # ─── DB helpers ───────────────────────────────────────────────────────────────
 def _get_db():
@@ -76,21 +77,19 @@ def ping():
 # ─────────────────────────────────────────────────────────────────────────────
 @app.route("/v2/<path:subpath>", methods=["GET","POST","OPTIONS"])
 def upstox_proxy(subpath):
-    """
-    Public proxy for Upstox APIs.
-    Uses server-side token. No user session required.
-    """
+    """Public proxy for Upstox APIs (no session required)."""
 
     if request.method == "OPTIONS":
         return cors(Response("", 204))
 
-    # 🔹 Get token
+    # 🔹 Get token from memory or DB
     tok = scanner.get_token()
     if not tok and _has_db():
         tok = _db_module.get_token()
         if tok:
             scanner.set_token(tok)
 
+    # 🔥 FIX: correct status code
     if not tok:
         return cors(jsonify({
             "error": "UPSTOX_TOKEN_MISSING",
@@ -128,7 +127,7 @@ def upstox_proxy(subpath):
     except urllib.error.HTTPError as e:
         body = e.read()
 
-        # ✅ Always return JSON (prevents frontend crash)
+        # 🔥 CRITICAL FIX: always return JSON
         try:
             parsed = json.loads(body)
         except:
