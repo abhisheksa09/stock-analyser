@@ -708,8 +708,8 @@ def auth_login():
     api_key = os.environ.get("UPSTOX_API_KEY","")
     if not api_key:
         return "<h2>UPSTOX_API_KEY not set</h2>", 500
-    redirect_uri = os.environ.get("UPSTOX_REDIRECT_URI",
-                   "https://nse-proxy-mojx.onrender.com/auth/callback")
+    redirect_uri= os.environ.get("UPSTOX_REDIRECT_URI","")
+
     auth_url = (
         "https://api.upstox.com/v2/login/authorization/dialog"
         f"?response_type=code&client_id={api_key}"
@@ -726,8 +726,7 @@ def auth_callback():
         return "<h2>No auth code received from Upstox</h2>", 400
     api_key     = os.environ.get("UPSTOX_API_KEY","")
     api_secret  = os.environ.get("UPSTOX_API_SECRET","")
-    redirect_uri= os.environ.get("UPSTOX_REDIRECT_URI",
-                  "https://nse-proxy-mojx.onrender.com/auth/callback")
+    redirect_uri= os.environ.get("UPSTOX_REDIRECT_URI","")
     payload = urllib.parse.urlencode({
         "code": code, "client_id": api_key, "client_secret": api_secret,
         "redirect_uri": redirect_uri, "grant_type": "authorization_code"
@@ -742,7 +741,12 @@ def auth_callback():
         with urllib.request.urlopen(req, timeout=15) as r:
             data = json.loads(r.read())
     except Exception as e:
-        return f"<h2>Token exchange failed: {e}</h2>", 500
+        try:
+            error_body = e.read().decode()
+        except:
+            error_body = str(e)
+    
+        return f"<h2>Token exchange failed</h2><pre>{error_body}</pre>", 500
     tok = data.get("access_token","")
     if not tok:
         return f"<h2>No access_token in response: {data}</h2>", 500
