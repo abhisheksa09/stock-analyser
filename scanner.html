@@ -663,6 +663,7 @@ to see the specific analysis and reason.">Signal</th>
         <button class="btn" onclick="adminLoad('db/status','adminStatusBox')">&#128451; DB status</button>
         <button class="btn" onclick="adminLoad('auth/status','adminStatusBox')">&#128274; Auth status</button>
         <button class="btn" onclick="adminLoad('ping','adminStatusBox')">&#128997; Ping</button>
+        <button class="btn" onclick="diagScan()" style="background:#185FA5;color:#fff;border-color:#185FA5;">&#128269; Test API call</button>
       </div>
       <pre id="adminStatusBox" style="background:#1a1a1a;color:#a8ff78;padding:14px;border-radius:8px;
            font-size:11px;line-height:1.6;overflow-x:auto;max-height:320px;overflow-y:auto;
@@ -1422,8 +1423,23 @@ async function runScan(){
 
   for(const[sym,s]of sel){
     btn.innerHTML='\u27f3 &nbsp;Fetching '+sym+'\u2026';
-    try{const[intra,daily,ltp]=await Promise.all([getIntra(s.ikey),getDaily(s.ikey),getLTP(s.ikey)]);const setup=applyMarketContext(buildSetup(sym,s.sec,intra,daily,ltp));recordSignal(sym,setup);results.push(setup);}
-    catch(e){errs.push(sym+': '+e.message);}
+    try{
+      const[intra,daily,ltp]=await Promise.all([getIntra(s.ikey),getDaily(s.ikey),getLTP(s.ikey)]);
+      const setup=applyMarketContext(buildSetup(sym,s.sec,intra,daily,ltp));
+      recordSignal(sym,setup);
+      results.push(setup);
+    }catch(e){
+      console.error('Scan error '+sym+':', e);
+      errs.push(sym+': '+e.message);
+    }
+  }
+  // Show detailed errors if ALL stocks failed
+  if(errs.length && !results.length){
+    const detail = errs.slice(0,3).join(' | ');
+    showErr('Scan failed: '+detail);
+    console.error('All stocks failed. First error detail:', errs[0]);
+    btn.disabled=false;btn.innerHTML='\u27f3 &nbsp;Re-scan';
+    return;
   }
   if(errs.length)showErr('Errors: '+errs.join(' | '));
   if(!results.length){showErr('No data returned.');btn.disabled=false;btn.innerHTML='\u27f3 &nbsp;Fetch live data & scan';return;}
@@ -1880,6 +1896,7 @@ async function activateUser(username){
     {method:'POST',headers:appHeaders(),credentials:'include'});
     if(r.ok) loadUsers(); }catch(e){ alert(e.message); }
 }
+
 
 async function checkProxyAdmin(){
   var dot=document.getElementById('pdot'), txt=document.getElementById('proxyNavTxt');
