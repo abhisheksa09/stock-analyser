@@ -438,8 +438,12 @@ def upstox_proxy(subpath):
     full_url= f"{url}?{qs}" if qs else url
     headers = {
         "Authorization": f"Bearer {tok}",
-        "Accept":        "application/json",
-        "Content-Type":  "application/json",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Origin": "https://api.upstox.com",
+        "Referer": "https://api.upstox.com/",
+        "Connection": "keep-alive"
     }
     try:
         req_body = request.get_data() or None
@@ -506,7 +510,11 @@ def _upstox_get(url, tok):
     """Make a GET request to Upstox and return the response."""
     headers = {
         "Authorization": f"Bearer {tok}",
-        "Accept":        "application/json",
+        "Accept": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Origin": "https://api.upstox.com",
+        "Referer": "https://api.upstox.com/",
+        "Connection": "keep-alive"
     }
     try:
         req = urllib.request.Request(url, headers=headers)
@@ -714,20 +722,24 @@ def auth_callback():
     redirect_uri= os.environ.get("UPSTOX_REDIRECT_URI",
                   "https://nse-proxy-mojx.onrender.com/auth/callback")
     payload = urllib.parse.urlencode({
-        "code": code, "client_id": api_key, "client_secret": api_secret,
-        "redirect_uri": redirect_uri, "grant_type": "authorization_code"
+    "code": code,
+    "client_id": api_key,
+    "client_secret": api_secret,
+    "redirect_uri": redirect_uri,
+    "grant_type": "authorization_code"
     }).encode()
-     req = urllib.request.Request(
-    "https://api.upstox.com/v2/login/authorization/token",
-    data=payload,
-    headers={
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Origin": "https://api.upstox.com",
-        "Referer": "https://api.upstox.com/"
-    },
-    method="POST"
+    
+    req = urllib.request.Request(
+        "https://api.upstox.com/v2/login/authorization/token",
+        data=payload,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Origin": "https://api.upstox.com",
+            "Referer": "https://api.upstox.com/"
+        },
+        method="POST"
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
