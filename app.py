@@ -303,17 +303,14 @@ def db_status():
 @app.route("/get-token")
 @app.route("/get-token/")
 def get_token():
-    """Return today's Upstox token. Requires valid app session."""
-    sess = _get_session(request)
-    if not sess:
-        return jsonify({"error": "Not authenticated"}), 401
+    """Return today's Upstox token. Open — no auth required for this build."""
     tok = scanner.get_token()
     if not tok and _has_db():
         tok = _db_module.get_token()
         if tok:
             scanner.set_token(tok)
     if not tok:
-        return jsonify({"status": "not_set", "message": "No Upstox token. Admin must complete OAuth login."}), 404
+        return jsonify({"status": "not_set", "message": "No Upstox token set today."}), 404
     return jsonify({"status": "ok", "token": tok})
 
 
@@ -429,10 +426,7 @@ def upstox_proxy(subpath):
     """Proxy all /v2/* calls to Upstox with the server-side token."""
     if request.method == "OPTIONS":
         return cors(Response("", 204))
-    sess = _get_session(request)
-    if not sess:
-        return jsonify({"error": "Not authenticated"}), 401
-    # Use server-side Upstox token (not the user's session token)
+    # No app session required — just need a valid Upstox token on server
     tok = scanner.get_token()
     if not tok and _has_db():
         tok = _db_module.get_token()
@@ -467,9 +461,6 @@ def upstox_proxy(subpath):
 @app.route("/upstox/ltp")
 def upstox_ltp():
     """GET /upstox/ltp?ikey=NSE_EQ|INE040A01034"""
-    sess = _get_session(request)
-    if not sess:
-        return jsonify({"error": "Not authenticated"}), 401
     ikey = request.args.get("ikey", "")
     if not ikey:
         return jsonify({"error": "ikey required"}), 400
@@ -483,9 +474,6 @@ def upstox_ltp():
 @app.route("/upstox/intraday")
 def upstox_intraday():
     """GET /upstox/intraday?ikey=NSE_EQ|INE040A01034&interval=1minute"""
-    sess = _get_session(request)
-    if not sess:
-        return jsonify({"error": "Not authenticated"}), 401
     ikey     = request.args.get("ikey", "")
     interval = request.args.get("interval", "1minute")
     if not ikey:
@@ -501,9 +489,6 @@ def upstox_intraday():
 @app.route("/upstox/daily")
 def upstox_daily():
     """GET /upstox/daily?ikey=NSE_EQ|INE040A01034&from=2026-01-01&to=2026-03-25"""
-    sess = _get_session(request)
-    if not sess:
-        return jsonify({"error": "Not authenticated"}), 401
     ikey    = request.args.get("ikey", "")
     to_date = request.args.get("to",   "")
     fr_date = request.args.get("from", "")
@@ -708,8 +693,8 @@ def auth_login():
     api_key = os.environ.get("UPSTOX_API_KEY","")
     if not api_key:
         return "<h2>UPSTOX_API_KEY not set</h2>", 500
-    redirect_uri= os.environ.get("UPSTOX_REDIRECT_URI","")
-
+    redirect_uri = os.environ.get("UPSTOX_REDIRECT_URI",
+                   "https://nse-proxy-mojx.onrender.com/auth/callback")
     auth_url = (
         "https://api.upstox.com/v2/login/authorization/dialog"
         f"?response_type=code&client_id={api_key}"
@@ -726,31 +711,23 @@ def auth_callback():
         return "<h2>No auth code received from Upstox</h2>", 400
     api_key     = os.environ.get("UPSTOX_API_KEY","")
     api_secret  = os.environ.get("UPSTOX_API_SECRET","")
-    redirect_uri= os.environ.get("UPSTOX_REDIRECT_URI","")
+    redirect_uri= os.environ.get("UPSTOX_REDIRECT_URI",
+                  "https://nse-proxy-mojx.onrender.com/auth/callback")
     payload = urllib.parse.urlencode({
         "code": code, "client_id": api_key, "client_secret": api_secret,
         "redirect_uri": redirect_uri, "grant_type": "authorization_code"
     }).encode()
     req = urllib.request.Request(
-    "https://api.upstox.com/v2/login/authorization/token",
-    data=payload,
-    headers={
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Origin": "https://api.upstox.com",
-        "Referer": "https://api.upstox.com/"
-    },
-    method="POST"
+        "https://api.upstox.com/v2/login/authorization/token",
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
+        method="POST"
     )
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
             data = json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode()
-        return f"<h2>Token exchange failed</h2><pre>{error_body}</pre>", e.code
     except Exception as e:
-        return f"<h2>Token exchange failed</h2><pre>{str(e)}</pre>", 500
+        return f"<h2>Token exchange failed: {e}</h2>", 500
     tok = data.get("access_token","")
     if not tok:
         return f"<h2>No access_token in response: {data}</h2>", 500

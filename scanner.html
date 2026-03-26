@@ -307,48 +307,6 @@ th[data-tip]{cursor:default;}
 
   <!-- =========== SCANNER =========== -->
   <div class="tab-pane active" id="tab-scanner">
-    <div class="card" id="tokenCard">
-      <div class="card-title">Upstox token</div>
-
-      <!-- Token status row -->
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-        <span id="tokenStatusDot" style="width:10px;height:10px;border-radius:50%;background:#e0e0e0;flex-shrink:0;display:inline-block;"></span>
-        <span id="tokenStatusTxt" style="font-size:13px;color:#888;">Not set &#8212; login to activate scanner</span>
-
-      </div>
-
-      <!-- Primary: OAuth login button -->
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-        <button id="oauthBtn" onclick="openOAuthLogin()"
-           style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;
-                  border-radius:10px;background:#27500A;color:#fff;border:none;
-                  font-size:14px;font-weight:600;cursor:pointer;">
-          &#128274; Login with Upstox
-        </button>
-        <button class="btn" onclick="checkTokenStatus()"
-                style="font-size:12px;padding:6px 14px;">
-          &#8635; Refresh status
-        </button>
-      </div>
-
-      <!-- Secondary: manual paste (collapsed by default) -->
-      <div style="margin-top:12px;">
-        <button onclick="toggleManualToken()"
-                style="font-size:12px;color:#888;background:none;border:none;
-                       cursor:pointer;padding:0;text-decoration:underline;">
-          Or paste token manually
-        </button>
-        <div id="manualTokenWrap" style="display:none;margin-top:10px;">
-          <div class="token-row">
-            <input class="token-inp" id="tokenInput" type="password"
-                   placeholder="Paste Upstox access token&#8230;"/>
-            <button class="btn" onclick="verifyToken()">Set token</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="tok-msg" id="tokenMsg"></div>
-    </div>
 
 
     <!-- AI CARD DISABLED v1.9.0 — uncomment to re-enable Anthropic AI features
@@ -658,63 +616,6 @@ to see the specific analysis and reason.">Signal</th>
 <script>
 
 // ─── CONSTANTS ───
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const PROXY = 'https://nse-proxy-mojx.onrender.com';
@@ -1288,7 +1189,17 @@ function buildSetup(sym,sec,intra,daily,ltp){
 
 // ─── SCAN ─────────────────────────────────────────────────────────────────────
 async function runScan(){
-  if(!token){showErr('Verify your token first.');return;}
+  // Auto-fetch token from server if not in memory
+  if(!token){
+    try{
+      const _r=await fetch(PROXY+'/get-token');
+      if(_r.ok){const _d=await _r.json();if(_d.token)token=_d.token;}
+    }catch(_e){}
+    if(!token){
+      showErr('No Upstox token on server. Paste your daily token in the Token section above.');
+      return;
+    }
+  }
   if(!sel.size){showErr('Add at least one stock.');return;}
   hideAlerts();resetSessionIfNewDay();scanCounter++;
   const btn=document.getElementById('scanBtn');
