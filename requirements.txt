@@ -1,5 +1,5 @@
 flask==3.0.3
 gunicorn==22.0.0
 apscheduler==3.10.4
-psycopg[binary]==3.1.19
+psycopg[binary]==3.2.10
 bcrypt==4.1.2
