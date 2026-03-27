@@ -427,14 +427,8 @@ def authenticate_user(username: str, password: str) -> dict | None:
                         (username.lower().strip(),))
             row = cur.fetchone()
         if not row:
-            log.warning("authenticate_user: user '%s' not found", username.lower().strip())
             return None
-        pwd_hash = row["pwd_hash"]
-        log.info("authenticate_user: user='%s' hash_len=%d hash_prefix='%s'",
-                 username, len(pwd_hash), pwd_hash[:7])
-        match = verify_password(password, pwd_hash)
-        log.info("authenticate_user: password_match=%s", match)
-        if not match:
+        if not verify_password(password, row["pwd_hash"]):
             return None
         # Update last_login
         with conn.cursor() as cur:

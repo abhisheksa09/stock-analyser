@@ -755,7 +755,7 @@ def upstox_proxy(subpath):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ── History disabled ──────────────────────────────────────────────────────────
+# ── History section ──────────────────────────────────────────────────────────
 @app.route("/history/read")
 def history_read():
     return jsonify({"error": "File history not available on cloud."}), 410

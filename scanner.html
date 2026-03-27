@@ -330,7 +330,7 @@ th[data-tip]{cursor:default;}
           👤 <span id="usernameDisplay"></span>
       </span>
       <a href="#" class="top-link logout" onclick="doLogout(); return false;"
-        style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Logout">🔒 Logout &#8599;
+        style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Logout">🔒 Logout  ;
       </a>
   </div>
   </div>
@@ -443,10 +443,10 @@ th[data-tip]{cursor:default;}
     <div class="market-banner" id="marketBanner"></div>
     <div class="evt-warning-banner" id="evtBanner"></div>
 
-    <div class="ai-box" id="aiBox">
+    <!-- <div class="ai-box" id="aiBox">
       <strong style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#888;">AI Market Summary</strong>
       <div id="aiTxt" style="margin-top:6px;"></div>
-    </div>
+    </div> -->
 
     <div class="counters">
       <div class="counter"><div class="counter-n" id="cS">0</div><div class="counter-l">Scanned</div></div>
@@ -1269,15 +1269,154 @@ function loadH(){try{return JSON.parse(localStorage.getItem(SK)||'[]');}catch(e)
 function saveH(h){localStorage.setItem(SK,JSON.stringify(h));renderHistBadge();}
 function renderHistBadge(){document.getElementById('histBadge').textContent=loadH().length;}
 
+
+// ── DB sync helpers ─────────────────────────────────────────────────────────
+const DB_ENABLED = true;   // set false to disable DB sync
+
+function dbHeaders(){
+  // No auth needed for this version (open access), but include for future
+  return {'Content-Type':'application/json'};
+}
+
+async function dbSaveTrade(row){
+  if(!DB_ENABLED) return;
+  try{
+    await fetch(PROXY+'/history/trades',{
+      method:'POST',
+      headers:dbHeaders(),
+      body:JSON.stringify({
+        id:        row.id,
+        ist_date:  row.date,
+        ist_time:  row.time,
+        sym:       row.sym,
+        sec:       row.sec,
+        sig:       row.sig,
+        conf:      row.conf,
+        ltp:       row.ltp,
+        en:        row.en,
+        tg:        row.tg,
+        sl:        row.sl,
+        rr:        row.rr,
+        rsi:       row.rsi,
+        reason:    row.reason||'',
+        actual_en: row.aEn,
+        actual_ex: row.aEx,
+        outcome:   row.outcome||'pending',
+        pnl:       row.pnl,
+        notes:     row.notes||''
+      })
+    });
+  }catch(e){ console.warn('DB save failed:',e.message); }
+}
+
+async function dbUpdateTrade(id, fields){
+  if(!DB_ENABLED) return;
+  try{
+    await fetch(PROXY+'/history/trades/'+encodeURIComponent(id),{
+      method:'PATCH',
+      headers:dbHeaders(),
+      body:JSON.stringify(fields)
+    });
+  }catch(e){ console.warn('DB update failed:',e.message); }
+}
+
+async function dbDeleteTrade(id){
+  if(!DB_ENABLED) return;
+  try{
+    await fetch(PROXY+'/history/trades/'+encodeURIComponent(id),{
+      method:'DELETE',
+      headers:dbHeaders()
+    });
+  }catch(e){ console.warn('DB delete failed:',e.message); }
+}
+
+async function dbLoadTrades(){
+  if(!DB_ENABLED) return null;
+  try{
+    const r = await fetch(PROXY+'/history/trades?limit=1000');
+    if(!r.ok) return null;
+    const d = await r.json();
+    if(!d.trades||!d.trades.length) return null;
+    // Normalise DB field names to localStorage format
+    return d.trades.map(function(t){
+      return {
+        id:      t.id,
+        date:    t.ist_date,
+        time:    t.ist_time,
+        sym:     t.sym,
+        sec:     t.sec,
+        sig:     t.sig,
+        conf:    t.conf,
+        ltp:     t.ltp   != null ? +t.ltp   : null,
+        en:      t.en    != null ? +t.en    : null,
+        tg:      t.tg    != null ? +t.tg    : null,
+        sl:      t.sl    != null ? +t.sl    : null,
+        rr:      t.rr    != null ? +t.rr    : null,
+        rsi:     t.rsi   != null ? +t.rsi   : null,
+        reason:  t.reason||'',
+        aEn:     t.actual_en  != null ? +t.actual_en  : null,
+        aEx:     t.actual_ex  != null ? +t.actual_ex  : null,
+        outcome: t.outcome||'pending',
+        pnl:     t.pnl   != null ? +t.pnl   : null,
+        notes:   t.notes ||''
+      };
+    });
+  }catch(e){ console.warn('DB load failed:',e.message); return null; }
+}
+
 // ─── SAVE TO HISTORY ──────────────────────────────────────────────────────────
-function saveToHistory(){
-  if(!results.length){showErr('Run a scan first.');return;}
-  const h=loadH();const now=new Date();
-  const date=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
-  const time=now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
-  let added=0;
-  results.forEach(s=>{h.push({id:Date.now()+'_'+s.sym+'_'+Math.random().toString(36).slice(2,6),date,time,sym:s.sym,sec:s.sec,sig:s.sig,conf:s.conf,ltp:s.ltp,en:s.en,tg:s.tg,sl:s.sl,rr:s.rr,rsi:s.rsi,reason:s.reason,aEn:null,aEx:null,outcome:'pending',pnl:null,notes:''});added++;});
-  saveH(h);showOk(added+' prediction'+(added!==1?'s':'')+' saved to History tab.');
+async function saveToHistory(){
+  if(!results.length){
+    showErr('Run a scan first.');
+    return;
+  }
+
+  const now  = new Date();
+  const date = now.getFullYear() + '-' +
+               String(now.getMonth()+1).padStart(2,'0') + '-' +
+               String(now.getDate()).padStart(2,'0');
+  const time = now.toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
+
+  const h = loadH();
+  let added = 0;
+
+  const newRows = results.map(function(s){
+    return {
+      id:      Date.now() + '_' + s.sym + '_' + Math.random().toString(36).slice(2,6),
+      date:    date,
+      time:    time,
+      sym:     s.sym,
+      sec:     s.sec,
+      sig:     s.sig,
+      conf:    s.conf,
+      ltp:     s.ltp,
+      en:      s.en,
+      tg:      s.tg,
+      sl:      s.sl,
+      rr:      s.rr,
+      rsi:     s.rsi,
+      reason:  s.reason,
+      aEn:     null,
+      aEx:     null,
+      outcome: 'pending',
+      pnl:     null,
+      notes:   ''
+    };
+  });
+
+  // Save to localStorage immediately
+  newRows.forEach(function(row){
+    h.push(row);
+    added++;
+  });
+  saveH(h);
+
+  // Save to DB in background
+  newRows.forEach(function(row){
+    dbSaveTrade(row);
+  });
+
+  showOk(added + ' prediction' + (added !== 1 ? 's' : '') + ' saved.');
 }
 
 // ─── HISTORY FILTERS + SORT ───────────────────────────────────────────────────
@@ -1294,6 +1433,39 @@ function parseDate(s){if(!s)return null;if(s.includes('-'))return new Date(s);re
 
 // ─── RENDER HISTORY ───────────────────────────────────────────────────────────
 function renderHist(){
+  // ── Load from DB ONCE (first time history tab opens) ──
+  if(!window._histDbLoaded){
+    window._histDbLoaded = true;
+
+    dbLoadTrades().then(function(dbRows){
+      if(dbRows && dbRows.length){
+        const local = loadH();
+        const localIds = new Set(local.map(function(r){ return r.id; }));
+        const merged = [...local];
+
+        dbRows.forEach(function(r){
+          if(!localIds.has(r.id)) merged.push(r);
+        });
+
+        merged.sort(function(a, b){
+          return (String(b.date) + String(b.time))
+            .localeCompare(String(a.date) + String(a.time));
+        });
+
+        saveH(merged);
+      }
+
+      renderHist();   // re-run after DB load
+    }).catch(function(e){
+      console.warn('DB load failed:', e);
+      renderHist();
+    });
+
+    return;   
+  }
+
+  // ── Normal rendering continues below ──
+
   const all=loadH();
   renderHistBadge();renderHistStats(all);renderAccBars(all);
   let rows=[...all];
