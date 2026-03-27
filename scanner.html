@@ -236,6 +236,11 @@ th[data-tip]{cursor:default;}
   .hist-toolbar{flex-direction:column;align-items:stretch;}
   .hist-toolbar-left .btn,.hist-toolbar-left label{flex:1;text-align:center;}
   .hist-toolbar > .btn{width:100%;}
+  .nav-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;
+   border-radius:6px;border:1px solid #e0e0e0;background:#fafafa;
+   color:#555;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;
+   text-decoration:none;transition:background .15s;}
+   .nav-btn:hover{background:#f0f0f0;color:#1a1a1a;}
 }
 </style>
 </head>
@@ -325,7 +330,7 @@ th[data-tip]{cursor:default;}
       <div class="tok-msg" id="tokenMsg"></div>
     </div>
 
-    <div class="card">
+    <!-- <div class="card">
       <div class="card-title">Anthropic AI (optional)</div>
       <div style="font-size:12px;color:#888;margin-bottom:8px;">Add your API key once to enable AI trade plans and market summaries.</div>
       <div class="ai-key-row">
@@ -333,7 +338,7 @@ th[data-tip]{cursor:default;}
         <button class="btn" onclick="saveAnthropicKey()">Save key</button>
       </div>
       <div class="tok-msg" id="anthropicMsg"></div>
-    </div>
+    </div> -->
 
     <div class="card">
       <div class="card-title">Select stocks (max 15)</div>
