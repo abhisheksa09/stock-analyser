@@ -40,6 +40,24 @@ IST            = timezone(timedelta(hours=5, minutes=30))
 SESSION_COOKIE  = "nse_session"
 SESSION_TTL_SEC = 30 * 24 * 3600
 
+def _get_session(req):
+    token = (
+        req.headers.get("X-Session-Token", "") or
+        req.cookies.get(SESSION_COOKIE, "")
+    )
+    if not token:
+        return None
+    return _db_module.validate_app_session(token)
+
+def _require_session(req):
+    sess = _get_session(req)
+    if not sess:
+        return None, (jsonify({"error": "Not authenticated", "code": "AUTH_REQUIRED"}), 401)
+    return sess, None
+
+def _has_db():
+    return _db_module.get_connection() is not None
+
 CORS_HEADERS = {
     "Access-Control-Allow-Origin":      ALLOWED_ORIGIN,
     "Access-Control-Allow-Methods":     "GET, POST, OPTIONS, PATCH, DELETE",
@@ -414,8 +432,6 @@ _last_oauth = {"status": "never attempted", "detail": "", "time": ""}
 
 
 # ─── Session helpers ──────────────────────────────────────────────────────────
-SESSION_COOKIE  = "nse_session"
-SESSION_TTL_SEC = 30 * 24 * 3600
 
 def _get_session(req) -> dict | None:
     token = (
@@ -756,6 +772,142 @@ def upstox_proxy(subpath):
         return jsonify({"error": str(e)}), 500
 
 # ── History section ──────────────────────────────────────────────────────────
+# ─── Trade history ────────────────────────────────────────────────────────────
+@app.route("/history/trades", methods=["GET"])
+@app.route("/history/trades/", methods=["GET"])
+def get_trades():
+    sess, err = _require_session(request)
+    if err:
+        return err
+
+    if not _has_db():
+        return jsonify({"trades": [], "note": "No DB"})
+
+    username = sess["username"]
+    trades = _db_module.get_trades(
+        username=username,
+        from_date=request.args.get("from_date"),
+        to_date=request.args.get("to_date"),
+        sym=request.args.get("sym"),
+        limit=int(request.args.get("limit", 500))
+    )
+    return jsonify({"trades": trades, "count": len(trades)})
+
+
+@app.route("/history/trades", methods=["POST"])
+@app.route("/history/trades/", methods=["POST"])
+def save_trade():
+    sess, err = _require_session(request)
+    if err:
+        return err
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "No data"}), 400
+
+    if not _has_db():
+        return jsonify({"status": "ok", "note": "No DB"})
+
+    now = datetime.now(IST)
+    username = sess["username"]
+
+    trade = {
+        "id":        data.get("id") or f"{int(now.timestamp())}_{data.get('sym','')}_{username[:4]}",
+        "username":  username,
+        "ist_date":  str(data.get("ist_date") or now.date()),
+        "ist_time":  data.get("ist_time") or now.strftime("%H:%M"),
+        "sym":       data.get("sym",""),
+        "sec":       data.get("sec",""),
+        "sig":       data.get("sig",""),
+        "conf":      int(data.get("conf",0)),
+        "ltp":       data.get("ltp"),
+        "en":        data.get("en"),
+        "tg":        data.get("tg"),
+        "sl":        data.get("sl"),
+        "rr":        data.get("rr"),
+        "rsi":       data.get("rsi"),
+        "reason":    data.get("reason",""),
+        "actual_en": data.get("actual_en") or data.get("aEn"),
+        "actual_ex": data.get("actual_ex") or data.get("aEx"),
+        "outcome":   data.get("outcome","pending"),
+        "pnl":       data.get("pnl"),
+        "notes":     data.get("notes",""),
+    }
+
+    ok = _db_module.upsert_trade(trade)
+    return jsonify({"status": "ok" if ok else "error", "id": trade["id"]})
+
+
+@app.route("/history/trades/<trade_id>", methods=["PATCH"])
+@app.route("/history/trades/<trade_id>/", methods=["PATCH"])
+def update_trade(trade_id):
+    sess, err = _require_session(request)
+    if err:
+        return err
+
+    if not _has_db():
+        return jsonify({"error": "No DB"}), 503
+
+    data = request.get_json(silent=True) or {}
+    trades = _db_module.get_trades(username=sess["username"], limit=1000)
+    trade = next((t for t in trades if t["id"] == trade_id), None)
+
+    if not trade:
+        return jsonify({"error": "Not found"}), 404
+
+    for field in ["actual_en", "actual_ex", "outcome", "pnl", "notes"]:
+        if field in data:
+            trade[field] = data[field]
+
+    ok = _db_module.upsert_trade(trade)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route("/history/trades/<trade_id>", methods=["DELETE"])
+@app.route("/history/trades/<trade_id>/", methods=["DELETE"])
+def delete_trade(trade_id):
+    sess, err = _require_session(request)
+    if err:
+        return err
+
+    if not _has_db():
+        return jsonify({"error": "No DB"}), 503
+
+    trades = _db_module.get_trades(username=sess["username"], limit=1000)
+    trade = next((t for t in trades if t["id"] == trade_id), None)
+    if not trade:
+        return jsonify({"error": "Not found"}), 404
+
+    ok = _db_module.delete_trade(trade_id)
+    return jsonify({"status": "ok" if ok else "error"})
+
+
+@app.route("/history/stats")
+@app.route("/history/stats/")
+def get_trade_stats():
+    sess, err = _require_session(request)
+    if err:
+        return err
+
+    if not _has_db():
+        return jsonify({"stats": {}})
+
+    username = sess["username"]
+    trades = _db_module.get_trades(username=username, limit=1000)
+    resolved = [t for t in trades if t.get("outcome") != "pending"]
+    wins = [t for t in resolved if t.get("pnl") is not None and float(t["pnl"]) > 0]
+    pnls = [float(t["pnl"]) for t in resolved if t.get("pnl") is not None]
+
+    return jsonify({"stats": {
+        "total":     len(trades),
+        "resolved":  len(resolved),
+        "wins":      len(wins),
+        "losses":    len(resolved) - len(wins),
+        "accuracy":  round(len(wins) / len(resolved) * 100) if resolved else 0,
+        "avg_pnl":   round(sum(pnls) / len(pnls), 2) if pnls else 0,
+        "total_pnl": round(sum(pnls), 2) if pnls else 0,
+    }})
+
 @app.route("/history/read")
 def history_read():
     return jsonify({"error": "File history not available on cloud."}), 410

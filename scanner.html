@@ -330,7 +330,7 @@ th[data-tip]{cursor:default;}
           👤 <span id="usernameDisplay"></span>
       </span>
       <a href="#" class="top-link logout" onclick="doLogout(); return false;"
-        style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Logout">🔒 Logout  ;
+        style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Logout">🔒 Logout
       </a>
   </div>
   </div>
@@ -612,7 +612,8 @@ window.addEventListener('DOMContentLoaded', function(){
 });
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const PROXY = 'https://nse-proxy-mojx.onrender.com';
+const BACKEND = 'https://nse-proxy-mojx.onrender.com';
+const UPSTOX  = 'https://api.upstox.com';
 const SK = 'nse_v2';
 
 const STOCKS = [
@@ -1271,20 +1272,23 @@ function renderHistBadge(){document.getElementById('histBadge').textContent=load
 
 
 // ── DB sync helpers ─────────────────────────────────────────────────────────
-const DB_ENABLED = true;   // set false to disable DB sync
+const DB_ENABLED = true;
 
 function dbHeaders(){
-  // No auth needed for this version (open access), but include for future
-  return {'Content-Type':'application/json'};
+  var tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
+  var h = {'Content-Type':'application/json'};
+  if(tok) h['X-Session-Token'] = tok;
+  return h;
 }
 
 async function dbSaveTrade(row){
   if(!DB_ENABLED) return;
   try{
-    await fetch(PROXY+'/history/trades',{
+    await fetch(BACKEND + '/history/trades', {
       method:'POST',
-      headers:dbHeaders(),
-      body:JSON.stringify({
+      headers: dbHeaders(),
+      credentials:'include',
+      body: JSON.stringify({
         id:        row.id,
         ist_date:  row.date,
         ist_time:  row.time,
@@ -1298,46 +1302,58 @@ async function dbSaveTrade(row){
         sl:        row.sl,
         rr:        row.rr,
         rsi:       row.rsi,
-        reason:    row.reason||'',
+        reason:    row.reason || '',
         actual_en: row.aEn,
         actual_ex: row.aEx,
-        outcome:   row.outcome||'pending',
+        outcome:   row.outcome || 'pending',
         pnl:       row.pnl,
-        notes:     row.notes||''
+        notes:     row.notes || ''
       })
     });
-  }catch(e){ console.warn('DB save failed:',e.message); }
+  }catch(e){
+    console.warn('DB save failed:', e.message);
+  }
 }
 
 async function dbUpdateTrade(id, fields){
   if(!DB_ENABLED) return;
   try{
-    await fetch(PROXY+'/history/trades/'+encodeURIComponent(id),{
+    await fetch(BACKEND + '/history/trades/' + encodeURIComponent(id), {
       method:'PATCH',
-      headers:dbHeaders(),
-      body:JSON.stringify(fields)
+      headers: dbHeaders(),
+      credentials:'include',
+      body: JSON.stringify(fields)
     });
-  }catch(e){ console.warn('DB update failed:',e.message); }
+  }catch(e){
+    console.warn('DB update failed:', e.message);
+  }
 }
 
 async function dbDeleteTrade(id){
   if(!DB_ENABLED) return;
   try{
-    await fetch(PROXY+'/history/trades/'+encodeURIComponent(id),{
+    await fetch(BACKEND + '/history/trades/' + encodeURIComponent(id), {
       method:'DELETE',
-      headers:dbHeaders()
+      headers: dbHeaders(),
+      credentials:'include'
     });
-  }catch(e){ console.warn('DB delete failed:',e.message); }
+  }catch(e){
+    console.warn('DB delete failed:', e.message);
+  }
 }
 
 async function dbLoadTrades(){
   if(!DB_ENABLED) return null;
   try{
-    const r = await fetch(PROXY+'/history/trades?limit=1000');
+    const r = await fetch(BACKEND + '/history/trades?limit=1000', {
+      headers: dbHeaders(),
+      credentials:'include'
+    });
     if(!r.ok) return null;
+
     const d = await r.json();
-    if(!d.trades||!d.trades.length) return null;
-    // Normalise DB field names to localStorage format
+    if(!d.trades || !d.trades.length) return null;
+
     return d.trades.map(function(t){
       return {
         id:      t.id,
@@ -1347,22 +1363,24 @@ async function dbLoadTrades(){
         sec:     t.sec,
         sig:     t.sig,
         conf:    t.conf,
-        ltp:     t.ltp   != null ? +t.ltp   : null,
-        en:      t.en    != null ? +t.en    : null,
-        tg:      t.tg    != null ? +t.tg    : null,
-        sl:      t.sl    != null ? +t.sl    : null,
-        rr:      t.rr    != null ? +t.rr    : null,
-        rsi:     t.rsi   != null ? +t.rsi   : null,
-        reason:  t.reason||'',
-        aEn:     t.actual_en  != null ? +t.actual_en  : null,
-        aEx:     t.actual_ex  != null ? +t.actual_ex  : null,
-        outcome: t.outcome||'pending',
-        pnl:     t.pnl   != null ? +t.pnl   : null,
-        notes:   t.notes ||''
+        ltp:     t.ltp != null ? +t.ltp : null,
+        en:      t.en  != null ? +t.en  : null,
+        tg:      t.tg  != null ? +t.tg  : null,
+        sl:      t.sl  != null ? +t.sl  : null,
+        rr:      t.rr  != null ? +t.rr  : null,
+        rsi:     t.rsi != null ? +t.rsi : null,
+        reason:  t.reason || '',
+        aEn:     t.actual_en != null ? +t.actual_en : null,
+        aEx:     t.actual_ex != null ? +t.actual_ex : null,
+        outcome: t.outcome || 'pending',
+        pnl:     t.pnl != null ? +t.pnl : null,
+        notes:   t.notes || ''
       };
     });
-  }catch(e){ console.warn('DB load failed:',e.message); return null; }
-}
+  }catch(e){
+    console.warn('DB load failed:', e.message);
+    return null;
+  }
 
 // ─── SAVE TO HISTORY ──────────────────────────────────────────────────────────
 async function saveToHistory(){
@@ -1433,7 +1451,6 @@ function parseDate(s){if(!s)return null;if(s.includes('-'))return new Date(s);re
 
 // ─── RENDER HISTORY ───────────────────────────────────────────────────────────
 function renderHist(){
-  // ── Load from DB ONCE (first time history tab opens) ──
   if(!window._histDbLoaded){
     window._histDbLoaded = true;
 
@@ -1455,13 +1472,13 @@ function renderHist(){
         saveH(merged);
       }
 
-      renderHist();   // re-run after DB load
+      renderHist();
     }).catch(function(e){
-      console.warn('DB load failed:', e);
+      console.warn('Initial DB history load failed:', e && e.message ? e.message : e);
       renderHist();
     });
 
-    return;   
+    return;
   }
 
   // ── Normal rendering continues below ──
