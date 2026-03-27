@@ -112,6 +112,9 @@ async function doLogin(){
     });
     var d=await r.json();
     if(r.ok&&d.status==='ok'){
+        // clear any previous user's local cache before setting new session
+      localStorage.removeItem('nse_v2');
+
       if(d.token) localStorage.setItem('nse_app_token',d.token);
       localStorage.setItem('nse_username',d.username);
       msg.textContent='✓ Welcome, '+d.username+'!';

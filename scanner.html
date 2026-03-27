@@ -23,6 +23,7 @@ async function doLogout(){
   _appSessionToken = '';
   localStorage.removeItem('nse_app_token');
   localStorage.removeItem('nse_username');
+  localStorage.removeItem('nse_v2');
 
   window.location.replace('login.html');
 }
