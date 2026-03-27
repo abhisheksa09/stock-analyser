@@ -40,6 +40,15 @@ IST            = timezone(timedelta(hours=5, minutes=30))
 SESSION_COOKIE  = "nse_session"
 SESSION_TTL_SEC = 30 * 24 * 3600
 
+def _load_token_from_db():
+    try:
+        tok = _db_module.get_token()
+        if tok:
+            scanner.set_token(tok)
+            log.info("Loaded Upstox token from DB on startup")
+    except Exception as e:
+        log.warning("Could not load token from DB: %s", e)
+
 def _get_session(req):
     token = (
         req.headers.get("X-Session-Token", "") or
@@ -113,18 +122,20 @@ def set_token():
 @app.route("/get-token/")
 def get_token_for_browser():
     """
-    Returns the current server-side Upstox token to the browser.
-    Called by the scanner UI after OAuth login to sync the token
-    into localStorage so the browser can make direct Upstox API calls.
-    Only returns the token if it is set — never returns an empty string.
+    Returns today's Upstox token to the browser.
+    Uses in-memory token first, then falls back to DB token_store.
     """
-    tok = scanner.get_token()
+    tok = get_effective_token()
+
     if not tok:
-        return jsonify({"status": "not_set",
-                        "message": "No token on server. Complete OAuth login first."}), 404
+        return jsonify({
+            "status": "not_set",
+            "message": "No token available for today. Complete Upstox login once."
+        }), 404
+
     return jsonify({
         "status": "ok",
-        "token":  tok,
+        "token": tok,
     })
 
 @app.route("/set-token-form")
@@ -186,7 +197,7 @@ async function submit(){{
 def alert_status():
     return jsonify({
         "session_date":      scanner.STATE.date,
-        "token_set":         bool(scanner.get_token()),
+        "token_set":         bool(get_effective_token()),
         "locked_signals":    scanner.STATE.locked_sig,
         "alerts_sent_today": sorted(scanner.STATE.alerted),
         "prev_confidence":   scanner.STATE.prev_conf,
@@ -238,6 +249,26 @@ def test_alert():
     if ok:
         return jsonify({"status": "ok", "message": "Test Telegram message sent"})
     return jsonify({"status": "error", "message": "Failed - check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID"}), 500
+
+def get_effective_token():
+    """
+    Return today's Upstox token.
+    First try in-memory scanner token.
+    If missing, fall back to DB token_store and reload memory.
+    """
+    tok = scanner.get_token()
+
+    if not tok:
+        try:
+            tok = _db_module.get_token()
+            if tok:
+                scanner.set_token(tok)
+                log.info("Loaded Upstox token from DB fallback")
+        except Exception as e:
+            log.warning("DB token fallback failed: %s", e)
+            tok = None
+
+    return tok
 
 # ── Get Telegram Chat ID (setup helper) ──────────────────────────────────────
 @app.route("/get-chat-id")
@@ -293,7 +324,7 @@ def dry_scan():
     """
     import time as _time
 
-    token    = scanner.get_token()
+    token    = get_effective_token()
     sym_req  = request.args.get("sym", "").upper().strip()
     use_mock = request.args.get("mock", "0") == "1" or not token
 
@@ -584,10 +615,11 @@ def auth_callback():
 
         # Set token in scanner automatically
         scanner.set_token(token)
+        _db_module.set_token(token, set_by="oauth")
         scanner.STATE.check_date()
 
         # Verify it was set
-        stored = scanner.get_token()
+        stored = get_effective_token()
         if not stored:
             _last_oauth["status"] = "set_failed"
             _last_oauth["detail"] = "set_token called but get_token returned empty"
@@ -702,8 +734,8 @@ def auth_status():
     api_secret = os.environ.get("UPSTOX_API_SECRET", "")
     return jsonify({
         "last_oauth_attempt":  _last_oauth,
-        "token_currently_set": bool(scanner.get_token()),
-        "token_length":        len(scanner.get_token()) if scanner.get_token() else 0,
+        "token_currently_set": bool(get_effective_token()),
+        "token_length":        len(get_effective_token()) if get_effective_token() else 0,
         "api_key_set":         bool(api_key),
         "api_secret_set":      bool(api_secret),
         "redirect_uri":        OAUTH_REDIRECT,
@@ -926,6 +958,7 @@ def start_scheduler():
     log.info("Scheduler started — scanning every %d min", interval)
     return sched
 
+_load_token_from_db()
 _scheduler = start_scheduler()
 
 if __name__ == "__main__":
