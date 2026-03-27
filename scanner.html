@@ -322,11 +322,16 @@ th[data-tip]{cursor:default;}
       <span class="chip" id="mktChip">&#8212;</span>
       <span class="chip" id="dataChip">No data</span>
       <span class="chip chip-gray" id="genChip" style="display:none;" title="Time of last scan">&#8212;</span>
-      <a href="https://abhisheksa09.github.io/stock-analyser/nse_changelog.html" target="_blank" style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Build history">Journey &#8599;</a>
-      <a href="https://abhisheksa09.github.io/stock-analyser/nse_readme.html" target="_blank"
+      <a href="https://abhisheksa09.github.io/stock-analyser/changelog.html" target="_blank" style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Build history">Journey &#8599;</a>
+      <a href="https://abhisheksa09.github.io/stock-analyser/readme.html" target="_blank"
          style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Open user guide">Docs &#8599;</a>
-      <button class="nav-btn nav-desktop" onclick="doLogout()" style="color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
-    </div>
+    <span class="top-link" style="border:none;background:transparent;">
+  👤 <span id="usernameDisplay"></span>
+    </span>
+    <a href="#" class="top-link logout" onclick="doLogout(); return false;">
+      🔒 Logout
+    </a>
+  </div>
   </div>
 
   <div id="coldStartBanner" style="background:#FFF8E1;border:1px solid #FAC775;border-radius:8px;padding:10px 16px;margin-bottom:12px;font-size:12px;color:#633806;display:none;">
@@ -598,6 +603,12 @@ th[data-tip]{cursor:default;}
 </div>
 
 <script>
+window.addEventListener('DOMContentLoaded', function(){
+  var el = document.getElementById('usernameDisplay');
+  if(el){
+    el.textContent = localStorage.getItem('nse_username') || '';
+  }
+});
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const PROXY = 'https://nse-proxy-mojx.onrender.com';
@@ -635,6 +646,7 @@ const STOCKS = [
   {sym:'ULTRACEMCO',name:'UltraTech Cement',        ikey:'NSE_EQ|INE481G01011', sec:'Cement'},
   {sym:'BAJAJAUTO', name:'Bajaj Auto (BAJAJ-AUTO)', ikey:'NSE_EQ|INE917I01026', sec:'Auto'},
 ];
+
 
 // ─── CONFIDENCE ENGINE ────────────────────────────────────────────────────────
 const CF = [
