@@ -275,6 +275,45 @@ def admin_activate_user(username):
     return jsonify({"status": "ok"})
 
 # ─── Ping ─────────────────────────────────────────────────────────────────────
+@app.route("/utils/reset-user", methods=["POST"])
+def utils_reset_user():
+    """
+    Reset a user password using ADMIN_PIN. 
+    Body: {"pin":"...","username":"...","password":"..."}
+    This generates the hash server-side using the same bcrypt call as login verification.
+    """
+    data     = request.get_json(silent=True) or {}
+    pin      = data.get("pin","")
+    username = (data.get("username") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not pin or pin != os.environ.get("ADMIN_PIN",""):
+        return jsonify({"error": "Invalid PIN"}), 403
+    if not username or len(password) < 6:
+        return jsonify({"error": "username and password (6+ chars) required"}), 400
+
+    conn = _db_module.db()
+    if not conn:
+        return jsonify({"error": "No DB connection"}), 503
+
+    try:
+        pwd_hash = _db_module.hash_password(password)
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET pwd_hash=%s, active=TRUE WHERE username=%s RETURNING id, username, role",
+                (pwd_hash, username)
+            )
+            row = cur.fetchone()
+        if not row:
+            # User doesn't exist — create them
+            result = _db_module.create_user(username, password, "admin")
+            return jsonify({"status": "ok", "action": "created", "user": result.get("user")})
+        return jsonify({"status": "ok", "action": "updated", "user": dict(row),
+                        "hash_preview": pwd_hash[:20]+"..."})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/ping")
 @app.route("/ping/")
 def ping():
@@ -438,12 +477,8 @@ def upstox_proxy(subpath):
     full_url= f"{url}?{qs}" if qs else url
     headers = {
         "Authorization": f"Bearer {tok}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Origin": "https://api.upstox.com",
-        "Referer": "https://api.upstox.com/",
-        "Connection": "keep-alive"
+        "Accept":        "application/json",
+        "Content-Type":  "application/json",
     }
     try:
         req_body = request.get_data() or None
@@ -510,11 +545,7 @@ def _upstox_get(url, tok):
     """Make a GET request to Upstox and return the response."""
     headers = {
         "Authorization": f"Bearer {tok}",
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Origin": "https://api.upstox.com",
-        "Referer": "https://api.upstox.com/",
-        "Connection": "keep-alive"
+        "Accept":        "application/json",
     }
     try:
         req = urllib.request.Request(url, headers=headers)
@@ -722,23 +753,13 @@ def auth_callback():
     redirect_uri= os.environ.get("UPSTOX_REDIRECT_URI",
                   "https://nse-proxy-mojx.onrender.com/auth/callback")
     payload = urllib.parse.urlencode({
-    "code": code,
-    "client_id": api_key,
-    "client_secret": api_secret,
-    "redirect_uri": redirect_uri,
-    "grant_type": "authorization_code"
+        "code": code, "client_id": api_key, "client_secret": api_secret,
+        "redirect_uri": redirect_uri, "grant_type": "authorization_code"
     }).encode()
-    
     req = urllib.request.Request(
         "https://api.upstox.com/v2/login/authorization/token",
         data=payload,
-        headers={
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            "Origin": "https://api.upstox.com",
-            "Referer": "https://api.upstox.com/"
-        },
+        headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
         method="POST"
     )
     try:

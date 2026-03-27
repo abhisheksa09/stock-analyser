@@ -417,6 +417,7 @@ def create_user(username: str, password: str, role: str = "viewer") -> dict:
         return {"error": str(e)}
 
 def authenticate_user(username: str, password: str) -> dict | None:
+    """Returns user dict if credentials valid, None otherwise."""
     conn = db()
     if not conn:
         return None
@@ -425,25 +426,20 @@ def authenticate_user(username: str, password: str) -> dict | None:
             cur.execute("SELECT * FROM users WHERE username=%s AND active=TRUE",
                         (username.lower().strip(),))
             row = cur.fetchone()
-
         if not row:
-            log.warning("User not found: %s", username)
+            log.warning("authenticate_user: user '%s' not found", username.lower().strip())
             return None
-
-        log.info("User found: %s", row["username"])
-        log.info("Hash from DB: %s", row["pwd_hash"])
-
-        ok = verify_password(password, row["pwd_hash"])
-        log.info("Password match: %s", ok)
-
-        if not ok:
+        pwd_hash = row["pwd_hash"]
+        log.info("authenticate_user: user='%s' hash_len=%d hash_prefix='%s'",
+                 username, len(pwd_hash), pwd_hash[:7])
+        match = verify_password(password, pwd_hash)
+        log.info("authenticate_user: password_match=%s", match)
+        if not match:
             return None
-
+        # Update last_login
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET last_login=NOW() WHERE id=%s", (row["id"],))
-
         return dict(row)
-
     except Exception as e:
         log.warning("authenticate_user: %s", e)
         return None
