@@ -489,12 +489,6 @@ th[data-tip]{cursor:default;}
       <div class="hstat"><div class="hstat-n" id="hPnL">&#8212;</div><div class="hstat-l">Avg P&amp;L/share</div></div>
     </div>
 
-    <div class="cloud-notice">
-      &#9729; History is stored in <strong>this browser only</strong> (localStorage).
-      Use <strong>Export CSV</strong> regularly to back up your data.
-      It will not sync across devices in the cloud version.
-    </div>
-
     <div class="collapsible-wrap">
       <div class="collapsible-hdr" onclick="toggleSection('accSection')">
         <span class="collapsible-title">Accuracy by Category</span>
@@ -873,14 +867,57 @@ document.addEventListener('click',e=>{if(!e.target.closest('.search-wrap'))docum
 
 // ─── PROXY ────────────────────────────────────────────────────────────────────
 async function checkProxy(){
-  const dot=document.getElementById('pdot'),txt=document.getElementById('pTxt');
-  dot.className='pdot pdot-spin';txt.textContent='Connecting to cloud proxy\u2026';
-  let ok=false;
-  try{const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),4000);const r=await fetch(PROXY+'/ping',{signal:ctrl.signal});clearTimeout(timer);const d=await r.json();if(r.ok&&d.status==='ok')ok=true;}
-  catch(e1){try{const ctrl2=new AbortController(),timer2=setTimeout(()=>ctrl2.abort(),3000);await fetch(PROXY+'/ping',{mode:'no-cors',signal:ctrl2.signal});clearTimeout(timer2);ok=true;}catch(e2){ok=false;}}
-  if(ok){proxyOk=true;dot.className='pdot pdot-ok';txt.textContent='Cloud proxy connected \u2014 ready to scan';document.getElementById('proxyOverride').style.display='none';fetchCorporateEvents();}
-  else{proxyOk=false;dot.className='pdot pdot-fail';txt.textContent='Cloud proxy not reachable \u2014 Render may be sleeping (free tier). Try again in 30s.';
-    document.getElementById('coldStartBanner').style.display='block';document.getElementById('proxyOverride').style.display='block';}
+  const dot  = document.getElementById('pdot');
+  const txt  = document.getElementById('pTxt');
+  const cold = document.getElementById('coldStartBanner');
+  const ov   = document.getElementById('proxyOverride');
+
+  if(dot) dot.className = 'pdot pdot-spin';
+  if(txt) txt.textContent = 'Connecting to cloud proxy…';
+
+  let ok = false;
+
+  try{
+    const ctrl = new AbortController();
+    const timer = setTimeout(function(){ ctrl.abort(); }, 8000);
+
+    const r = await fetch(BACKEND + '/ping', {
+      signal: ctrl.signal,
+      credentials: 'include'
+    });
+
+    clearTimeout(timer);
+
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+
+    const d = await r.json();
+    if(d && d.status === 'ok') ok = true;
+  }catch(e){
+    ok = false;
+    console.warn('checkProxy failed:', e);
+  }
+
+  if(ok){
+    proxyOk = true;
+
+    if(dot) dot.className = 'pdot pdot-ok';
+    if(txt) txt.textContent = 'Cloud proxy connected — ready to scan';
+
+    if(cold) cold.style.display = 'none';
+    if(ov) ov.style.display = 'none';
+
+    if(typeof fetchCorporateEvents === 'function'){
+      fetchCorporateEvents();
+    }
+  }else{
+    proxyOk = false;
+
+    if(dot) dot.className = 'pdot pdot-fail';
+    if(txt) txt.textContent = 'Cloud proxy not reachable — Render may be sleeping (free tier). Try again in 30s.';
+
+    if(cold) cold.style.display = 'block';
+    if(ov) ov.style.display = 'block';
+  }
 }
 function forceProxyOn(){proxyOk=true;document.getElementById('pdot').className='pdot pdot-ok';document.getElementById('pTxt').textContent='Cloud proxy confirmed \u2014 ready to scan';document.getElementById('proxyOverride').style.display='none';}
 
