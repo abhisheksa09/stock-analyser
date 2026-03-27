@@ -998,7 +998,7 @@ async function checkTokenStatus(){
   if(txt){ txt.textContent='Checking\u2026'; txt.style.color='#888'; }
   try{
     // Step 1: get token from server
-    const r = await fetch(PROXY+'/get-token');
+    const r = await fetch(BACKEND+'/get-token');
     if(!r.ok){
       // Token not set on server yet
       if(dot){ dot.style.background='#e0e0e0'; }
