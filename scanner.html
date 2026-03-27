@@ -288,13 +288,6 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 .empty-hist{text-align:center;padding:3rem;color:#aaa;font-size:13px;line-height:1.9;}
 .hist-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;width:100%;box-sizing:border-box;}
 .hist-toolbar-left{display:flex;gap:8px;flex-wrap:wrap;}
-.navbar{display:flex;align-items:center;justify-content:space-between;
-  gap:12px;padding:10px 16px;background:#fff;border-bottom:1px solid #e0e0e0;
-  margin:-20px -16px 20px;position:sticky;top:0;z-index:100;flex-wrap:nowrap;}
-.navbar-brand{display:flex;align-items:center;gap:8px;flex-shrink:0;}
-.navbar-title{font-size:16px;font-weight:700;white-space:nowrap;}
-.navbar-centre{display:flex;align-items:center;gap:6px;flex:1;justify-content:center;flex-wrap:wrap;}
-.navbar-right{display:flex;align-items:center;gap:6px;flex-shrink:0;}
 .cloud-notice{background:#E6F1FB;border:1px solid #85B7EB;border-radius:8px;padding:10px 14px;font-size:12px;color:#185FA5;margin-bottom:12px;}
 [data-tip]{cursor:help;}
 th[data-tip]{cursor:default;}
@@ -317,14 +310,7 @@ th[data-tip]{cursor:default;}
    border-radius:6px;border:1px solid #e0e0e0;background:#fafafa;
    color:#555;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;
    text-decoration:none;transition:background .15s;}
-  .nav-btn:hover{background:#f0f0f0;color:#1a1a1a;}
-  .nav-desktop{display:none!important;}
-  .nav-mobile{display:inline-flex!important;}
-  .navbar{padding:8px 12px;gap:6px;position:relative;}
-  .navbar-brand{gap:6px;flex-shrink:0;}
-  .navbar-title{font-size:13px;}
-  .navbar-centre{gap:4px;flex:1 1 0;min-width:0;overflow:hidden;}
-  .navbar-centre .chip{font-size:10px;padding:2px 4px;white-space:nowrap;}
+   .nav-btn:hover{background:#f0f0f0;color:#1a1a1a;}
 }
 </style>
 </head>
@@ -333,39 +319,12 @@ th[data-tip]{cursor:default;}
 
   <div class="topbar">
     <h1>NSE Intraday Scanner</h1>
-    <div class="navbar-centre">
+    <div class="topchips">
       <span class="chip" id="mktChip">&#8212;</span>
       <span class="chip" id="dataChip">No data</span>
       <span class="chip chip-gray" id="genChip" style="display:none;" title="Time of last scan">&#8212;</span>
-    </div>
-      <!-- Hidden status elements used by JS (kept for compatibility) -->
-    <span id="tokenStatusTxt" style="display:none;"></span>
-    <span id="pTxt"           style="display:none;"></span>
 
-    <!-- Right: action buttons -->
-    <div class="navbar-right">
-      <!-- Proxy status dot + label -->
-      <button class="nav-btn" id="proxyNavBtn" onclick="switchTab('admin')"
-              title="Cloud proxy status">
-        <span class="pdot" id="pdot" style="width:8px;height:8px;display:inline-block;vertical-align:middle;margin-right:4px;"></span>
-        <span id="proxyNavTxt" style="font-size:11px;">Proxy</span>
-      </button>
-
-      <!-- Token / login button -->
-      <button class="nav-btn" id="tokenNavBtn" onclick="handleTokenNavClick()"
-              title="Upstox login status">
-        <span id="tokenStatusDot" style="width:8px;height:8px;border-radius:50%;background:#e0e0e0;display:inline-block;vertical-align:middle;margin-right:4px;flex-shrink:0;"></span>
-        <span id="tokenNavTxt" style="font-size:11px;">Login</span>
-      </button>
-
-      <!-- Desktop links -->
-      <a href="readme.html"   target="_blank" class="nav-btn nav-desktop">&#128214; Docs</a>
-      <a href="changelog.html" target="_blank" class="nav-btn nav-desktop">&#127959;</a>
-      <button class="nav-btn nav-desktop" onclick="doLogout()" style="color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
-      <!-- Hamburger (mobile only) -->
-      <button class="nav-btn nav-mobile" id="burgerBtn" onclick="toggleMobileMenu()" style="font-size:18px;padding:4px 10px;">&#9776;</button>
-    </div>
-
+      
       <a href="https://abhisheksa09.github.io/stock-analyser/changelog.html" target="_blank" 
       style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Build history">Journey &#8599;</a>
       <a href="https://abhisheksa09.github.io/stock-analyser/readme.html" target="_blank"
@@ -766,25 +725,6 @@ async function fetchMarketContext() {
     updateMarketBanner();
     return marketCtx;
   } catch(e) { console.warn('Market ctx failed:',e.message); marketCtx=null; return null; }
-}
-
-function updateProxyNavBtn(ok){
-  const btn = document.getElementById('proxyNavBtn');
-  const txt = document.getElementById('proxyNavTxt');
-  const dot = document.getElementById('pdot');
-  if(!btn) return;
-  if(ok === true){
-    if(dot) dot.style.background='#639922';
-    if(txt) txt.textContent='Proxy OK';
-    btn.style.borderColor='#C0DD97';btn.style.color='#27500A';
-  } else if(ok === false){
-    if(dot) dot.style.background='#E24B4A';
-    if(txt) txt.textContent='Proxy down';
-    btn.style.borderColor='#F09595';btn.style.color='#A32D2D';
-  } else {
-    if(dot) dot.style.background='#EF9F27';
-    if(txt) txt.textContent='Checking...';
-  }
 }
 
 function updateMarketBanner() {
@@ -1204,7 +1144,6 @@ async function runScan(){
   const gc=document.getElementById('genChip');
   if(gc){const t=new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});gc.textContent='Scanned '+t+' IST';gc.style.display='';}
   document.getElementById('coldStartBanner').style.display='none';
-  updateProxyNavBtn(true);
   btn.disabled=false;btn.innerHTML='\u27f3 &nbsp;Re-scan';
 }
 
