@@ -1,6 +1,75 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+// ── Session token (set after login) ───────────────────────────────────────────
+var _appSessionToken = localStorage.getItem('nse_app_token') || '';
+
+// ── Logout ────────────────────────────────────────────────────────────────────
+async function doLogout(){
+  var tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
+
+  // Call backend logout BEFORE clearing local state
+  try{
+    await fetch('https://nse-proxy-mojx.onrender.com/app/logout', {
+      method: 'POST',
+      headers: tok ? {'X-Session-Token': tok, 'Content-Type':'application/json'} : {'Content-Type':'application/json'},
+      credentials: 'include'
+    });
+  }catch(e){
+    console.warn('Logout request failed:', e);
+  }
+
+  _appSessionToken = '';
+  localStorage.removeItem('nse_app_token');
+  localStorage.removeItem('nse_username');
+
+  window.location.replace('login.html');
+}
+
+// ── Auth guard — runs immediately, blocks page if not authenticated ─────────
+(async function(){
+  var PROXY = 'https://nse-proxy-mojx.onrender.com';
+  var tok = localStorage.getItem('nse_app_token') || '';
+
+  if(!tok){
+    window.location.replace('login.html');
+    return;
+  }
+
+  try{
+    var r = await fetch(PROXY + '/app/me', {
+      headers: {'X-Session-Token': tok},
+      credentials: 'include'
+    });
+
+    if(!r.ok){
+      localStorage.removeItem('nse_app_token');
+      localStorage.removeItem('nse_username');
+      window.location.replace('login.html');
+      return;
+    }
+
+    var d = await r.json();
+    if(!d.authenticated){
+      localStorage.removeItem('nse_app_token');
+      localStorage.removeItem('nse_username');
+      window.location.replace('login.html');
+      return;
+    }
+
+    // keep token in JS memory for later use
+    _appSessionToken = tok;
+  }catch(e){
+    // If backend is unreachable, fail CLOSED, not open
+    console.warn('Auth guard failed:', e);
+    localStorage.removeItem('nse_app_token');
+    localStorage.removeItem('nse_username');
+    window.location.replace('login.html');
+  }
+})();
+</script>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>NSE Intraday Scanner</title>
@@ -804,20 +873,6 @@ function forceProxyOn(){proxyOk=true;document.getElementById('pdot').className='
 function showErr(m){const b=document.getElementById('errBox');b.textContent=m;b.style.display='block';setTimeout(()=>b.style.display='none',5000);}
 function showOk(m){const b=document.getElementById('okBox');b.textContent=m;b.style.display='block';setTimeout(()=>b.style.display='none',5000);}
 function hideAlerts(){document.getElementById('errBox').style.display='none';document.getElementById('okBox').style.display='none';}
-
-// ── Logout ──────────────────────────────────────────────────────────────────────
-function doLogout(){
-  if(typeof token !== 'undefined') token='';
-  appSessionToken = '';
-  localStorage.removeItem('nse_app_token');
-  localStorage.removeItem('nse_username');
-  fetch(PROXY+'/app/logout',{
-    method:'POST',
-    headers: {'X-Session-Token': localStorage.getItem('nse_app_token')||''},
-    credentials:'include'
-  }).catch(function(){});
-  setTimeout(function(){window.location.replace('login.html');},350);
-}
 
 // ─── TOKEN ────────────────────────────────────────────────────────────────────
 function setTokenStatusUI(ok, name){
