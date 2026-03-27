@@ -24,6 +24,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import scanner
 import macro as macro_module
+import db as _db_module
 
 log = logging.getLogger("app")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [app] %(message)s")
@@ -35,6 +36,9 @@ UPSTOX_BASE    = "https://api.upstox.com"
 ANTHROPIC_BASE = "https://api.anthropic.com"
 ALLOWED_ORIGIN = "https://abhisheksa09.github.io"
 IST            = timezone(timedelta(hours=5, minutes=30))
+# ─── Session helpers ──────────────────────────────────────────────────────────
+SESSION_COOKIE  = "nse_session"
+SESSION_TTL_SEC = 30 * 24 * 3600
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin":  ALLOWED_ORIGIN,
@@ -427,6 +431,31 @@ def auth_login():
     from flask import redirect as flask_redirect
     return flask_redirect(login_url)
 
+# ─── App auth ─────────────────────────────────────────────────────────────────
+@app.route("/app/login", methods=["POST"])
+def app_login():
+    data     = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    if not username or not password:
+        return jsonify({"error": "username and password required"}), 400
+    user = _db_module.authenticate_user(username, password)
+    if not user:
+        return jsonify({"error": "Invalid username or password"}), 401
+    token = _db_module.create_app_session(user)
+    if not token:
+        return jsonify({"error": "Could not create session"}), 500
+    resp = jsonify({"status": "ok", "username": user["username"], "role": user["role"], "token": token})
+    return _set_session_cookie(resp, token)
+
+def _set_session_cookie(response, token: str):
+    response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_TTL_SEC,
+                        httponly=True, secure=True, samesite="None", path="/")
+    return response
+
+def _clear_session_cookie(response):
+    response.delete_cookie(SESSION_COOKIE, path="/", samesite="None", secure=True)
+    return response
 
 @app.route("/auth/callback")
 def auth_callback():
