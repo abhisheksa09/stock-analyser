@@ -251,6 +251,7 @@ th[data-tip]{cursor:default;}
       <a href="https://abhisheksa09.github.io/stock-analyser/nse_changelog.html" target="_blank" style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Build history">Journey &#8599;</a>
       <a href="https://abhisheksa09.github.io/stock-analyser/nse_readme.html" target="_blank"
          style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Open user guide">Docs &#8599;</a>
+      <button class="nav-btn nav-desktop" onclick="doLogout()" style="color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
     </div>
   </div>
 
@@ -798,6 +799,20 @@ function forceProxyOn(){proxyOk=true;document.getElementById('pdot').className='
 function showErr(m){const b=document.getElementById('errBox');b.textContent=m;b.style.display='block';setTimeout(()=>b.style.display='none',5000);}
 function showOk(m){const b=document.getElementById('okBox');b.textContent=m;b.style.display='block';setTimeout(()=>b.style.display='none',5000);}
 function hideAlerts(){document.getElementById('errBox').style.display='none';document.getElementById('okBox').style.display='none';}
+
+// ── Logout ──────────────────────────────────────────────────────────────────────
+function doLogout(){
+  if(typeof token !== 'undefined') token='';
+  appSessionToken = '';
+  localStorage.removeItem('nse_app_token');
+  localStorage.removeItem('nse_username');
+  fetch(PROXY+'/app/logout',{
+    method:'POST',
+    headers: {'X-Session-Token': localStorage.getItem('nse_app_token')||''},
+    credentials:'include'
+  }).catch(function(){});
+  setTimeout(function(){window.location.replace('login.html');},350);
+}
 
 // ─── TOKEN ────────────────────────────────────────────────────────────────────
 function setTokenStatusUI(ok, name){
