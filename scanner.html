@@ -1,6 +1,56 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+// ── Session token (set after login) ───────────────────────────────────────────
+var _appSessionToken = localStorage.getItem('nse_app_token') || '';
+
+// ── Logout ────────────────────────────────────────────────────────────────────
+function doLogout(){
+  var tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
+  _appSessionToken = '';
+  localStorage.removeItem('nse_app_token');
+  localStorage.removeItem('nse_username');
+  if(tok){
+    fetch('https://nse-proxy-mojx.onrender.com/app/logout',{
+      method:'POST',
+      headers:{'X-Session-Token': tok, 'Content-Type':'application/json'},
+      credentials: 'include'
+    }).catch(function(){});
+  }
+  window.location.href = 'login.html';
+}
+
+// ── Auth guard — runs immediately, blocks page if not authenticated ────────────
+(async function(){
+  var PROXY = 'https://nse-proxy-mojx.onrender.com';
+  var tok = localStorage.getItem('nse_app_token') || '';
+  if(!tok){
+    window.location.replace('login.html');
+    return;
+  }
+  try{
+    var r = await fetch(PROXY+'/app/me',{
+      headers:{'X-Session-Token': tok},
+      credentials: 'include'
+    });
+    if(!r.ok){
+      localStorage.removeItem('nse_app_token');
+      window.location.replace('login.html');
+      return;
+    }
+    var d = await r.json();
+    if(!d.authenticated){
+      localStorage.removeItem('nse_app_token');
+      window.location.replace('login.html');
+    }
+  }catch(e){
+    // Server unreachable (Render cold start) — let through but warn
+    console.warn('Auth guard: server unreachable, proceeding offline');
+  }
+})();
+</script>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>NSE Intraday Scanner</title>
@@ -291,25 +341,9 @@ th[data-tip]{cursor:default;}
       <!-- Docs -->
       <a href="readme.html" target="_blank" class="nav-btn" title="User guide">&#128214; Docs</a>
       <a href="changelog.html" target="_blank" class="nav-btn" title="Build history">&#127959;</a>
-     <button class="nav-btn nav-desktop" onclick="doLogout()" style="color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
-    </div>
-        <!-- Mobile dropdown — inside navbar so position:absolute works correctly -->
-    <div id="mobileMenu" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:300;
-         background:#fff;border-bottom:2px solid #e0e0e0;padding:10px 16px;
-         box-shadow:0 4px 16px rgba(0,0,0,.12);">
-      <a href="readme.html" target="_blank" class="nav-btn" style="display:flex;margin-bottom:8px;">&#128214; Docs</a>
-      <a href="changelog.html" target="_blank" class="nav-btn" style="display:flex;margin-bottom:8px;">&#127959; Changelog</a>
-      <button class="nav-btn" onclick="doLogout()" style="display:flex;width:100%;color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
-       <!-- Hamburger (mobile only) -->
-      <button class="nav-btn nav-mobile" id="burgerBtn" onclick="toggleMobileMenu()" style="font-size:18px;padding:4px 10px;">&#9776;</button>
-    </div>
-       <!-- Mobile dropdown — inside navbar so position:absolute works correctly -->
-    <div id="mobileMenu" style="display:none;position:absolute;top:100%;right:0;left:0;z-index:300;
-         background:#fff;border-bottom:2px solid #e0e0e0;padding:10px 16px;
-         box-shadow:0 4px 16px rgba(0,0,0,.12);">
-      <a href="readme.html" target="_blank" class="nav-btn" style="display:flex;margin-bottom:8px;">&#128214; Docs</a>
-      <a href="changelog.html" target="_blank" class="nav-btn" style="display:flex;margin-bottom:8px;">&#127959; Changelog</a>
-      <button class="nav-btn" onclick="doLogout()" style="display:flex;width:100%;color:#A32D2D;border-color:#F09595;">&#x23FB; Logout</button>
+      <!-- Logout -->
+      <button class="nav-btn" id="logoutBtn" onclick="doLogout()"
+              title="Logout" style="color:#A32D2D;border-color:#F09595;">&#x23FB;</button>
     </div>
   </div>
 
@@ -699,31 +733,6 @@ function confMeta(pct){
   return{cls:'cl',color:'#E24B4A',label:'Low'};
 }
 
-  // ── Mobile menu ────────────────────────────────────────────────────────────────
-function toggleMobileMenu(){
-  var m=document.getElementById('mobileMenu');
-  if(m) m.style.display=(m.style.display==='none'||m.style.display==='')?'block':'none';
-}
-document.addEventListener('click',function(e){
-  var m=document.getElementById('mobileMenu'),b=document.getElementById('burgerBtn');
-  if(m&&b&&!m.contains(e.target)&&!b.contains(e.target)&&m.style.display!=='none')
-    m.style.display='none';
-});
-
-// ── Logout ──────────────────────────────────────────────────────────────────────
-function doLogout(){
-  if(typeof token !== 'undefined') token='';
-  appSessionToken = '';
-  localStorage.removeItem('nse_app_token');
-  localStorage.removeItem('nse_username');
-  fetch(PROXY+'/app/logout',{
-    method:'POST',
-    headers: {'X-Session-Token': localStorage.getItem('nse_app_token')||''},
-    credentials:'include'
-  }).catch(function(){});
-  setTimeout(function(){window.location.replace('login.html');},350);
-}
-  
 // ─── STATE ────────────────────────────────────────────────────────────────────
 let sel=new Map(),results=[],openRow=-1,aiCache={},token='',proxyOk=false,ddIdx=-1;
 const hf={sig:'all',oc:'all',conf:'all',sort:'date',dir:'desc'};
