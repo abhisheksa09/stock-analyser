@@ -1,6 +1,48 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script>
+var _appSessionToken = localStorage.getItem('nse_app_token') || '';
+
+(async function(){
+  var PROXY = 'https://nse-proxy-mojx.onrender.com';
+  var tok = localStorage.getItem('nse_app_token') || '';
+
+  if(!tok){
+    window.location.replace('login.html');
+    return;
+  }
+
+  try{
+    var r = await fetch(PROXY + '/app/me', {
+      headers: {'X-Session-Token': tok},
+      credentials: 'include'
+    });
+
+    if(!r.ok){
+      localStorage.removeItem('nse_app_token');
+      localStorage.removeItem('nse_username');
+      window.location.replace('login.html');
+      return;
+    }
+
+    var d = await r.json();
+    if(!d.authenticated){
+      localStorage.removeItem('nse_app_token');
+      localStorage.removeItem('nse_username');
+      window.location.replace('login.html');
+      return;
+    }
+
+    _appSessionToken = tok;
+  }catch(e){
+    console.warn('Auth guard failed:', e);
+    localStorage.removeItem('nse_app_token');
+    localStorage.removeItem('nse_username');
+    window.location.replace('login.html');
+  }
+})();
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>NSE Scanner — User Guide</title>
