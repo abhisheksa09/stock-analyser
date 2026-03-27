@@ -1,2 +1,0 @@
-# stock-analyser
-stock-analyser
