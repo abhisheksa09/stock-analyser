@@ -128,10 +128,12 @@ async function doLogin(){
       document.getElementById('password').select();
     }
   }catch(e){
-    msg.textContent='Cannot reach server — check connection';
+    console.error('Login error:', e);
+    msg.textContent='Login failed: ' + (e && e.message ? e.message : 'network/CORS error');
     msg.className='msg err';
-    btn.disabled=false;btn.textContent='Sign in';
-  }
+    btn.disabled=false;
+    btn.textContent='Sign in';
+}
 }
 
 checkSession();

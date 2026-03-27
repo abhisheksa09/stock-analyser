@@ -18,9 +18,9 @@ import urllib.request
 import urllib.error
 import urllib.parse
 from datetime import datetime, timezone, timedelta
-
-from flask import Flask, request, Response, jsonify
+from flask import Flask, request, Response, jsonify, make_response
 from apscheduler.schedulers.background import BackgroundScheduler
+
 
 import scanner
 import macro as macro_module
@@ -41,20 +41,27 @@ SESSION_COOKIE  = "nse_session"
 SESSION_TTL_SEC = 30 * 24 * 3600
 
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin":  ALLOWED_ORIGIN,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": (
+    "Access-Control-Allow-Origin":      ALLOWED_ORIGIN,
+    "Access-Control-Allow-Methods":     "GET, POST, OPTIONS, PATCH, DELETE",
+    "Access-Control-Allow-Headers":     (
         "Authorization, Content-Type, Accept, "
+        "X-Session-Token, "
         "x-api-key, anthropic-version, "
         "anthropic-dangerous-direct-browser-access"
     ),
-    "Access-Control-Max-Age": "86400",
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Max-Age":           "86400",
 }
 
 def cors(r):
     for k, v in CORS_HEADERS.items():
         r.headers[k] = v
     return r
+
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        return cors(make_response("", 204))
 
 @app.after_request
 def add_cors(r): return cors(r)
@@ -405,6 +412,21 @@ OAUTH_REDIRECT    = RENDER_BASE_URL + "/auth/callback"
 # Store last OAuth attempt result for debugging
 _last_oauth = {"status": "never attempted", "detail": "", "time": ""}
 
+
+# ─── Session helpers ──────────────────────────────────────────────────────────
+SESSION_COOKIE  = "nse_session"
+SESSION_TTL_SEC = 30 * 24 * 3600
+
+def _get_session(req) -> dict | None:
+    token = (
+        req.headers.get("X-Session-Token", "") or
+        req.headers.get("Authorization", "").replace("Bearer ", "").strip() or
+        req.cookies.get(SESSION_COOKIE, "")
+    )
+    if not token:
+        return None
+    return _db_module.validate_app_session(token)
+
 @app.route("/auth/login")
 def auth_login():
     """
@@ -432,7 +454,7 @@ def auth_login():
     return flask_redirect(login_url)
 
 # ─── App auth ─────────────────────────────────────────────────────────────────
-@app.route("/app/login", methods=["POST"])
+@app.route("/app/login", methods=["POST", "OPTIONS"])
 def app_login():
     data     = request.get_json(silent=True) or {}
     username = (data.get("username") or "").strip()
@@ -447,6 +469,23 @@ def app_login():
         return jsonify({"error": "Could not create session"}), 500
     resp = jsonify({"status": "ok", "username": user["username"], "role": user["role"], "token": token})
     return _set_session_cookie(resp, token)
+
+@app.route("/app/logout", methods=["POST", "OPTIONS"])
+def app_logout():
+    token = (request.headers.get("X-Session-Token","") or
+             request.cookies.get(SESSION_COOKIE, ""))
+    if token:
+        _db_module.revoke_app_session(token)
+    resp = jsonify({"status": "ok"})
+    return _clear_session_cookie(resp)
+
+
+@app.route("/app/me", methods=["GET", "OPTIONS"])
+def app_me():
+    sess = _get_session(request)
+    if not sess:
+        return jsonify({"authenticated": False}), 401
+    return jsonify({"authenticated": True, "username": sess["username"], "role": sess["role"]})
 
 def _set_session_cookie(response, token: str):
     response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_TTL_SEC,
