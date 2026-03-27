@@ -366,7 +366,7 @@ th[data-tip]{cursor:default;}
     </div>
 
     <div class="card" id="tokenCard">
-      <div class="card-title">Upstox token</div>
+      <div class="card-title">Scanner token</div>
 
       <!-- Token status row -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
@@ -381,7 +381,7 @@ th[data-tip]{cursor:default;}
            style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;
                   border-radius:10px;background:#27500A;color:#fff;border:none;
                   font-size:14px;font-weight:600;cursor:pointer;">
-          &#128274; Login with Upstox
+          &#128274; Login
         </button>
         <button class="btn" onclick="checkTokenStatus()"
                 style="font-size:12px;padding:6px 14px;">
@@ -399,7 +399,7 @@ th[data-tip]{cursor:default;}
         <div id="manualTokenWrap" style="display:none;margin-top:10px;">
           <div class="token-row">
             <input class="token-inp" id="tokenInput" type="password"
-                   placeholder="Paste Upstox access token&#8230;"/>
+                   placeholder="Paste access token&#8230;"/>
             <button class="btn" onclick="verifyToken()">Set token</button>
           </div>
         </div>
@@ -948,7 +948,7 @@ function setTokenStatusUI(ok, name){
       btn.style.border='1px solid #C0DD97';
       btn.style.fontSize='12px';
       btn.style.padding='6px 14px';
-      btn.innerHTML='&#128274; Re-login with Upstox';
+      btn.innerHTML='&#128274; Re-login';
     }
     // Collapse manual paste if open
     const w=document.getElementById('manualTokenWrap');
@@ -965,7 +965,7 @@ function setTokenStatusUI(ok, name){
       btn.style.border='none';
       btn.style.fontSize='14px';
       btn.style.padding='11px 22px';
-      btn.innerHTML='&#128274; Login with Upstox';
+      btn.innerHTML='&#128274; Login';
     }
   }
 }
@@ -1004,13 +1004,13 @@ async function checkTokenStatus(){
     if(!r.ok){
       // Token not set on server yet
       if(dot){ dot.style.background='#e0e0e0'; }
-      if(txt){ txt.textContent='Not set \u2014 tap Login with Upstox'; txt.style.color='#888'; }
+      if(txt){ txt.textContent='Not set \u2014 tap Login'; txt.style.color='#888'; }
       return;
     }
     const d = await r.json();
     if(d.status!=='ok'||!d.token){
       if(dot){ dot.style.background='#e0e0e0'; }
-      if(txt){ txt.textContent='Not set \u2014 tap Login with Upstox'; txt.style.color='#888'; }
+      if(txt){ txt.textContent='Not set \u2014 tap Login'; txt.style.color='#888'; }
       return;
     }
 
@@ -1614,15 +1614,11 @@ function clearHistory(){if(!confirm('Clear all history? This cannot be undone.')
 function renderHistStats(all){const res=all.filter(h=>h.outcome!=='pending');const hits=res.filter(h=>h.outcome==='hit');const bads=res.filter(h=>h.outcome==='sl'||h.outcome==='loss');const profit=res.filter(h=>h.pnl!==null&&h.pnl>0);const acc=res.length?Math.round(profit.length/res.length*100):null;const pnls=res.filter(h=>h.pnl!==null).map(h=>h.pnl);const avg=pnls.length?+(pnls.reduce((a,b)=>a+b,0)/pnls.length).toFixed(2):null;document.getElementById('hTotal').textContent=all.length;document.getElementById('hHit').textContent=hits.length;document.getElementById('hSL').textContent=bads.length;const accEl=document.getElementById('hAcc');accEl.textContent=acc!==null?acc+'%':'\u2014';accEl.className='hstat-n '+(acc>=60?'n-green':acc!==null&&acc<40?'n-red':'');const pEl=document.getElementById('hPnL');pEl.textContent=avg!==null?'\u20b9'+fc(avg):'\u2014';pEl.className='hstat-n '+(avg>0?'n-green':avg!==null&&avg<0?'n-red':'');}
 function renderAccBars(all){const el=document.getElementById('accRows');const groups=[{lbl:'BUY signals',fn:h=>h.sig==='BUY'},{lbl:'SELL signals',fn:h=>h.sig==='SELL'},{lbl:'High conf 75%+',fn:h=>h.conf>=75},{lbl:'Med conf 55\u201374%',fn:h=>h.conf>=55&&h.conf<75},{lbl:'Low conf <55%',fn:h=>h.conf<55}];el.innerHTML=groups.map(g=>{const sub=all.filter(g.fn).filter(h=>h.outcome!=='pending');if(!sub.length)return '<div class="acc-row"><span class="acc-lbl">'+g.lbl+'</span><div class="acc-bg"><div class="acc-fill" style="width:0%;background:#e0e0e0;"></div></div><span class="acc-cnt">No data</span></div>';const hits=sub.filter(h=>h.pnl!==null&&h.pnl>0);const acc=Math.round(hits.length/sub.length*100);const col=acc>=60?'#639922':acc>=40?'#EF9F27':'#E24B4A';return '<div class="acc-row"><span class="acc-lbl">'+g.lbl+'</span><div class="acc-bg"><div class="acc-fill" style="width:'+acc+'%;background:'+col+';">'+acc+'%</div></div><span class="acc-cnt">'+hits.length+'/'+sub.length+'</span></div>';}).join('');}
 
-// ─── FILE STORAGE — DISABLED ON CLOUD ───────────────────────────────────────
-// History is stored in browser localStorage only.
-// The file sync feature requires the local proxy (upstox_proxy.py).
 const FILE_PATH_KEY = 'nse_history_filepath';
 let histFilePath = '';
 function initFileStorage(){}
 function onFilePathChange(){}
 function applyFilePath(){}
-async function reloadFromFile(){showErr('File sync is not available in the cloud version. Your history is stored in this browser.');}
 async function writeToFile(){}
 async function saveToFile(){showErr('File sync is not available in the cloud version.');}
 function showFileErr(msg){console.warn('File storage:', msg);}
