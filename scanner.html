@@ -1183,8 +1183,14 @@ function getSignalMeta(sym,currentSig){
 
 // ─── TABS ─────────────────────────────────────────────────────────────────────
 function switchTab(t){
-  ['scanner','history'].forEach(n=>{document.getElementById('tab-'+n+'-btn').classList.toggle('active',n===t);document.getElementById('tab-'+n).classList.toggle('active',n===t);});
-  if(t==='history'){renderHist();}
+  ['scanner','history','admin'].forEach(n=>{
+    const btn=document.getElementById('tab-'+n+'-btn');
+    const pane=document.getElementById('tab-'+n);
+    if(btn)  btn.classList.toggle('active',n===t);
+    if(pane) pane.classList.toggle('active',n===t);
+  });
+  if(t==='history') renderHist();
+  if(t==='admin') checkAdminAccess();
 }
 
 // ─── STOCK SELECTION ──────────────────────────────────────────────────────────
