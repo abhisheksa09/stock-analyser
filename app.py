@@ -711,6 +711,44 @@ def auth_callback():
         )
 
 
+# ─── Admin misc ───────────────────────────────────────────────────────────────
+@app.route("/admin/check", methods=["POST", "OPTIONS"])
+def admin_check():
+    """Check if stored admin session token is still valid."""
+    data = request.get_json(silent=True) or {}
+    stok = data.get("session_token", "")
+
+    if not stok:
+        return jsonify({"ok": False, "pin_required": True})
+
+    sess = _db_module.validate_app_session(stok)
+    if sess and sess.get("role") == "admin":
+        return jsonify({"ok": True, "pin_required": False})
+
+    return jsonify({"ok": False, "pin_required": True})
+
+
+@app.route("/admin/verify", methods=["POST", "OPTIONS"])
+def admin_verify():
+    """Verify admin PIN and unlock admin content."""
+    data = request.get_json(silent=True) or {}
+    pin = data.get("pin", "")
+
+    if not pin or pin != os.environ.get("ADMIN_PIN", ""):
+        return jsonify({"ok": False, "error": "Invalid PIN"}), 403
+
+    # If current logged-in app session is admin, return that session token
+    sess = _get_session(request)
+    if sess and sess.get("role") == "admin":
+        current_token = (
+            request.headers.get("X-Session-Token", "") or
+            request.cookies.get(SESSION_COOKIE, "")
+        )
+        return jsonify({"ok": True, "session_token": current_token})
+
+    # Fallback: PIN correct but current session not admin
+    return jsonify({"ok": True, "session_token": ""})
+
 def _auth_page(success: bool, title: str, message: str) -> str:
     """Render a clean mobile-friendly result page."""
     color  = "#27500A" if success else "#A32D2D"

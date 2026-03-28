@@ -353,69 +353,11 @@ th[data-tip]{cursor:default;}
   <div class="tabs">
     <div class="tab active" id="tab-scanner-btn" onclick="switchTab('scanner')">Scanner</div>
     <div class="tab" id="tab-history-btn" onclick="switchTab('history')">History <span class="tab-badge" id="histBadge">0</span></div>
-    <div class="tab" id="tab-admin-btn" onclick="switchTab('admin')">Admin</div>
+    <div class="tab" id="tab-admin-btn" onclick="switchTab('admin')" style="display:none;">Admin</div>
   </div>
 
   <!-- =========== SCANNER =========== -->
   <div class="tab-pane active" id="tab-scanner">
-
-    <div class="card">
-      <div class="card-title">Cloud proxy &#8212; nse-proxy-mojx.onrender.com</div>
-      <div class="proxy-row">
-        <span class="pdot" id="pdot"></span>
-        <span id="pTxt">Connecting&#8230;</span>
-      </div>
-      <div class="proxyOverride" id="proxyOverride">
-        <button class="btn" onclick="forceProxyOn()" style="font-size:12px;padding:5px 12px;background:#EAF3DE;color:#27500A;border-color:#C0DD97;">
-          &#10003; Proxy is up, bypass check
-        </button>
-        <span style="font-size:11px;color:#aaa;margin-left:8px;">Use if still connecting after 60s</span>
-      </div>
-    </div>
-
-    <div class="card" id="tokenCard">
-      <div class="card-title">Scanner token</div>
-
-      <!-- Token status row -->
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-        <span id="tokenStatusDot" style="width:10px;height:10px;border-radius:50%;background:#e0e0e0;flex-shrink:0;display:inline-block;"></span>
-        <span id="tokenStatusTxt" style="font-size:13px;color:#888;">Not set &#8212; login to activate scanner</span>
-
-      </div>
-
-      <!-- Primary: OAuth login button -->
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-        <button id="oauthBtn" onclick="openOAuthLogin()"
-           style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;
-                  border-radius:10px;background:#27500A;color:#fff;border:none;
-                  font-size:14px;font-weight:600;cursor:pointer;">
-          &#128274; Login
-        </button>
-        <button class="btn" onclick="checkTokenStatus()"
-                style="font-size:12px;padding:6px 14px;">
-          &#8635; Refresh status
-        </button>
-      </div>
-
-      <!-- Secondary: manual paste (collapsed by default) -->
-      <div style="margin-top:12px;">
-        <button onclick="toggleManualToken()"
-                style="font-size:12px;color:#888;background:none;border:none;
-                       cursor:pointer;padding:0;text-decoration:underline;">
-          Or paste token manually
-        </button>
-        <div id="manualTokenWrap" style="display:none;margin-top:10px;">
-          <div class="token-row">
-            <input class="token-inp" id="tokenInput" type="password"
-                   placeholder="Paste access token&#8230;"/>
-            <button class="btn" onclick="verifyToken()">Set token</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="tok-msg" id="tokenMsg"></div>
-    </div>
-
     <!-- <div class="card">
       <div class="card-title">Anthropic AI (optional)</div>
       <div style="font-size:12px;color:#888;margin-bottom:8px;">Add your API key once to enable AI trade plans and market summaries.</div>
@@ -683,6 +625,63 @@ th[data-tip]{cursor:default;}
       </div>
     </div>
 
+    <div class="card">
+      <div class="card-title">Cloud proxy &#8212; nse-proxy-mojx.onrender.com</div>
+      <div class="proxy-row">
+        <span class="pdot" id="pdot"></span>
+        <span id="pTxt">Connecting&#8230;</span>
+      </div>
+      <div class="proxyOverride" id="proxyOverride">
+        <button class="btn" onclick="forceProxyOn()" style="font-size:12px;padding:5px 12px;background:#EAF3DE;color:#27500A;border-color:#C0DD97;">
+          &#10003; Proxy is up, bypass check
+        </button>
+        <span style="font-size:11px;color:#aaa;margin-left:8px;">Use if still connecting after 60s</span>
+      </div>
+    </div>
+
+    <div class="card" id="tokenCard">
+      <div class="card-title">Scanner token</div>
+
+      <!-- Token status row -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+        <span id="tokenStatusDot" style="width:10px;height:10px;border-radius:50%;background:#e0e0e0;flex-shrink:0;display:inline-block;"></span>
+        <span id="tokenStatusTxt" style="font-size:13px;color:#888;">Not set &#8212; login to activate scanner</span>
+
+      </div>
+
+      <!-- Primary: OAuth login button -->
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <button id="oauthBtn" onclick="openOAuthLogin()"
+           style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;
+                  border-radius:10px;background:#27500A;color:#fff;border:none;
+                  font-size:14px;font-weight:600;cursor:pointer;">
+          &#128274; Login
+        </button>
+        <button class="btn" onclick="checkTokenStatus()"
+                style="font-size:12px;padding:6px 14px;">
+          &#8635; Refresh status
+        </button>
+      </div>
+
+      <!-- Secondary: manual paste (collapsed by default) -->
+      <div style="margin-top:12px;">
+        <button onclick="toggleManualToken()"
+                style="font-size:12px;color:#888;background:none;border:none;
+                       cursor:pointer;padding:0;text-decoration:underline;">
+          Or paste token manually
+        </button>
+        <div id="manualTokenWrap" style="display:none;margin-top:10px;">
+          <div class="token-row">
+            <input class="token-inp" id="tokenInput" type="password"
+                   placeholder="Paste access token&#8230;"/>
+            <button class="btn" onclick="verifyToken()">Set token</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tok-msg" id="tokenMsg"></div>
+    </div>
+    
     <div class="card">
       <div class="card-title">System Status</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
