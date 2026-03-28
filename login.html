@@ -123,6 +123,7 @@ async function doLogin(){
 
       if(d.token) localStorage.setItem('nse_app_token',d.token);
       localStorage.setItem('nse_username',d.username);
+      localStorage.setItem('nse_role', d.role || '');
       msg.textContent='✓ Welcome, '+d.username+'!';
       msg.className='msg ok';
       setTimeout(function(){window.location.replace('scanner.html');},600);

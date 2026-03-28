@@ -24,12 +24,14 @@ async function doLogout(){
   localStorage.removeItem('nse_app_token');
   localStorage.removeItem('nse_username');
   localStorage.removeItem('nse_v2');
-
+  localStorage.removeItem('nse_role');
   window.location.replace('login.html');
 }
 
 // ── Auth guard — runs immediately, blocks page if not authenticated ─────────
 (async function(){
+  //To prevent admin tab from flashing briefly before auth check completes
+  applyRoleUI('');
   var BACKEND = 'https://nse-proxy-mojx.onrender.com';
   var tok = localStorage.getItem('nse_app_token') || '';
 
@@ -47,6 +49,7 @@ async function doLogout(){
     if(!r.ok){
       localStorage.removeItem('nse_app_token');
       localStorage.removeItem('nse_username');
+      localStorage.removeItem('nse_role');
       window.location.replace('login.html');
       return;
     }
@@ -55,17 +58,21 @@ async function doLogout(){
     if(!d.authenticated){
       localStorage.removeItem('nse_app_token');
       localStorage.removeItem('nse_username');
+      localStorage.removeItem('nse_role');
       window.location.replace('login.html');
       return;
     }
 
     // keep token in JS memory for later use
     _appSessionToken = tok;
+    localStorage.setItem('nse_role', d.role || '');
+    applyRoleUI(d.role || '');
   }catch(e){
     // If backend is unreachable, fail CLOSED, not open
     console.warn('Auth guard failed:', e);
     localStorage.removeItem('nse_app_token');
     localStorage.removeItem('nse_username');
+    localStorage.removeItem('nse_role');
     window.location.replace('login.html');
   }
 })();
@@ -346,6 +353,7 @@ th[data-tip]{cursor:default;}
   <div class="tabs">
     <div class="tab active" id="tab-scanner-btn" onclick="switchTab('scanner')">Scanner</div>
     <div class="tab" id="tab-history-btn" onclick="switchTab('history')">History <span class="tab-badge" id="histBadge">0</span></div>
+    <div class="tab" id="tab-admin-btn" onclick="switchTab('admin')"></div>
   </div>
 
   <!-- =========== SCANNER =========== -->
@@ -598,6 +606,146 @@ th[data-tip]{cursor:default;}
 
   </div>
 
+  <!-- =========== ADMIN =========== -->
+  <div class="tab-pane" id="tab-admin">
+
+    <!-- Admin PIN gate -->
+    <div id="adminPinGate" style="display:none;">
+      <div style="max-width:340px;margin:40px auto;">
+        <div class="card" style="border-left:4px solid #185FA5;text-align:center;">
+          <div style="font-size:32px;margin-bottom:12px;">&#128274;</div>
+          <div class="card-title" style="color:#185FA5;">Admin access</div>
+          <p style="font-size:13px;color:#666;margin-bottom:16px;">Enter your admin PIN to continue.</p>
+          <div style="display:flex;gap:8px;justify-content:center;">
+            <input id="adminPinInput" type="password" class="token-inp"
+                   placeholder="PIN" style="width:110px;text-align:center;letter-spacing:4px;font-size:18px;"
+                   onkeydown="if(event.key==='Enter')verifyAdminPin()"/>
+            <button class="btn" onclick="verifyAdminPin()"
+                    style="background:#27500A;color:#fff;border-color:#27500A;padding:8px 18px;">
+              Unlock
+            </button>
+          </div>
+          <div id="adminPinMsg" class="tok-msg" style="margin-top:10px;text-align:center;"></div>
+          <p style="font-size:11px;color:#aaa;margin-top:12px;">
+            Set <code>ADMIN_PIN</code> in Render env vars to change PIN.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin content (hidden until PIN entered) -->
+    <div id="adminContent" style="display:none;">
+    <div class="card" style="border-left:4px solid #185FA5;">
+      <div class="card-title" style="color:#185FA5;">&#9881; Admin Panel</div>
+      <p style="font-size:13px;color:#666;margin-bottom:0;">System controls, diagnostics and testing.</p>
+    </div>
+
+    <!-- User Management -->
+    <div class="collapsible-wrap" id="userMgmtWrap">
+      <div class="collapsible-hdr" onclick="toggleSection('userMgmtBody')">
+        <span class="collapsible-title">&#128100; User Management</span>
+        <span class="collapsible-arrow" id="userMgmtBody-arrow">&#9658;</span>
+      </div>
+      <div class="collapsible-body closed" id="userMgmtBody" style="max-height:0;">
+        <div style="padding:12px 14px;">
+
+          <!-- Users list -->
+          <div style="margin-bottom:12px;">
+            <button class="btn" onclick="loadUsers()" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#8635; Load users</button>
+          </div>
+          <div id="userListBox" style="margin-bottom:18px;overflow-x:auto;"></div>
+
+          <!-- Create user -->
+          <div style="border-top:1px solid #f0f0f0;padding-top:14px;">
+            <div style="font-size:12px;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.04em;margin-bottom:10px;">Create new user</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+              <div>
+                <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Username</label>
+                <input id="newUsername" type="text" class="token-inp" placeholder="username" style="width:130px;font-size:13px;"/>
+              </div>
+              <div>
+                <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Password (8+ chars)</label>
+                <input id="newPassword" type="password" class="token-inp" placeholder="password" style="width:140px;font-size:13px;"/>
+              </div>
+              <div>
+                <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Role</label>
+                <select id="newRole" style="font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid #e0e0e0;background:#fff;">
+                  <option value="viewer">Viewer</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <button class="btn" onclick="createUser()" style="background:#27500A;color:#fff;border:none;">+ Create</button>
+            </div>
+            <div id="userCreateMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">System Status</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <button class="btn" onclick="adminLoad('alert-status','adminStatusBox')">&#128200; Alert status</button>
+        <button class="btn" onclick="adminLoad('macro-status','adminStatusBox')">&#127758; Macro status</button>
+        <button class="btn" onclick="adminLoad('db/status','adminStatusBox')">&#128451; DB status</button>
+        <button class="btn" onclick="adminLoad('auth/status','adminStatusBox')">&#128274; Auth status</button>
+        <button class="btn" onclick="adminLoad('ping','adminStatusBox')">&#128997; Ping</button>
+      </div>
+      <pre id="adminStatusBox" style="background:#1a1a1a;color:#a8ff78;padding:14px;border-radius:8px;
+           font-size:11px;line-height:1.6;overflow-x:auto;max-height:320px;overflow-y:auto;
+           white-space:pre-wrap;display:none;"></pre>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Dry Scan</div>
+      <p style="font-size:12px;color:#888;margin-bottom:10px;">Run a real scan right now ignoring the 9:15&#8211;10:30 window. Sends a Telegram alert for the best signal found.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+        <div style="position:relative;display:inline-block;">
+          <input id="dryScanSym" class="search-inp" type="text"
+                 placeholder="Symbol e.g. HDFCBANK"
+                 autocomplete="off"
+                 oninput="dryScanAutocomplete(this.value)"
+                 onkeydown="dryScanKeydown(event)"
+                 style="width:200px;padding:7px 12px;font-size:13px;"/>
+          <div id="dryScanDrop" style="display:none;position:absolute;top:100%;left:0;
+               width:200px;background:#fff;border:1px solid #ddd;border-radius:6px;
+               box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:999;max-height:220px;overflow-y:auto;"></div>
+        </div>
+        <button class="btn" onclick="runDryScanFull()" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#128270; Run live dry scan</button>
+        <button class="btn" onclick="runDryScanMock()" style="background:#FAEEDA;color:#633806;border-color:#FAC775;">&#127916; Mock (no token)</button>
+      </div>
+      <pre id="adminDryBox" style="background:#1a1a1a;color:#a8ff78;padding:14px;border-radius:8px;
+           font-size:11px;line-height:1.6;overflow-x:auto;max-height:300px;overflow-y:auto;
+           white-space:pre-wrap;display:none;"></pre>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Database</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+        <button class="btn" onclick="adminFetch('/db/init','GET','adminDbMsg')" style="background:#EAF3DE;color:#27500A;border-color:#C0DD97;">&#10133; Initialise tables</button>
+        <button class="btn" onclick="adminLoad('history/stats','adminStatusBox')">&#128202; Trade stats</button>
+        <button class="btn" onclick="adminLoad('history/alerts?limit=20','adminStatusBox')">&#128276; Alert log (last 20)</button>
+      </div>
+      <div id="adminDbMsg" class="tok-msg"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Quick Links</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <a href="https://nse-proxy-mojx.onrender.com/set-token-form" target="_blank" class="btn" style="font-size:12px;">&#128274; Set token form</a>
+        <a href="https://nse-proxy-mojx.onrender.com/get-chat-id"    target="_blank" class="btn" style="font-size:12px;">&#128241; Get chat ID</a>
+        <a href="https://supabase.com"                                target="_blank" class="btn" style="font-size:12px;">&#128451; Supabase</a>
+        <a href="https://dashboard.render.com"                        target="_blank" class="btn" style="font-size:12px;">&#9729; Render</a>
+        <a href="https://uptimerobot.com"                             target="_blank" class="btn" style="font-size:12px;">&#9201; UptimeRobot</a>
+        <a href="readme.html"                                     target="_blank" class="btn" style="font-size:12px;">&#128214; Readme</a>
+        <a href="changelog.html"                                  target="_blank" class="btn" style="font-size:12px;">&#127959; Changelog</a>
+      </div>
+    </div>
+
+    </div><!-- /adminContent -->
+
+  </div>
 </div>
 
 <script>
@@ -607,6 +755,207 @@ window.addEventListener('DOMContentLoaded', function(){
     el.textContent = localStorage.getItem('nse_username') || '';
   }
 });
+
+//Admin
+function applyRoleUI(role){
+  const adminTab = document.getElementById('tab-admin-btn');
+  const proxyBtn = document.getElementById('proxyNavBtn');
+  const tokenBtn = document.getElementById('tokenNavBtn');
+
+  const isAdmin = role === 'admin';
+
+  if(adminTab) adminTab.style.display = isAdmin ? '' : 'none';
+
+  // Proxy and token controls visible only to admin users
+  if(proxyBtn) proxyBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+  if(tokenBtn) tokenBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+}
+
+// ─── ADMIN PIN ───────────────────────────────────────────────────────────────
+let _adminUnlocked = false;
+const ADMIN_SESSION_KEY = 'nse_admin_session';
+
+async function checkAdminAccess(){
+  // Always verify with server — never auto-unlock from localStorage alone
+  const storedTok = localStorage.getItem(ADMIN_SESSION_KEY)||'';
+  showAdminGate(); // show gate immediately while we check
+  try{
+    const r = await fetch(BACKEND+'/admin/check',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_token: storedTok})
+    });
+    const d = await r.json();
+    if(d.ok || !d.pin_required){
+      showAdminContent();
+    } else {
+      showAdminGate();
+    }
+  } catch(e){
+    // On any error, show gate — never bypass PIN silently
+    showAdminGate();
+  }
+}
+
+function showAdminGate(){
+  const gate=document.getElementById('adminPinGate');
+  const content=document.getElementById('adminContent');
+  if(gate) gate.style.display='block';
+  if(content) content.style.display='none';
+  setTimeout(()=>{ const inp=document.getElementById('adminPinInput'); if(inp) inp.focus(); },100);
+}
+
+function showAdminContent(){
+  const gate=document.getElementById('adminPinGate');
+  const content=document.getElementById('adminContent');
+  if(gate) gate.style.display='none';
+  if(content) content.style.display='block';
+}
+
+async function verifyAdminPin(){
+  const pin=document.getElementById('adminPinInput').value.trim();
+  const msg=document.getElementById('adminPinMsg');
+  if(!pin){ msg.textContent='Enter your PIN'; msg.style.color='#A32D2D'; return; }
+  msg.textContent='Checking…'; msg.style.color='#888';
+  try{
+    const r=await fetch(BACKEND+'/admin/verify',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({pin})});
+    const d=await r.json();
+    if(d.ok){
+      localStorage.setItem(ADMIN_SESSION_KEY, d.session_token||'');
+      document.getElementById('adminPinInput').value='';
+      msg.textContent='';
+      showAdminContent();
+    } else {
+      msg.textContent='✗ Incorrect PIN';
+      msg.style.color='#A32D2D';
+      localStorage.removeItem(ADMIN_SESSION_KEY); // clear stale token
+      const inp=document.getElementById('adminPinInput');
+      inp.style.borderColor='#E24B4A';
+      setTimeout(()=>{inp.style.borderColor='';},1000);
+    }
+  } catch(e){
+    msg.textContent='✗ '+e.message;
+    msg.style.color='#A32D2D';
+  }
+}
+
+// ─── ADMIN TAB FUNCTIONS ─────────────────────────────────────────────────────
+async function adminLoad(endpoint, boxId){
+  const box=document.getElementById(boxId);
+  if(!box)return;
+  box.style.display='block';
+  box.textContent='Loading '+endpoint+'…';
+  try{
+    const r=await fetch(BACKEND+'/'+endpoint);
+    const d=await r.json();
+    box.textContent=JSON.stringify(d,null,2);
+  }catch(e){
+    box.textContent='Error: '+e.message+'\n\nIf you see 403: your token may have expired. \nLogin again via the navbar Login button, then retry.\n\nOr use Mock scan to test Telegram without a live token.';
+  }
+}
+
+async function adminFetch(endpoint,method,msgId){
+  const msg=msgId?document.getElementById(msgId):null;
+  if(msg){msg.textContent='Sending…';msg.style.color='#888';}
+  try{
+    const r=await fetch(BACKEND+endpoint,{method:method||'GET'});
+    const d=await r.json();
+    if(msg){
+      msg.textContent=r.ok?'✓ '+(d.message||d.status||JSON.stringify(d)):'✗ '+(d.error||JSON.stringify(d));
+      msg.style.color=r.ok?'#27500A':'#A32D2D';
+    }
+  }catch(e){if(msg){msg.textContent='✗ '+e.message;msg.style.color='#A32D2D';}}
+}
+
+function dryScanAutocomplete(val){
+  const drop = document.getElementById('dryScanDrop');
+  if(!val || val.length < 1){ drop.style.display='none'; return; }
+  const q = val.toUpperCase();
+  const matches = STOCKS.filter(s =>
+    s.sym.startsWith(q) || s.name.toUpperCase().includes(q)
+  ).slice(0, 8);
+  if(!matches.length){ drop.style.display='none'; return; }
+  drop.innerHTML = matches.map(function(s){
+    return '<div class="dry-ac-item" data-sym="'+s.sym+'"'+
+    ' style="padding:7px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f0;">' +
+    '<strong>'+s.sym+'</strong> <span style="color:#888;font-size:11px;">'+s.sec+'</span></div>';
+  }).join('');
+  drop.querySelectorAll('.dry-ac-item').forEach(function(el){
+    el.addEventListener('click', function(){ dryScanSelect(el.getAttribute('data-sym')); });
+    el.addEventListener('mouseover', function(){ el.style.background='#EAF3DE'; });
+    el.addEventListener('mouseout',  function(){ el.style.background='#fff'; });
+  });
+  drop.style.display = 'block';
+}
+
+function dryScanSelect(sym){
+  document.getElementById('dryScanSym').value = sym;
+  document.getElementById('dryScanDrop').style.display = 'none';
+}
+
+function dryScanKeydown(e){
+  if(e.key === 'Escape') document.getElementById('dryScanDrop').style.display='none';
+  if(e.key === 'Enter'){
+    document.getElementById('dryScanDrop').style.display='none';
+    runDryScanFull();
+  }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e){
+  if(!e.target.closest || !e.target.closest('#dryScanSym') &&
+     !e.target.closest('#dryScanDrop')){
+    const d=document.getElementById('dryScanDrop');
+    if(d) d.style.display='none';
+  }
+});
+
+async function runDryScanFull(){
+  const box=document.getElementById('adminDryBox');
+  const sym=(document.getElementById('dryScanSym')||{}).value||'';
+  box.style.display='block';box.textContent='Running dry scan…';
+  try{
+    const url=BACKEND+'/dry-scan'+(sym?'?sym='+encodeURIComponent(sym.trim().toUpperCase()):'');
+    const headers={'Content-Type':'application/json'};
+    // Use browser token; if empty fetch from server (set via OAuth)
+    var activeToken=token;
+    if(!activeToken){
+      try{
+        var tr=await fetch(BACKEND+'/get-token');
+        if(tr.ok){var td2=await tr.json();activeToken=td2.token||'';token=activeToken;}
+      }catch(e2){}
+    }
+    if(activeToken)headers['Authorization']='Bearer '+activeToken;
+    const r=await fetch(url,{headers});
+    const d=await r.json();
+    box.textContent=JSON.stringify(d,null,2);
+  }catch(e){box.textContent='Error: '+e.message;}
+}
+
+async function runDryScanMock(){
+  const box=document.getElementById('adminDryBox');
+  box.style.display='block';box.textContent='Running mock dry scan…';
+  try{
+    const r=await fetch(BACKEND+'/dry-scan?mock=1');
+    const d=await r.json();
+    box.textContent=JSON.stringify(d,null,2);
+  }catch(e){box.textContent='Error: '+e.message;}
+}
+
+async function runDryScan(){
+  await runDryScanFull();
+  const box=document.getElementById('adminDryBox');
+  if(!box)return;
+  try{
+    const d=JSON.parse(box.textContent);
+    const sent=d.alert_sent&&d.alert_sent.telegram_sent;
+    const sym=d.alert_sent&&d.alert_sent.sym;
+    if(sent)showOk('✓ Test alert sent for '+(sym||'stock')+' — check Telegram');
+    else showErr('Alert not sent — open Admin tab for details');
+  }catch(e){}
+}
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const BACKEND = 'https://nse-proxy-mojx.onrender.com';
@@ -936,7 +1285,7 @@ function setTokenStatusUI(ok, name){
   if(!dot||!txt) return;
   if(ok){
     dot.className=''; dot.style.background='#639922';
-    txt.textContent = '\u2014 scanner active';
+    txt.textContent = 'Scanner active';
     txt.style.color = '#27500A';
     // Update dataChip
     const dc=document.getElementById('dataChip');
