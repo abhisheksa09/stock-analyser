@@ -4,6 +4,20 @@
 <script>
 // ── Session token (set after login) ───────────────────────────────────────────
 var _appSessionToken = localStorage.getItem('nse_app_token') || '';
+//Admin
+function applyRoleUI(role){
+  const adminTab = document.getElementById('tab-admin-btn');
+  const proxyBtn = document.getElementById('proxyNavBtn');
+  const tokenBtn = document.getElementById('tokenNavBtn');
+
+  const isAdmin = role === 'admin';
+
+  if(adminTab) adminTab.style.display = isAdmin ? '' : 'none';
+
+  // Proxy and token controls visible only to admin users
+  if(proxyBtn) proxyBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+  if(tokenBtn) tokenBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+}
 
 // ── Logout ────────────────────────────────────────────────────────────────────
 async function doLogout(){
@@ -755,20 +769,7 @@ window.addEventListener('DOMContentLoaded', function(){
   }
 });
 
-//Admin
-function applyRoleUI(role){
-  const adminTab = document.getElementById('tab-admin-btn');
-  const proxyBtn = document.getElementById('proxyNavBtn');
-  const tokenBtn = document.getElementById('tokenNavBtn');
 
-  const isAdmin = role === 'admin';
-
-  if(adminTab) adminTab.style.display = isAdmin ? '' : 'none';
-
-  // Proxy and token controls visible only to admin users
-  if(proxyBtn) proxyBtn.style.display = isAdmin ? 'inline-flex' : 'none';
-  if(tokenBtn) tokenBtn.style.display = isAdmin ? 'inline-flex' : 'none';
-}
 
 // ─── ADMIN PIN ───────────────────────────────────────────────────────────────
 let _adminUnlocked = false;
