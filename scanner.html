@@ -936,7 +936,7 @@ function setTokenStatusUI(ok, name){
   if(!dot||!txt) return;
   if(ok){
     dot.className=''; dot.style.background='#639922';
-    txt.textContent = '\u2713 Logged in as ' + (name||'user') + ' \u2014 scanner active';
+    txt.textContent = '\u2014 scanner active';
     txt.style.color = '#27500A';
     // Update dataChip
     const dc=document.getElementById('dataChip');

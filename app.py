@@ -534,6 +534,39 @@ def app_me():
         return jsonify({"authenticated": False}), 401
     return jsonify({"authenticated": True, "username": sess["username"], "role": sess["role"]})
 
+
+@app.route("/app/change-password", methods=["POST", "OPTIONS"])
+def app_change_password():
+    sess, err = _require_session(request)
+    if err: return err
+    data    = request.get_json(silent=True) or {}
+    current = data.get("current") or ""
+    new_pwd = data.get("new") or ""
+    if len(new_pwd) < 8:
+        return jsonify({"error": "New password must be >= 8 chars"}), 400
+    user = _db_module.authenticate_user(sess["username"], current)
+    if not user:
+        return jsonify({"error": "Current password incorrect"}), 401
+    conn = _db_module.db()
+    if not conn: return jsonify({"error": "No DB"}), 503
+    try:
+        pwd_hash = _db_module.hash_password(new_pwd)
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET pwd_hash=%s WHERE username=%s", (pwd_hash, sess["username"]))
+        _db_module.revoke_all_sessions(sess["username"])
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM users WHERE username=%s", (sess["username"],))
+            user = dict(cur.fetchone())
+        new_token = _db_module.create_app_session(user)
+        resp = jsonify({
+            "status": "ok",
+            "message": "Password changed successfully",
+            "token": new_token
+        })
+        return _set_session_cookie(resp, new_token)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 def _set_session_cookie(response, token: str):
     response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_TTL_SEC,
                         httponly=True, secure=True, samesite="None", path="/")
