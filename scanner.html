@@ -213,6 +213,13 @@ async function loadUsers(){
   }catch(e){box.innerHTML='<span style="color:#A32D2D;">'+e.message+'</span>';}
 }
 
+function appHeaders(extra){
+  var tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
+  var h = extra ? Object.assign({}, extra) : {};
+  if(tok) h['X-Session-Token'] = tok;
+  return h;
+}
+
 </script>
 
 <meta charset="UTF-8">
