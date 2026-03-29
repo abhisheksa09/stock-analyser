@@ -93,32 +93,55 @@ async function doLogout(){
 
 
 async function createUser(){
-  var msg=document.getElementById('userCreateMsg');
-  var uv=(document.getElementById('newUsername').value||'').trim();
-  var pv=document.getElementById('newPassword').value||'';
-  var rv=document.getElementById('newRole').value||'viewer';
-  if(!uv||pv.length<8){
-    msg.textContent='Username required and password >= 8 chars';
-    msg.style.color='#A32D2D';return;
+  var msg = document.getElementById('userCreateMsg');
+  var uv = (document.getElementById('newUsername').value || '').trim();
+  var pv = document.getElementById('newPassword').value || '';
+  var rv = document.getElementById('newRole').value || 'viewer';
+
+  if(!uv || pv.length < 8){
+    msg.textContent = 'Username required and password >= 8 chars';
+    msg.style.color = '#A32D2D';
+    return;
   }
-  msg.textContent='Creating…';msg.style.color='#888';
+
+  msg.textContent = 'Creating…';
+  msg.style.color = '#888';
+
   try{
-    var r=await fetch(BACKEND+'/admin/users/create',{
-      method:'POST',
-      headers:appHeaders({'Content-Type':'application/json'}),
-      credentials:'include',
-      body:JSON.stringify({username:uv,password:pv,role:rv})
+    var tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
+
+    var r = await fetch(BACKEND + '/admin/users/create', {
+      method: 'POST',
+      headers: (function(){
+        var h = {'Content-Type':'application/json'};
+        if(tok) h['X-Session-Token'] = tok;
+        return h;
+      })(),
+      credentials: 'include',
+      body: JSON.stringify({
+        username: uv,
+        password: pv,
+        role: rv
+      })
     });
-    var d=await r.json();
+
+    var d = await r.json();
+
     if(r.ok){
-      msg.textContent='✓ User "'+uv+'" created';msg.style.color='#27500A';
-      document.getElementById('newUsername').value='';
-      document.getElementById('newPassword').value='';
-      setTimeout(loadUsers,600);
+      msg.textContent = '✓ User "' + uv + '" created';
+      msg.style.color = '#27500A';
+      document.getElementById('newUsername').value = '';
+      document.getElementById('newPassword').value = '';
+      document.getElementById('newRole').value = 'viewer';
+      setTimeout(loadUsers, 600);
     } else {
-      msg.textContent=d.error||'Error';msg.style.color='#A32D2D';
+      msg.textContent = d.error || 'Error';
+      msg.style.color = '#A32D2D';
     }
-  }catch(e){msg.textContent=e.message;msg.style.color='#A32D2D';}
+  }catch(e){
+    msg.textContent = e.message;
+    msg.style.color = '#A32D2D';
+  }
 }
 
 async function deactivateUser(username){
