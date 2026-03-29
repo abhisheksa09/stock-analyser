@@ -1283,6 +1283,10 @@ function getSignalMeta(sym,currentSig){
   return{reversed,locked,history};
 }
 
+window.addEventListener('load', function(){
+  renderHist();
+});
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 (function init(){
   const now=new Date(),utcM=now.getUTCHours()*60+now.getUTCMinutes(),istM=(utcM+330)%1440;
@@ -1293,7 +1297,6 @@ function getSignalMeta(sym,currentSig){
   const g=document.getElementById('quickPills');
   STOCKS.forEach(s=>{const el=document.createElement('span');el.className='qpill';el.id='qp_'+s.sym;el.textContent=s.sym;el.title=s.name;el.onclick=()=>sel.has(s.sym)?removeSel(s.sym):addSel(s);g.appendChild(el);});
   checkProxy();
-  renderHist();
   renderHistBadge();
   // Check if token already set on server (e.g. via OAuth)
   setTimeout(checkTokenStatus, 1500);
