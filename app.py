@@ -727,6 +727,54 @@ def admin_check():
 
     return jsonify({"ok": False, "pin_required": True})
 
+# ─── Admin user management ────────────────────────────────────────────────────
+def _require_admin(req):
+    sess, err = _require_session(req)
+    if err: return None, err
+    if sess.get("role") != "admin":
+        return None, (jsonify({"error": "Admin role required"}), 403)
+    return sess, None
+
+@app.route("/admin/users", methods=["GET"])
+def admin_list_users():
+    sess, err = _require_admin(request)
+    if err: return err
+    return jsonify({"users": _db_module.get_users()})
+
+
+@app.route("/admin/users/create", methods=["POST"])
+def admin_create_user():
+    sess, err = _require_admin(request)
+    if err: return err
+    data     = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+    role     = data.get("role", "viewer")
+    if not username or len(password) < 8:
+        return jsonify({"error": "username required, password >= 8 chars"}), 400
+    if role not in ("admin", "viewer"):
+        return jsonify({"error": "role must be admin or viewer"}), 400
+    result = _db_module.create_user(username, password, role)
+    if "error" in result:
+        return jsonify(result), 409
+    return jsonify(result)
+
+
+@app.route("/admin/users/<username>/deactivate", methods=["POST"])
+def admin_deactivate_user(username):
+    sess, err = _require_admin(request)
+    if err: return err
+    _db_module.set_user_active(username, False)
+    _db_module.revoke_all_sessions(username)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/admin/users/<username>/activate", methods=["POST"])
+def admin_activate_user(username):
+    sess, err = _require_admin(request)
+    if err: return err
+    _db_module.set_user_active(username, True)
+    return jsonify({"status": "ok"})
 
 @app.route("/admin/verify", methods=["POST", "OPTIONS"])
 def admin_verify():

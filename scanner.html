@@ -90,6 +90,106 @@ async function doLogout(){
     window.location.replace('login.html');
   }
 })();
+
+
+async function createUser(){
+  var msg=document.getElementById('userCreateMsg');
+  var uv=(document.getElementById('newUsername').value||'').trim();
+  var pv=document.getElementById('newPassword').value||'';
+  var rv=document.getElementById('newRole').value||'viewer';
+  if(!uv||pv.length<8){
+    msg.textContent='Username required and password >= 8 chars';
+    msg.style.color='#A32D2D';return;
+  }
+  msg.textContent='Creating…';msg.style.color='#888';
+  try{
+    var r=await fetch(PROXY+'/admin/users/create',{
+      method:'POST',
+      headers:appHeaders({'Content-Type':'application/json'}),
+      credentials:'include',
+      body:JSON.stringify({username:uv,password:pv,role:rv})
+    });
+    var d=await r.json();
+    if(r.ok){
+      msg.textContent='✓ User "'+uv+'" created';msg.style.color='#27500A';
+      document.getElementById('newUsername').value='';
+      document.getElementById('newPassword').value='';
+      setTimeout(loadUsers,600);
+    } else {
+      msg.textContent=d.error||'Error';msg.style.color='#A32D2D';
+    }
+  }catch(e){msg.textContent=e.message;msg.style.color='#A32D2D';}
+}
+
+async function deactivateUser(username){
+  if(!confirm('Disable user "'+username+'"? They will be logged out.'))return;
+  try{
+    await fetch(PROXY+'/admin/users/'+encodeURIComponent(username)+'/deactivate',
+      {method:'POST',headers:appHeaders(),credentials:'include'});
+    loadUsers();
+  }catch(e){alert('Error: '+e.message);}
+}
+
+async function activateUser(username){
+  try{
+    await fetch(PROXY+'/admin/users/'+encodeURIComponent(username)+'/activate',
+      {method:'POST',headers:appHeaders(),credentials:'include'});
+    loadUsers();
+  }catch(e){alert('Error: '+e.message);}
+}
+
+
+// ── User management ───────────────────────────────────────────────────────────
+async function loadUsers(){
+  var box=document.getElementById('userListBox');
+  if(!box) return;
+  box.innerHTML='<span style="color:#888;font-size:12px;">Loading…</span>';
+  try{
+    var r=await fetch(PROXY+'/admin/users',{headers:appHeaders(),credentials:'include'});
+    var d=await r.json();
+    if(!r.ok){box.innerHTML='<span style="color:#A32D2D;">'+(d.error||'Error')+'</span>';return;}
+    if(!d.users||!d.users.length){box.innerHTML='<span style="color:#888;font-size:12px;">No users.</span>';return;}
+    var tbl=document.createElement('table');
+    tbl.style.cssText='width:100%;border-collapse:collapse;font-size:12px;';
+    var hdr=document.createElement('tr');
+    hdr.style.borderBottom='2px solid #e0e0e0';
+    ['User','Role','Last login','Active',''].forEach(function(t){
+      var th=document.createElement('th');
+      th.style.cssText='padding:5px 8px;text-align:left;font-weight:600;color:#666;';
+      th.textContent=t; hdr.appendChild(th);
+    });
+    tbl.appendChild(hdr);
+    d.users.forEach(function(u){
+      var ll=u.last_login?new Date(u.last_login).toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'Never';
+      var tr=document.createElement('tr');
+      tr.style.borderBottom='1px solid #f5f5f0';
+      var td1=document.createElement('td'); td1.style.cssText='padding:6px 8px;font-weight:600;'; td1.textContent=u.username;
+      var td2=document.createElement('td'); td2.style.padding='6px 8px';
+      var badge=document.createElement('span');
+      badge.style.cssText='background:'+(u.role==='admin'?'#EAF3DE':'#f0f0f0')+';color:'+(u.role==='admin'?'#27500A':'#555')+';padding:2px 7px;border-radius:4px;font-size:11px;';
+      badge.textContent=u.role; td2.appendChild(badge);
+      var td3=document.createElement('td'); td3.style.cssText='padding:6px 8px;color:#888;font-size:11px;'; td3.textContent=ll;
+      var td4=document.createElement('td'); td4.style.cssText='padding:6px 8px;text-align:center;';
+      td4.innerHTML='<span style="color:'+(u.active?'#639922':'#E24B4A')+'">'+(u.active?'✓':'✗')+'</span>';
+      var td5=document.createElement('td'); td5.style.cssText='padding:6px 8px;text-align:center;';
+      var btn=document.createElement('button'); btn.className='btn';
+      if(u.active){
+        btn.textContent='Disable';
+        btn.style.cssText='font-size:11px;padding:3px 8px;background:#FCEBEB;color:#A32D2D;border-color:#F09595;';
+        btn.addEventListener('click',function(){ deactivateUser(u.username); });
+      } else {
+        btn.textContent='Enable';
+        btn.style.cssText='font-size:11px;padding:3px 8px;background:#EAF3DE;color:#27500A;border-color:#C0DD97;';
+        btn.addEventListener('click',function(){ activateUser(u.username); });
+      }
+      td5.appendChild(btn);
+      [td1,td2,td3,td4,td5].forEach(function(td){ tr.appendChild(td); });
+      tbl.appendChild(tr);
+    });
+    box.innerHTML=''; box.appendChild(tbl);
+  }catch(e){box.innerHTML='<span style="color:#A32D2D;">'+e.message+'</span>';}
+}
+
 </script>
 
 <meta charset="UTF-8">
