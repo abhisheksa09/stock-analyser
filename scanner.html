@@ -103,7 +103,7 @@ async function createUser(){
   }
   msg.textContent='Creating…';msg.style.color='#888';
   try{
-    var r=await fetch(PROXY+'/admin/users/create',{
+    var r=await fetch(BACKEND+'/admin/users/create',{
       method:'POST',
       headers:appHeaders({'Content-Type':'application/json'}),
       credentials:'include',
@@ -124,7 +124,7 @@ async function createUser(){
 async function deactivateUser(username){
   if(!confirm('Disable user "'+username+'"? They will be logged out.'))return;
   try{
-    await fetch(PROXY+'/admin/users/'+encodeURIComponent(username)+'/deactivate',
+    await fetch(BACKEND+'/admin/users/'+encodeURIComponent(username)+'/deactivate',
       {method:'POST',headers:appHeaders(),credentials:'include'});
     loadUsers();
   }catch(e){alert('Error: '+e.message);}
@@ -132,7 +132,7 @@ async function deactivateUser(username){
 
 async function activateUser(username){
   try{
-    await fetch(PROXY+'/admin/users/'+encodeURIComponent(username)+'/activate',
+    await fetch(BACKEND+'/admin/users/'+encodeURIComponent(username)+'/activate',
       {method:'POST',headers:appHeaders(),credentials:'include'});
     loadUsers();
   }catch(e){alert('Error: '+e.message);}
@@ -145,7 +145,7 @@ async function loadUsers(){
   if(!box) return;
   box.innerHTML='<span style="color:#888;font-size:12px;">Loading…</span>';
   try{
-    var r=await fetch(PROXY+'/admin/users',{headers:appHeaders(),credentials:'include'});
+    var r=await fetch(BACKEND+'/admin/users',{headers:appHeaders(),credentials:'include'});
     var d=await r.json();
     if(!r.ok){box.innerHTML='<span style="color:#A32D2D;">'+(d.error||'Error')+'</span>';return;}
     if(!d.users||!d.users.length){box.innerHTML='<span style="color:#888;font-size:12px;">No users.</span>';return;}
