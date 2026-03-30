@@ -20,7 +20,7 @@ import urllib.parse
 from datetime import datetime, timezone, timedelta
 from flask import Flask, request, Response, jsonify, make_response
 from apscheduler.schedulers.background import BackgroundScheduler
-
+from ai_insights import get_ai_setup_insight
 
 import scanner
 import macro as macro_module
@@ -1066,6 +1066,25 @@ def history_read():
 @app.route("/history/write", methods=["POST"])
 def history_write():
     return jsonify({"error": "File history not available on cloud."}), 410
+
+@app.route("/ai/setup-insight", methods=["POST"])
+def ai_setup_insight():
+    sess, err = _require_session(request)
+    if err:
+        return err
+
+    data = request.get_json(silent=True) or {}
+    setup = data.get("setup") or {}
+    macro_ctx = data.get("macro_ctx") or {}
+
+    if not isinstance(setup, dict) or not setup:
+        return jsonify({"error": "setup required"}), 400
+
+    result = get_ai_setup_insight(setup, macro_ctx)
+    if not result:
+        return jsonify({"error": "AI insight unavailable"}), 503
+
+    return jsonify({"status": "ok", "insight": result})
 
 # ── Start background scheduler ────────────────────────────────────────────────
 def start_scheduler():

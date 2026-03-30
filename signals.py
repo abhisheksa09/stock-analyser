@@ -17,6 +17,20 @@ import json
 
 UPSTOX_BASE = "https://api.upstox.com"
 
+# ─── Tunable constants ────────────────────────────────────────────────────────
+MARKET_HARD_BLOCK_PCT   = 1.0
+SECTOR_HEADWIND_PENALTY = 15
+SECTOR_TAILWIND_BONUS   = 5
+GAP_PENALTY             = 10
+DAY_TREND_PENALTY       = 10
+DAY_TREND_BONUS         = 5
+CANDLE_CONFIRM_PENALTY  = 20
+
+READY_GREEN_MIN = 75
+READY_AMBER_MIN = 55
+MIN_RVOL_GREEN  = 100   # percent of avg daily volume proxy
+
+
 # ─── Nifty 50 stocks ──────────────────────────────────────────────────────────
 STOCKS = [
     {"sym": "HDFCBANK",   "ikey": "NSE_EQ|INE040A01034", "sec": "Banking"},
@@ -188,43 +202,263 @@ def atr14(candles):
 
 # ─── Confidence scoring ───────────────────────────────────────────────────────
 
+def _clamp(v, lo, hi):
+    return max(lo, min(hi, v))
+
+def _score_orb(s):
+    if s["sig"] == "WATCH":
+        return 0.30
+    if s["sig"] == "BUY":
+        return 1.0 if s["bo"] else 0.35
+    if s["sig"] == "SELL":
+        return 1.0 if s["bd"] else 0.35
+    return 0.30
+
+def _score_volume(s):
+    rv = s["tV"] / (s["aV"] or 1)
+    if rv >= 1.5: return 1.0
+    if rv >= 1.2: return 0.85
+    if rv >= 1.0: return 0.70
+    if rv >= 0.7: return 0.45
+    return 0.15
+
+def _score_vwap(s):
+    if s["sig"] == "WATCH":
+        return 0.35
+    if s["sig"] == "BUY":
+        return 1.0 if s["av"] else 0.10
+    if s["sig"] == "SELL":
+        return 1.0 if not s["av"] else 0.10
+    return 0.35
+
+def _score_rsi(s):
+    rsi = s["rsi"]
+    if s["sig"] == "BUY":
+        if rsi <= 25: return 0.55
+        if rsi <= 35: return 1.00
+        if rsi <= 40: return 0.85
+        if rsi <= 50: return 0.45
+        return 0.10
+    if s["sig"] == "SELL":
+        if rsi >= 75: return 0.55
+        if rsi >= 65: return 1.00
+        if rsi >= 60: return 0.85
+        if rsi >= 50: return 0.45
+        return 0.10
+    return 0.35
+
+def _score_rr(s):
+    rr = s["rr"]
+    if rr >= 3.0: return 1.0
+    if rr >= 2.0: return 0.85
+    if rr >= 1.5: return 0.60
+    if rr >= 1.0: return 0.30
+    return 0.10
+
+def _score_atr(s):
+    p = (s["atr"] / s["ltp"] * 100) if s["ltp"] else 0
+    if 0.8 <= p <= 2.5: return 1.0
+    if 0.5 <= p < 0.8: return 0.6
+    if 2.5 < p <= 4.0: return 0.7
+    return 0.3
+
 CF = [
-    ("ORB breakout",        25, lambda s: 0.3 if s["sig"] == "WATCH" else (
-        1.0 if (s["sig"] == "BUY" and s["bo"]) or (s["sig"] == "SELL" and s["bd"]) else 0.4
-    )),
-    ("Volume confirmation", 20, lambda s: (
-        1.0 if s["tV"] / (s["aV"] or 1) >= 1.5 else
-        0.8 if s["tV"] / (s["aV"] or 1) >= 1.0 else
-        0.5 if s["tV"] / (s["aV"] or 1) >= 0.7 else 0.1
-    )),
-    ("VWAP alignment",      20, lambda s: 0.4 if s["sig"] == "WATCH" else (
-        1.0 if (s["sig"] == "BUY" and s["av"]) or (s["sig"] == "SELL" and not s["av"]) else 0.1
-    )),
-    ("RSI alignment",       15, lambda s: (
-        (1.0 if 40 <= s["rsi"] <= 60 else 0.8 if s["rsi"] < 40 else 0.6 if s["rsi"] <= 70 else 0.2)
-        if s["sig"] == "BUY" else
-        (1.0 if 40 <= s["rsi"] <= 60 else 0.8 if s["rsi"] > 60 else 0.6 if s["rsi"] >= 30 else 0.2)
-        if s["sig"] == "SELL" else 0.4
-    )),
-    ("Risk:Reward",         15, lambda s: (
-        1.0 if s["rr"] >= 3 else 0.85 if s["rr"] >= 2 else
-        0.6 if s["rr"] >= 1.5 else 0.3 if s["rr"] >= 1 else 0.1
-    )),
-    ("ATR/volatility",       5, lambda s: (
-        lambda p: 1.0 if 0.8 <= p <= 2.5 else 0.6 if 0.5 <= p < 0.8
-        else 0.7 if 2.5 < p <= 4 else 0.3
-    )(s["atr"] / s["ltp"] * 100)),
+    ("ORB breakout",        25, _score_orb),
+    ("Volume confirmation", 20, _score_volume),
+    ("VWAP alignment",      20, _score_vwap),
+    ("RSI alignment",       15, _score_rsi),
+    ("Risk:Reward",         15, _score_rr),
+    ("ATR/volatility",       5, _score_atr),
 ]
 
 def conf_score(s):
     tot = max_w = 0.0
-    for _, w, fn in CF:
-        sc    = fn(s)
-        tot  += sc * w
-        max_w += w
-    pct = round(tot / max_w * 100)
-    return min(pct, 45) if s["sig"] == "WATCH" else pct
+    feature_scores = {}
 
+    for name, w, fn in CF:
+        sc = _clamp(fn(s), 0.0, 1.0)
+        feature_scores[name] = round(sc * 100)
+        tot += sc * w
+        max_w += w
+
+    pct = round(tot / max_w * 100) if max_w else 0
+    pct = min(pct, 45) if s["sig"] == "WATCH" else pct
+    return pct, feature_scores
+
+
+def detect_regime(chg, gap_pct, market_ctx=None):
+    nifty = ((market_ctx or {}).get("nifty_chg", 0.0) or 0.0)
+
+    if abs(gap_pct) >= 1.0 and abs(chg) < 0.4:
+        return "gap_stall"
+    if nifty >= 0.8:
+        return "bull_trend"
+    if nifty <= -0.8:
+        return "bear_trend"
+    return "mixed"
+
+
+def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
+    """
+    Build a complete trade setup.
+    market_ctx — dict from get_market_context(). If None, filters are skipped
+                 (backwards compatible with existing calls that don't pass context).
+    """
+    orb   = intra[:15]
+    orb_h = round(max((c[2] for c in orb), default=ltp * 1.005), 2)
+    orb_l = round(min((c[3] for c in orb), default=ltp * 0.995), 2)
+    vw    = vwap(intra) if intra else ltp
+    rs    = rsi14([c[4] for c in reversed(daily)])
+    at    = atr14(list(reversed(daily[:20]))) or round(ltp * 0.015, 2)
+    t_vol = sum(c[5] for c in intra)
+    a_vol = sum(c[5] for c in daily[:20]) / max(len(daily[:20]), 1)
+    pc    = daily[0][4] if daily else ltp
+    chg   = round((ltp - pc) / pc * 100, 2)
+
+    today_open = intra[0][1] if intra else ltp
+    gap_pct    = round((today_open - pc) / pc * 100, 2)
+
+    av = ltp > vw
+    bo = ltp > orb_h
+    bd = ltp < orb_l
+
+    # ── Base signal logic ────────────────────────────────────────────────────
+    if rs < 40 and av and bo:
+        sig    = "BUY"
+        en     = round(orb_h + 0.05, 2)
+        sl     = round(min(orb_l - 0.3 * at, en - 0.5 * at), 2)
+        tg     = round(en + 2.0 * at, 2)
+        reason = "Above VWAP with bullish momentum"
+    elif rs > 60 and (not av) and bd:
+        sig    = "SELL"
+        en     = round(orb_l - 0.05, 2)
+        sl     = round(max(orb_h + 0.3 * at, en + 0.5 * at), 2)
+        tg     = round(en - 2.0 * at, 2)
+        reason = "Below VWAP with bearish momentum"
+    else:
+        sig    = "WATCH"
+        en     = round(ltp, 2)
+        sl     = round(ltp - at, 2)
+        tg     = round(ltp + at, 2)
+        reason = "Mixed signals — wait for clear breakout or VWAP test"
+
+    rr = round(abs(tg - en) / max(abs(en - sl), 0.01), 2)
+
+    # ── Market / sector / gap / day-trend penalties ─────────────────────────
+    conf_penalties = 0
+    ctx_warnings   = []
+    market_blocked = False
+
+    if market_ctx:
+        nifty_chg = market_ctx.get("nifty_chg", 0.0) or 0.0
+        sector_chg = market_ctx.get("sector_chg", 0.0) or 0.0
+
+        # Market hard block
+        if sig == "BUY" and nifty_chg <= -MARKET_HARD_BLOCK_PCT:
+            sig = "WATCH"
+            market_blocked = True
+            ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% — BUY blocked")
+            reason = "Blocked by broad market weakness"
+        elif sig == "SELL" and nifty_chg >= MARKET_HARD_BLOCK_PCT:
+            sig = "WATCH"
+            market_blocked = True
+            ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% — SELL blocked")
+            reason = "Blocked by broad market strength"
+
+        if not market_blocked and sig != "WATCH":
+            # Sector headwind / tailwind
+            if sig == "BUY" and sector_chg <= -0.5:
+                conf_penalties += SECTOR_HEADWIND_PENALTY
+                ctx_warnings.append(f"{sec} sector weak ({sector_chg:+.1f}%) (-{SECTOR_HEADWIND_PENALTY}% conf)")
+            elif sig == "SELL" and sector_chg >= 0.5:
+                conf_penalties += SECTOR_HEADWIND_PENALTY
+                ctx_warnings.append(f"{sec} sector strong ({sector_chg:+.1f}%) (-{SECTOR_HEADWIND_PENALTY}% conf)")
+            elif sig == "BUY" and sector_chg >= 0.5:
+                conf_penalties -= SECTOR_TAILWIND_BONUS
+                ctx_warnings.append(f"{sec} sector supportive ({sector_chg:+.1f}%) (+{SECTOR_TAILWIND_BONUS}% conf)")
+            elif sig == "SELL" and sector_chg <= -0.5:
+                conf_penalties -= SECTOR_TAILWIND_BONUS
+                ctx_warnings.append(f"{sec} sector supportive ({sector_chg:+.1f}%) (+{SECTOR_TAILWIND_BONUS}% conf)")
+
+            # Gap filter
+            if sig == "BUY" and gap_pct <= -0.5:
+                conf_penalties += GAP_PENALTY
+                ctx_warnings.append(f"Gap-down open ({gap_pct:+.1f}%) reduces BUY confidence (-{GAP_PENALTY}% conf)")
+            elif sig == "SELL" and gap_pct >= 0.5:
+                conf_penalties += GAP_PENALTY
+                ctx_warnings.append(f"Gap-up open ({gap_pct:+.1f}%) reduces SELL confidence (-{GAP_PENALTY}% conf)")
+
+            # Day trend filter
+            if sig == "BUY" and chg <= -0.5:
+                conf_penalties += DAY_TREND_PENALTY
+                ctx_warnings.append(
+                    f"Stock {chg:+.1f}% on day — net negative reduces BUY confidence (-{DAY_TREND_PENALTY}% conf)"
+                )
+            elif sig == "SELL" and chg >= 0.5:
+                conf_penalties += DAY_TREND_PENALTY
+                ctx_warnings.append(
+                    f"Stock {chg:+.1f}% on day — net positive reduces SELL confidence (-{DAY_TREND_PENALTY}% conf)"
+                )
+            elif sig == "BUY" and chg >= +0.5:
+                conf_penalties -= DAY_TREND_BONUS
+                ctx_warnings.append(
+                    f"Stock {chg:+.1f}% on day — momentum supports BUY (+{DAY_TREND_BONUS}% conf)"
+                )
+            elif sig == "SELL" and chg <= -0.5:
+                conf_penalties -= DAY_TREND_BONUS
+                ctx_warnings.append(
+                    f"Stock {chg:+.1f}% on day — momentum supports SELL (+{DAY_TREND_BONUS}% conf)"
+                )
+
+    # ── Candle confirmation ───────────────────────────────────────────────────
+    confirmed     = True
+    confirm_count = 0
+    recent        = intra[-CONFIRM_CANDLES:]
+
+    if len(recent) >= CONFIRM_CANDLES and sig != "WATCH":
+        checks = []
+        for cn in recent:
+            o, h, l, c, v = cn[1], cn[2], cn[3], cn[4], cn[5]
+            side_ok = c > vw if sig == "BUY" else c < vw
+            body_ok = c > o if sig == "BUY" else c < o
+            checks.append(side_ok and body_ok)
+        confirm_count = sum(checks)
+        confirmed     = confirm_count >= CONFIRM_CANDLES
+    else:
+        confirm_count = len(recent)
+
+    regime = detect_regime(chg, gap_pct, market_ctx)
+
+    s = dict(
+        sym=sym, sec=sec, ltp=round(ltp, 2), chg=chg,
+        orb_h=orb_h, orb_l=orb_l, rsi=rs,
+        vwap=round(vw, 2), atr=at,
+        tV=round(t_vol), aV=round(a_vol),
+        sig=sig, en=en, tg=tg, sl=sl,
+        reason=reason, rr=rr, av=av, bo=bo, bd=bd,
+        confirmed=confirmed, confirm_count=confirm_count,
+        gap_pct=gap_pct,
+        market_ctx=market_ctx or {},
+        ctx_warnings=ctx_warnings,
+        market_blocked=market_blocked,
+        regime=regime,
+    )
+
+    # Base setup quality only
+    signal_conf, feature_scores = conf_score(s)
+    risk_penalty = conf_penalties
+
+    # Candle confirmation penalty
+    if not confirmed and sig != "WATCH":
+        risk_penalty += CANDLE_CONFIRM_PENALTY
+        s["reason"] += f" ⚠ ({confirm_count}/{CONFIRM_CANDLES} candles confirm)"
+
+    s["signal_conf"]   = signal_conf
+    s["risk_penalty"]  = round(risk_penalty)
+    s["feature_scores"] = feature_scores
+    s["conf"]          = max(5, min(100, signal_conf - risk_penalty))
+
+    return s
 # ─── Build setup with market context ─────────────────────────────────────────
 
 def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
@@ -244,8 +478,7 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
     pc    = daily[0][4] if daily else ltp
     chg   = round((ltp - pc) / pc * 100, 2)
 
-    # Gap calculation — today's open vs prev close
-    today_open = intra[0][1] if intra else ltp   # candle format: [ts,o,h,l,c,v]
+    today_open = intra[0][1] if intra else ltp
     gap_pct    = round((today_open - pc) / pc * 100, 2)
 
     av = ltp > vw
@@ -256,148 +489,108 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
     if rs < 40 and av and bo:
         sig    = "BUY"
         en     = round(orb_h + 0.05, 2)
-        tg     = round(en + at * 2, 2)
-        sl     = round(orb_l - at * 0.3, 2)
-        reason = "ORB breakout + above VWAP + oversold RSI"
-    elif rs > 65 and not av and bd:
+        sl     = round(min(orb_l - 0.3 * at, en - 0.5 * at), 2)
+        tg     = round(en + 2.0 * at, 2)
+        reason = "Above VWAP with bullish momentum"
+    elif rs > 60 and (not av) and bd:
         sig    = "SELL"
         en     = round(orb_l - 0.05, 2)
-        tg     = round(en - at * 2, 2)
-        sl     = round(orb_h + at * 0.3, 2)
-        reason = "ORB breakdown + below VWAP + overbought RSI"
-    elif rs > 55 and av:
-        sig    = "BUY"
-        en     = round(vw + at * 0.15, 2)
-        tg     = round(en + at * 1.5, 2)
-        sl     = round(vw - at * 0.4, 2)
-        reason = "Above VWAP with bullish momentum"
-    elif rs < 45 and not av:
-        sig    = "SELL"
-        en     = round(vw - at * 0.15, 2)
-        tg     = round(en - at * 1.5, 2)
-        sl     = round(vw + at * 0.4, 2)
+        sl     = round(max(orb_h + 0.3 * at, en + 0.5 * at), 2)
+        tg     = round(en - 2.0 * at, 2)
         reason = "Below VWAP with bearish momentum"
     else:
         sig    = "WATCH"
         en     = round(ltp, 2)
+        sl     = round(ltp - at, 2)
         tg     = round(ltp + at, 2)
-        sl     = round(ltp - at * 0.7, 2)
-        reason = "Mixed signals — wait for clear breakout"
+        reason = "Mixed signals — wait for clear breakout or VWAP test"
 
-    rr = round(abs(tg - en) / (abs(sl - en) or 0.01), 2)
+    rr = round(abs(tg - en) / max(abs(en - sl), 0.01), 2)
 
-    # ── Market context filters ───────────────────────────────────────────────
-    ctx_warnings   = []   # human-readable list of what was overridden
-    conf_penalties = 0    # total % to subtract from confidence
+    # ── Market / sector / gap / day-trend penalties ─────────────────────────
+    conf_penalties = 0
+    ctx_warnings   = []
     market_blocked = False
 
-    if market_ctx and sig != "WATCH":
-        nifty_chg  = market_ctx.get("nifty_chg",  0.0)
-        sector_chg = market_ctx.get("sector_chg", 0.0)
-        m_bias     = market_ctx.get("market_bias", "neutral")
-        s_bias     = market_ctx.get("sector_bias", "neutral")
+    if market_ctx:
+        nifty_chg = market_ctx.get("nifty_chg", 0.0) or 0.0
+        sector_chg = market_ctx.get("sector_chg", 0.0) or 0.0
 
-        # ── Filter 1: Market hard block ──────────────────────────────────────
-        # Nifty down >1% → hard block BUY (would be swimming against the tide)
-        # Nifty up  >1% → hard block SELL
-        if sig == "BUY" and nifty_chg <= -1.0:
-            sig    = "WATCH"
-            reason = (f"BUY blocked — Nifty is {nifty_chg:+.1f}% today. "
-                      f"Market too bearish for long trades.")
+        # Market hard block
+        if sig == "BUY" and nifty_chg <= -MARKET_HARD_BLOCK_PCT:
+            sig = "WATCH"
             market_blocked = True
             ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% — BUY blocked")
-
-        elif sig == "SELL" and nifty_chg >= +1.0:
-            sig    = "WATCH"
-            reason = (f"SELL blocked — Nifty is {nifty_chg:+.1f}% today. "
-                      f"Market too bullish for short trades.")
+            reason = "Blocked by broad market weakness"
+        elif sig == "SELL" and nifty_chg >= MARKET_HARD_BLOCK_PCT:
+            sig = "WATCH"
             market_blocked = True
             ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% — SELL blocked")
+            reason = "Blocked by broad market strength"
 
-        if not market_blocked:
-            # ── Filter 2: Sector headwind penalty ────────────────────────────
-            # Stock trying to go BUY but its sector index is red → -15% confidence
-            # Stock trying to go SELL but sector is green → -15% confidence
-            if sig == "BUY" and s_bias == "bearish":
-                conf_penalties += 15
-                ctx_warnings.append(
-                    f"Sector ({sec}) index {sector_chg:+.1f}% — headwind for BUY (-15% conf)"
-                )
-            elif sig == "SELL" and s_bias == "bullish":
-                conf_penalties += 15
-                ctx_warnings.append(
-                    f"Sector ({sec}) index {sector_chg:+.1f}% — headwind for SELL (-15% conf)"
-                )
-            # Sector tailwind bonus: sector agrees with signal → +5% confidence
-            elif sig == "BUY" and s_bias == "bullish":
-                conf_penalties -= 5   # negative penalty = bonus
-                ctx_warnings.append(
-                    f"Sector ({sec}) index {sector_chg:+.1f}% — tailwind for BUY (+5% conf)"
-                )
-            elif sig == "SELL" and s_bias == "bearish":
-                conf_penalties -= 5
-                ctx_warnings.append(
-                    f"Sector ({sec}) index {sector_chg:+.1f}% — tailwind for SELL (+5% conf)"
-                )
+        if not market_blocked and sig != "WATCH":
+            # Sector headwind / tailwind
+            if sig == "BUY" and sector_chg <= -0.5:
+                conf_penalties += SECTOR_HEADWIND_PENALTY
+                ctx_warnings.append(f"{sec} sector weak ({sector_chg:+.1f}%) (-{SECTOR_HEADWIND_PENALTY}% conf)")
+            elif sig == "SELL" and sector_chg >= 0.5:
+                conf_penalties += SECTOR_HEADWIND_PENALTY
+                ctx_warnings.append(f"{sec} sector strong ({sector_chg:+.1f}%) (-{SECTOR_HEADWIND_PENALTY}% conf)")
+            elif sig == "BUY" and sector_chg >= 0.5:
+                conf_penalties -= SECTOR_TAILWIND_BONUS
+                ctx_warnings.append(f"{sec} sector supportive ({sector_chg:+.1f}%) (+{SECTOR_TAILWIND_BONUS}% conf)")
+            elif sig == "SELL" and sector_chg <= -0.5:
+                conf_penalties -= SECTOR_TAILWIND_BONUS
+                ctx_warnings.append(f"{sec} sector supportive ({sector_chg:+.1f}%) (+{SECTOR_TAILWIND_BONUS}% conf)")
 
-            # ── Filter 3: Gap filter ──────────────────────────────────────────
-            # BUY after a gap-down open = stock opening weak, recovery may stall
-            # SELL after a gap-up open = stock opened strong, short risky
+            # Gap filter
             if sig == "BUY" and gap_pct <= -0.5:
-                conf_penalties += 10
-                ctx_warnings.append(
-                    f"Gap-down open {gap_pct:+.1f}% — BUY recovery may stall (-10% conf)"
-                )
-            elif sig == "SELL" and gap_pct >= +0.5:
-                conf_penalties += 10
-                ctx_warnings.append(
-                    f"Gap-up open {gap_pct:+.1f}% — SELL into strength is risky (-10% conf)"
-                )
+                conf_penalties += GAP_PENALTY
+                ctx_warnings.append(f"Gap-down open ({gap_pct:+.1f}%) reduces BUY confidence (-{GAP_PENALTY}% conf)")
+            elif sig == "SELL" and gap_pct >= 0.5:
+                conf_penalties += GAP_PENALTY
+                ctx_warnings.append(f"Gap-up open ({gap_pct:+.1f}%) reduces SELL confidence (-{GAP_PENALTY}% conf)")
 
-            # ── Filter 4: Day trend ───────────────────────────────────────────
-            # Stock net negative on day vs prev close on a BUY → weak momentum
-            # Stock net positive on day on a SELL → selling into strength
+            # Day trend filter
             if sig == "BUY" and chg <= -0.5:
-                conf_penalties += 10
+                conf_penalties += DAY_TREND_PENALTY
                 ctx_warnings.append(
-                    f"Stock {chg:+.1f}% on day — net negative reduces BUY confidence (-10% conf)"
+                    f"Stock {chg:+.1f}% on day — net negative reduces BUY confidence (-{DAY_TREND_PENALTY}% conf)"
                 )
-            elif sig == "SELL" and chg >= +0.5:
-                conf_penalties += 10
+            elif sig == "SELL" and chg >= 0.5:
+                conf_penalties += DAY_TREND_PENALTY
                 ctx_warnings.append(
-                    f"Stock {chg:+.1f}% on day — net positive reduces SELL confidence (-10% conf)"
+                    f"Stock {chg:+.1f}% on day — net positive reduces SELL confidence (-{DAY_TREND_PENALTY}% conf)"
                 )
-            # Day trend bonus: stock moving with signal
             elif sig == "BUY" and chg >= +0.5:
-                conf_penalties -= 5
+                conf_penalties -= DAY_TREND_BONUS
                 ctx_warnings.append(
-                    f"Stock {chg:+.1f}% on day — momentum supports BUY (+5% conf)"
+                    f"Stock {chg:+.1f}% on day — momentum supports BUY (+{DAY_TREND_BONUS}% conf)"
                 )
             elif sig == "SELL" and chg <= -0.5:
-                conf_penalties -= 5
+                conf_penalties -= DAY_TREND_BONUS
                 ctx_warnings.append(
-                    f"Stock {chg:+.1f}% on day — momentum supports SELL (+5% conf)"
+                    f"Stock {chg:+.1f}% on day — momentum supports SELL (+{DAY_TREND_BONUS}% conf)"
                 )
 
     # ── Candle confirmation ───────────────────────────────────────────────────
     confirmed     = True
     confirm_count = 0
     recent        = intra[-CONFIRM_CANDLES:]
+
     if len(recent) >= CONFIRM_CANDLES and sig != "WATCH":
-        cum_tpv = cum_vol = 0.0
-        for cn in intra:
-            tp       = (cn[2] + cn[3] + cn[4]) / 3
-            cum_tpv += tp * cn[5]
-            cum_vol += cn[5]
-        running_vwap = cum_tpv / cum_vol if cum_vol else ltp
-        checks       = [
-            cn[4] > running_vwap if sig == "BUY" else cn[4] < running_vwap
-            for cn in recent
-        ]
+        checks = []
+        for cn in recent:
+            o, h, l, c, v = cn[1], cn[2], cn[3], cn[4], cn[5]
+            side_ok = c > vw if sig == "BUY" else c < vw
+            body_ok = c > o if sig == "BUY" else c < o
+            checks.append(side_ok and body_ok)
         confirm_count = sum(checks)
         confirmed     = confirm_count >= CONFIRM_CANDLES
     else:
         confirm_count = len(recent)
+
+    regime = detect_regime(chg, gap_pct, market_ctx)
 
     s = dict(
         sym=sym, sec=sec, ltp=round(ltp, 2), chg=chg,
@@ -411,25 +604,26 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None):
         market_ctx=market_ctx or {},
         ctx_warnings=ctx_warnings,
         market_blocked=market_blocked,
+        regime=regime,
     )
 
-    # Base confidence
-    conf = conf_score(s)
-
-    # Apply market context penalties/bonuses
-    if not market_blocked:
-        conf = max(5, min(100, conf - conf_penalties))
+    # Base setup quality only
+    signal_conf, feature_scores = conf_score(s)
+    risk_penalty = conf_penalties
 
     # Candle confirmation penalty
     if not confirmed and sig != "WATCH":
-        conf = max(5, conf - 20)
+        risk_penalty += CANDLE_CONFIRM_PENALTY
         s["reason"] += f" ⚠ ({confirm_count}/{CONFIRM_CANDLES} candles confirm)"
 
-    s["conf"] = conf
+    s["signal_conf"]   = signal_conf
+    s["risk_penalty"]  = round(risk_penalty)
+    s["feature_scores"] = feature_scores
+    s["conf"]          = max(5, min(100, signal_conf - risk_penalty))
+
     return s
 
 # ─── Readiness check ──────────────────────────────────────────────────────────
-
 def is_ready(s, ist_mins):
     """Returns (verdict, gates_pass_count)"""
     vp = round(s["tV"] / (s["aV"] or 1) * 100)
@@ -442,12 +636,11 @@ def is_ready(s, ist_mins):
         (s["sig"] == "SELL" and s["bd"]) or
         not is_actual
     )
-    vol_ok     = vp >= 100
-    conf_ok    = s["conf"] >= 75
-    conf_warn  = 55 <= s["conf"] < 75
+    vol_ok     = vp >= MIN_RVOL_GREEN
+    conf_ok    = s["conf"] >= READY_GREEN_MIN
+    conf_warn  = READY_AMBER_MIN <= s["conf"] < READY_GREEN_MIN
     candle_ok  = s["confirmed"]
 
-    # Market block is a hard fail regardless of other gates
     if s.get("market_blocked"):
         return "red", 0
 
@@ -461,7 +654,10 @@ def is_ready(s, ist_mins):
     ])
     warnings = sum([not time_prime and time_ok, conf_warn])
 
-    if not is_actual:  return "watch", 0
-    if hard_fails > 0: return "red",   6 - hard_fails
-    if warnings   > 0: return "amber", 6
+    if not is_actual:
+        return "watch", 0
+    if hard_fails > 0:
+        return "red", 6 - hard_fails
+    if warnings > 0:
+        return "amber", 6
     return "green", 6
