@@ -1686,16 +1686,22 @@ def start_scheduler():
     )
     log.info("EOD paper-trade settlement job scheduled at 15:35 IST daily")
 
-    # Midnight token reminder — 00:00 IST Sun–Thu (skip Fri night, no Sat market)
+    # Token reminder — configurable via TOKEN_REMINDER_TIME (HH:MM IST, default 00:00)
+    _reminder_time = os.environ.get("TOKEN_REMINDER_TIME", "00:00").strip()
+    try:
+        _r_hour, _r_min = [int(x) for x in _reminder_time.split(":")]
+    except ValueError:
+        log.warning("Invalid TOKEN_REMINDER_TIME '%s', falling back to 00:00", _reminder_time)
+        _r_hour, _r_min = 0, 0
     sched.add_job(
         _token_reminder_job,
         trigger="cron",
-        hour=0, minute=0,
+        hour=_r_hour, minute=_r_min,
         id="token_reminder",
         max_instances=1,
         misfire_grace_time=300,
     )
-    log.info("Midnight token reminder job scheduled at 00:00 IST daily")
+    log.info("Token reminder job scheduled at %02d:%02d IST daily", _r_hour, _r_min)
 
     # Morning login reminder — every day at 08:30 IST
     # Requires TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (already used by the scanner)

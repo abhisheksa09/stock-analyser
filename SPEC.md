@@ -24,16 +24,16 @@ A real-time NSE intraday trading alert system. Monitors 30 Nifty50 stocks every 
 
 ## File map
 ```
-app.py          — Flask server, all routes, APScheduler setup (~1100 lines)
-scanner.py      — Scan loop, Telegram formatting, alert trigger logic
+app.py          — Flask server, all routes, APScheduler setup (~1700 lines)
+scanner.py      — Scan loop, Telegram formatting, alert trigger logic, backtest auto-save
 signals.py      — RSI14, VWAP, ATR14, ORB breakout, confidence scoring
 macro.py        — Economic calendar, crude/gold/VIX/FII-DII/news context
 auto_login.py   — Headless Upstox TOTP login (no browser needed)
-db.py           — PostgreSQL schema + CRUD (users, sessions, trades, alerts)
+db.py           — PostgreSQL schema + CRUD (users, sessions, trades, alerts, paper_trades)
 ai_insights.py  — OpenAI setup quality review (rarely called)
 requirements.txt
 
-scanner.html    — Main SPA (Scanner / History / Admin tabs)
+scanner.html    — Main SPA (Scanner / History / Backtest / Admin tabs)
 changelog.html  — Auth-gated changelog page
 login.html      — Login form
 password-reset.html
@@ -49,6 +49,7 @@ readme.html
 | `alert_log` | Telegram messages sent | `sym`, `kind`, `message`, `sent`, `created_at` |
 | `users` | App users | `username`, `pwd_hash`, `role` (viewer/admin), `active` |
 | `app_sessions` | Browser sessions | `token`, `user_id`, `expires_at`, `last_seen` |
+| `paper_trades` | Simulated orders for backtesting | `id`, `trade_date`, `signal_time`, `sym`, `sec`, `sig`, `conf`, `signal_price`, `entry`, `target`, `stop_loss`, `rr`, `rsi`, `reason`, `close_price`, `settled_at`, `outcome`, `pnl_pct`, `pnl_pts`, `target_hit`, `sl_hit` |
 
 ## Signal logic (signals.py)
 **Trigger conditions:**
@@ -103,6 +104,37 @@ UPSTOX_PIN          — 6-digit login PIN
 UPSTOX_TOTP_SECRET  — base-32 key (Upstox → Settings → Enable TOTP → "Can't scan?")
 ```
 
+## Paper trading / backtest system
+
+Simulates trade entries at signal time and settles them at end of day using intraday 1-minute candle replay.
+
+### How it works
+1. **Auto-save**: When a backtest symbol scores ≥ `BACKTEST_MIN_CONF` (default 55%), a paper trade row is inserted into `paper_trades` with `outcome='open'`.
+2. **EOD settlement** (15:35 IST): For each open trade, fetches 1-min candles from signal time, walks candle by candle checking SL first then target (conservative). If neither is hit by session close, outcome is `partial_win` / `partial_loss` based on exit vs entry.
+3. **Outcomes**: `won`, `lost`, `partial_win`, `partial_loss`
+4. **Backtest symbols**: 12 hardcoded Nifty50 stocks across 8 sectors (overridable via `BACKTEST_SYMBOLS` env var). Scanned every 5 min alongside alert watchlist. Deduped via in-memory `bt_saved` set + DB `ON CONFLICT DO NOTHING`.
+5. **Dry test**: `POST /paper-trades/dry-test` creates 4 synthetic trades and settles them immediately — returns a full audit report without needing real market data.
+
+### Default backtest symbols
+`HDFCBANK`, `ICICIBANK`, `SBIN`, `TCS`, `INFY`, `RELIANCE`, `TATAMOTORS`, `MARUTI`, `HINDUNILVR`, `SUNPHARMA`, `LT`, `BAJFINANCE`
+
+### Settlement logic (intraday candle replay)
+- BUY: check `low ≤ stop_loss` (SL hit) first, then `high ≥ target` (target hit)
+- SELL: check `high ≥ stop_loss` (SL hit) first, then `low ≤ target` (target hit)
+- Gap open past a level: exit at candle open immediately
+- Both hit same candle → SL assumed first (conservative)
+- Neither hit → exit at last candle close
+
+## APScheduler jobs
+| Job ID | Schedule | Purpose |
+|--------|----------|---------|
+| `nse_scan` | Every N min (default 5) | Run stock scanner |
+| `eod_settlement` | 15:35 IST weekdays | Settle all open paper trades |
+| `token_reminder` | 00:00 IST Sun–Thu | Telegram reminder to set next day's Upstox token |
+| `login_reminder` | 08:30 IST daily | Telegram reminder + auto-login (if configured) |
+
+**Token reminder detail:** Fires at midnight IST (~6:30–7:30 PM Netherlands time). Skips Friday nights (no Saturday trading). Sends a Telegram message with a direct link to `/auth/login` so the token can be set from the Netherlands the evening before.
+
 ## All environment variables
 ```
 # Supabase
@@ -123,6 +155,14 @@ TELEGRAM_CHAT_ID        your chat ID
 ALERT_START_IST         HH:MM  default 09:15
 ALERT_STOP_IST          HH:MM  default 10:30
 SCAN_INTERVAL_MINS      integer default 5
+
+# Backtest / paper trading
+BACKTEST_SYMBOLS        comma-separated symbols (default: 12 hardcoded Nifty50 stocks)
+BACKTEST_MIN_CONF       integer 0–100, min confidence to auto-save paper trade (default 55)
+RENDER_BASE_URL         full Render URL e.g. https://nse-proxy-mojx.onrender.com
+                        (used in midnight token reminder Telegram link)
+TOKEN_REMINDER_TIME     HH:MM IST for the nightly token reminder (default 00:00)
+                        Change to e.g. 14:30 on Render to test without waiting for midnight
 
 # Optional AI/news
 NEWS_API_KEY            NewsAPI key
@@ -162,6 +202,13 @@ PATCH  /history/trades/<id>
 DELETE /history/trades/<id>
 GET    /history/stats
 
+# Paper trades (backtest)
+GET    /paper-trades                → list paper trades (filters: from, to, sym, outcome, limit)
+GET    /paper-trades/stats          → win rate, breakdown by signal type and confidence bucket
+POST   /paper-trades/settle         → manually trigger EOD settlement for a date (admin)
+POST   /paper-trades/dry-test       → create + settle 4 synthetic trades, returns audit report (admin)
+GET    /paper-trades/config         → show backtest symbols and min-confidence setting
+
 # Admin
 GET  /admin/users
 POST /admin/users/create
@@ -181,11 +228,12 @@ GET  /db/status
 ```
 
 ## Frontend (scanner.html) structure
-Single HTML file, ~1700 lines. Three tabs: **Scanner**, **History**, **Admin**.
+Single HTML file. Four tabs: **Scanner**, **History**, **Backtest**, **Admin**.
 
 - **Scanner tab:** live scan results table, manual scan trigger, macro context panel
 - **History tab:** trade log with outcome/PnL editing, stats (win rate, avg PnL)
-- **Admin tab** (PIN-gated): User Management, Cloud Proxy status, Scanner Token (OAuth + manual paste + Auto-Login), System Status, Dry Scan, Database controls
+- **Backtest tab:** paper trade performance — stats cards (total trades, win rate, avg P&L), accuracy bars per signal type, filterable trade table (date range, signal, outcome). Exit price column shows actual intraday exit price from candle replay.
+- **Admin tab** (PIN-gated): User Management, Cloud Proxy status, Scanner Token (OAuth + manual paste + Auto-Login), System Status, Dry Scan, Database controls, **Backtest Config** (symbol pills with saved-today indicator), **Backtest Dry Test** button
 
 Key JS globals: `BACKEND` (Render URL), `token` (Upstox bearer token), `sessionToken` (app session)
 
