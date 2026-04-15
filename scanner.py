@@ -28,6 +28,7 @@ from datetime import datetime, timezone, timedelta
 
 from signals import STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context
 from macro import get_full_macro_context, apply_all_macro_penalties
+import db as _db_module
 
 log = logging.getLogger("scanner")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [scanner] %(message)s")
@@ -227,6 +228,39 @@ def parse_hhmm(s, default):
 
 # ─── Core scan ────────────────────────────────────────────────────────────────
 
+def _save_paper_trade(s: dict):
+    """
+    Persist a simulated paper trade when a green alert fires.
+    This creates the 'order placed' record that will be settled at EOD.
+    Silently skips on any error so scanner never fails due to DB issues.
+    """
+    try:
+        now = datetime.now(IST)
+        trade_id = f"pt_{now.strftime('%Y%m%d')}_{s['sym']}"
+        trade = {
+            "id":           trade_id,
+            "trade_date":   now.strftime("%Y-%m-%d"),
+            "signal_time":  now.strftime("%H:%M"),
+            "sym":          s["sym"],
+            "sec":          s.get("sec", ""),
+            "sig":          s["sig"],
+            "conf":         int(s["conf"]),
+            "signal_price": float(s["ltp"]),
+            "entry":        float(s["en"]),
+            "target":       float(s["tg"]),
+            "stop_loss":    float(s["sl"]),
+            "rr":           float(s["rr"]) if s.get("rr") else None,
+            "rsi":          float(s["rsi"]) if s.get("rsi") else None,
+            "reason":       s.get("reason", ""),
+        }
+        saved = _db_module.save_paper_trade(trade)
+        if saved:
+            log.info("Paper trade saved: %s %s @ %.2f (conf %d%%)",
+                     s["sig"], s["sym"], s["en"], s["conf"])
+    except Exception as e:
+        log.warning("_save_paper_trade failed for %s: %s", s.get("sym"), e)
+
+
 def run_scan():
     """Called every N minutes by APScheduler."""
     STATE.check_date()
@@ -308,6 +342,8 @@ def run_scan():
             if send_telegram(format_alert("green_ready", s)):
                 STATE.mark_alerted(sym, "green_ready")
                 sent += 1
+                # Simulate placing an order — save as paper trade for backtesting
+                _save_paper_trade(s)
             time.sleep(1)   # avoid Telegram rate limit (30 msg/sec)
 
         # ── Trigger 2: Confidence crossed 75% ─────────────────────────────

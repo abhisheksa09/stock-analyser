@@ -497,6 +497,7 @@ th[data-tip]{cursor:default;}
   <div class="tabs">
     <div class="tab active" id="tab-scanner-btn" onclick="switchTab('scanner')">Scanner</div>
     <div class="tab" id="tab-history-btn" onclick="switchTab('history')">History <span class="tab-badge" id="histBadge">0</span></div>
+    <div class="tab" id="tab-backtest-btn" onclick="switchTab('backtest')">Backtest <span class="tab-badge" id="btBadge" style="display:none;"></span></div>
     <div class="tab" id="tab-admin-btn" onclick="switchTab('admin')" >Admin</div>
   </div>
 
@@ -692,6 +693,95 @@ th[data-tip]{cursor:default;}
 
   </div>
 
+  <!-- =========== BACKTEST =========== -->
+  <div class="tab-pane" id="tab-backtest">
+
+    <!-- Stats summary cards -->
+    <div class="hist-stats" id="btStatsRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+      <div class="hstat-card"><div class="hstat-l">Simulated Trades</div><div class="hstat-n" id="btTotal">—</div></div>
+      <div class="hstat-card"><div class="hstat-l">Win Rate</div><div class="hstat-n" id="btWinRate">—</div></div>
+      <div class="hstat-card"><div class="hstat-l">Target Hit</div><div class="hstat-n" id="btTgtRate">—</div></div>
+      <div class="hstat-card"><div class="hstat-l">Avg P&amp;L</div><div class="hstat-n" id="btAvgPnl">—</div></div>
+    </div>
+
+    <!-- Accuracy bars by signal / confidence -->
+    <div class="card" style="margin-bottom:14px;">
+      <div class="acc-title">Accuracy breakdown</div>
+      <div class="acc-rows" id="btAccRows">
+        <div style="color:#aaa;font-size:12px;">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="hist-toolbar" style="margin-bottom:10px;">
+      <div class="hist-toolbar-left" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <label style="font-size:12px;color:#666;">From
+          <input type="date" id="btFrom" class="token-inp" style="margin-left:4px;padding:4px 8px;font-size:12px;width:130px;" onchange="loadPaperTrades()"/>
+        </label>
+        <label style="font-size:12px;color:#666;">To
+          <input type="date" id="btTo" class="token-inp" style="margin-left:4px;padding:4px 8px;font-size:12px;width:130px;" onchange="loadPaperTrades()"/>
+        </label>
+        <select id="btSigFilter" class="token-inp" style="font-size:12px;padding:4px 8px;" onchange="loadPaperTrades()">
+          <option value="">All signals</option>
+          <option value="BUY">BUY only</option>
+          <option value="SELL">SELL only</option>
+        </select>
+        <select id="btOcFilter" class="token-inp" style="font-size:12px;padding:4px 8px;" onchange="renderBtTable()">
+          <option value="">All outcomes</option>
+          <option value="open">Open</option>
+          <option value="won">Won</option>
+          <option value="partial_win">Partial win</option>
+          <option value="partial_loss">Partial loss</option>
+          <option value="lost">Lost</option>
+        </select>
+      </div>
+      <button class="btn" onclick="loadPaperTrades()" style="font-size:12px;padding:6px 14px;">&#8635; Refresh</button>
+    </div>
+
+    <!-- Notice about how it works -->
+    <div class="cloud-notice" id="btHowIt" style="margin-bottom:10px;">
+      <strong>How backtesting works:</strong>
+      Every time the scanner fires a <strong>green alert</strong>, it automatically saves a simulated order
+      (entry, target, SL at signal price). At <strong>15:35 IST</strong> the system fetches the actual
+      closing price and marks each trade as <em>Won / Lost / Partial</em>. This lets you measure how
+      accurate the predictions are over time — without risking real money.
+    </div>
+
+    <!-- Table -->
+    <div class="htbl-box">
+      <table class="htbl">
+        <thead>
+          <tr>
+            <th>Date / Time</th>
+            <th>Stock</th>
+            <th>Signal</th>
+            <th>Conf</th>
+            <th class="r">Entry</th>
+            <th class="r">Target</th>
+            <th class="r">Stop Loss</th>
+            <th class="r htbl-hide-mobile">R:R</th>
+            <th class="r">Close</th>
+            <th class="r">P&amp;L pts</th>
+            <th class="r">P&amp;L %</th>
+            <th>Outcome</th>
+          </tr>
+        </thead>
+        <tbody id="btBody">
+          <tr><td colspan="12" style="text-align:center;padding:3rem;color:#aaa;font-size:13px;">
+            Loading paper trades…
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="btEmpty" style="display:none;text-align:center;padding:3rem;color:#aaa;font-size:13px;line-height:1.9;">
+      No paper trades yet.<br>
+      <span style="font-size:12px;">Paper trades are auto-saved when the scanner fires a green alert (75%+ confidence).<br>
+      They are settled automatically at 15:35 IST with the actual closing price.</span>
+    </div>
+
+  </div>
+
   <!-- =========== ADMIN =========== -->
   <div class="tab-pane" id="tab-admin">
 
@@ -826,6 +916,50 @@ th[data-tip]{cursor:default;}
       <div class="tok-msg" id="tokenMsg"></div>
     </div>
 
+    <!-- Auto-Login card -->
+    <div class="card" id="autoLoginCard">
+      <div class="card-title">Auto-Login <span style="font-size:11px;font-weight:400;color:#888;margin-left:6px;">Daily token refresh at 08:30 IST</span></div>
+
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+        <span id="alDot" style="width:10px;height:10px;border-radius:50%;background:#e0e0e0;flex-shrink:0;display:inline-block;"></span>
+        <span id="alStatusTxt" style="font-size:13px;color:#888;">Loading&#8230;</span>
+      </div>
+
+      <div style="font-size:12px;color:#666;margin-bottom:12px;">
+        <span id="alNextRun" style="display:block;margin-bottom:4px;"></span>
+        <span id="alDetail" style="display:block;color:#aaa;"></span>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+        <button id="alTriggerBtn" class="btn" onclick="triggerAutoLogin()"
+                style="background:#185FA5;color:#fff;border:none;font-weight:600;">
+          &#9654; Run now
+        </button>
+        <button class="btn" onclick="loadAutoLoginStatus()"
+                style="font-size:12px;padding:6px 14px;">
+          &#8635; Refresh
+        </button>
+      </div>
+
+      <!-- Setup note (shown when not configured) -->
+      <div id="alSetupNote" style="display:none;background:#FFF8E7;border:1px solid #F5C842;
+           border-radius:8px;padding:12px 14px;font-size:12px;line-height:1.7;color:#555;">
+        <strong>One-time setup required</strong> &mdash; add these 3 env vars in your
+        <strong>Render dashboard &rarr; Environment</strong>:<br>
+        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">UPSTOX_MOBILE</code>
+        &nbsp;your registered mobile (digits only)<br>
+        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">UPSTOX_PIN</code>
+        &nbsp;your 6-digit Upstox PIN<br>
+        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">UPSTOX_TOTP_SECRET</code>
+        &nbsp;base-32 TOTP key (Upstox app &rarr; Settings &rarr; My Profile &rarr; Enable TOTP &rarr; &ldquo;Can&rsquo;t scan?&rdquo;)<br>
+        <span style="color:#888;font-size:11px;display:block;margin-top:6px;">
+          After adding, redeploy the Render service once &mdash; no other changes needed.
+        </span>
+      </div>
+
+      <div id="alMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
+    </div>
+
     <div class="card">
       <div class="card-title">System Status</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
@@ -940,6 +1074,7 @@ function showAdminContent(){
   const content=document.getElementById('adminContent');
   if(gate) gate.style.display='none';
   if(content) content.style.display='block';
+  loadAutoLoginStatus();
 }
 
 async function verifyAdminPin(){
@@ -1317,14 +1452,15 @@ window.addEventListener('load', function(){
 
 // ─── TABS ─────────────────────────────────────────────────────────────────────
 function switchTab(t){
-  ['scanner','history','admin'].forEach(n=>{
+  ['scanner','history','backtest','admin'].forEach(n=>{
     const btn=document.getElementById('tab-'+n+'-btn');
     const pane=document.getElementById('tab-'+n);
     if(btn)  btn.classList.toggle('active',n===t);
     if(pane) pane.classList.toggle('active',n===t);
   });
-  if(t==='history') renderHist();
-  if(t==='admin') checkAdminAccess();
+  if(t==='history')  renderHist();
+  if(t==='admin')    checkAdminAccess();
+  if(t==='backtest') loadPaperTrades();
 }
 
 // ─── STOCK SELECTION ──────────────────────────────────────────────────────────
@@ -1546,6 +1682,82 @@ async function verifyToken(){
   } catch(e){
     token='';msg.textContent='\u2717 '+e.message;msg.style.color='#A32D2D';
     setTokenStatusUI(false,'');
+  }
+}
+
+// ─── Auto-Login ───────────────────────────────────────────────────────────────
+async function loadAutoLoginStatus(){
+  try {
+    const r = await fetch(BACKEND+'auth/auto-login-status');
+    const d = await r.json();
+
+    const dot  = document.getElementById('alDot');
+    const txt  = document.getElementById('alStatusTxt');
+    const next = document.getElementById('alNextRun');
+    const det  = document.getElementById('alDetail');
+    const note = document.getElementById('alSetupNote');
+    const btn  = document.getElementById('alTriggerBtn');
+
+    // Dot colour
+    const colours = {
+      success: '#27AE60', failed: '#A32D2D', running: '#F4A235',
+      'never attempted': '#e0e0e0'
+    };
+    dot.style.background = colours[d.status] || '#e0e0e0';
+
+    // Status text
+    const labels = {
+      success: 'Last run: success', failed: 'Last run: failed',
+      running: 'Running now\u2026', 'never attempted': 'Never run'
+    };
+    txt.textContent = (labels[d.status] || d.status) + (d.time ? '  \u2014  ' + d.time : '');
+    txt.style.color = d.status === 'success' ? '#27AE60'
+                    : d.status === 'failed'  ? '#A32D2D'
+                    : '#888';
+
+    next.textContent = '\u23F0 Next run: ' + (d.next_run || '—');
+    det.textContent  = d.detail || '';
+
+    // Setup note visibility
+    note.style.display = d.configured ? 'none' : 'block';
+    btn.disabled       = !d.configured || d.status === 'running';
+    btn.style.opacity  = btn.disabled ? '0.5' : '1';
+  } catch(e) {
+    document.getElementById('alStatusTxt').textContent = 'Could not load status';
+  }
+}
+
+async function triggerAutoLogin(){
+  const btn = document.getElementById('alTriggerBtn');
+  const msg = document.getElementById('alMsg');
+  btn.disabled = true;
+  btn.textContent = 'Running\u2026';
+  msg.textContent = '';
+
+  try {
+    const res = await fetch(BACKEND+'auth/trigger-auto-login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Token': sessionToken || '',
+      },
+    });
+    const d = await res.json();
+    if(res.ok && d.status === 'success'){
+      msg.textContent = '\u2713 ' + d.message;
+      msg.style.color = '#27AE60';
+      // Refresh the main token status too
+      setTimeout(checkTokenStatus, 800);
+    } else {
+      msg.textContent = '\u2717 ' + (d.message || 'Auto-login failed');
+      msg.style.color = '#A32D2D';
+    }
+  } catch(e){
+    msg.textContent = '\u2717 ' + e.message;
+    msg.style.color = '#A32D2D';
+  } finally {
+    btn.textContent = '\u25B6 Run now';
+    await loadAutoLoginStatus();
   }
 }
 
@@ -2117,6 +2329,157 @@ function updateFileUI(){}
 function exportCSV(){const h=loadH();if(!h.length){alert('No history to export.');return;}const cols=['date','time','sym','sec','sig','conf','ltp','en','tg','sl','rr','rsi','reason','aEn','aEx','outcome','pnl','notes'];const hdrs=['Date','Time','Stock','Sector','Signal','Confidence(%)','LTP','Pred Entry','Target','Stop Loss','R:R','RSI','Setup Reason','Actual Entry','Actual Exit','Outcome','PnL per Share','Notes'];function esc(v){if(v===null||v===undefined)return '';const s=String(v);const has=s.indexOf(',')>=0||s.indexOf('"')>=0||s.indexOf('\r')>=0||s.indexOf('\n')>=0;if(has)return '"'+s.replace(/"/g,'""')+'"';return s;}const lines=[hdrs.join(',')];h.forEach(row=>lines.push(cols.map(c=>esc(row[c])).join(',')));const csv=lines.join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='nse_history_'+new Date().toISOString().split('T')[0]+'.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);}
 function importCSV(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=function(e){try{const lines=e.target.result.split(/\r?\n/).filter(l=>l.trim());if(lines.length<2){alert('CSV appears empty.');return;}const hdrs=parseCsvRow(lines[0]);const ci={};hdrs.forEach((h,i)=>ci[h.trim()]=i);const fmap={'Date':'date','Time':'time','Stock':'sym','Sector':'sec','Signal':'sig','Confidence(%)':'conf','LTP':'ltp','Pred Entry':'en','Target':'tg','Stop Loss':'sl','R:R':'rr','RSI':'rsi','Setup Reason':'reason','Actual Entry':'aEn','Actual Exit':'aEx','Outcome':'outcome','PnL per Share':'pnl','Notes':'notes'};const numFields=new Set(['conf','ltp','en','tg','sl','rr','rsi','aEn','aEx','pnl']);const existing=loadH();const seen=new Set(existing.map(x=>x.sym+'_'+x.date));let added=0,skipped=0;for(let i=1;i<lines.length;i++){const vals=parseCsvRow(lines[i]);if(!vals.length)continue;const row={id:Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2)};Object.entries(fmap).forEach(function(pair){const csvH=pair[0],field=pair[1];const idx=ci[csvH];const v=(idx!==undefined&&vals[idx]!==undefined)?vals[idx].trim():'';row[field]=numFields.has(field)?(v===''?null:+parseFloat(v).toFixed(2)):(v===''?null:v);});const key=row.sym+'_'+row.date;if(seen.has(key)){skipped++;continue;}seen.add(key);row.outcome=row.outcome||'pending';row.notes=row.notes||'';existing.push(row);added++;}saveH(existing);renderHist();alert('Import complete: '+added+' rows added, '+skipped+' skipped (duplicates).');}catch(err){alert('Import failed: '+err.message);}event.target.value='';};reader.readAsText(file);}
 function parseCsvRow(line){const out=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}else if(ch===','&&!inQ){out.push(cur);cur='';}else cur+=ch;}out.push(cur);return out;}
+
+// ─── PAPER TRADES / BACKTEST ─────────────────────────────────────────────────
+var _btTrades = [];   // cached raw paper trade rows
+
+async function loadPaperTrades() {
+  const tb   = document.getElementById('btBody');
+  const rows = document.getElementById('btAccRows');
+  if(tb) tb.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:2rem;color:#aaa;">Loading…</td></tr>';
+
+  const from = (document.getElementById('btFrom')  || {}).value || '';
+  const to   = (document.getElementById('btTo')    || {}).value || '';
+  const sig  = (document.getElementById('btSigFilter') || {}).value || '';
+
+  let qs = '?limit=500';
+  if(from) qs += '&from_date=' + encodeURIComponent(from);
+  if(to)   qs += '&to_date='   + encodeURIComponent(to);
+  if(sig)  qs += '&sig='       + encodeURIComponent(sig);
+
+  try {
+    var tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
+    var [trRes, stRes] = await Promise.all([
+      fetch(BACKEND + '/paper-trades' + qs, { headers: appHeaders(), credentials: 'include' }),
+      fetch(BACKEND + '/paper-trades/stats?days=60', { headers: appHeaders(), credentials: 'include' })
+    ]);
+
+    var trData = await trRes.json();
+    var stData = stRes.ok ? await stRes.json() : { stats: {} };
+
+    _btTrades = trData.trades || [];
+    renderBtStats(stData.stats || {});
+    renderBtTable();
+
+    // Update tab badge with open count
+    var openCount = _btTrades.filter(function(t){ return t.outcome === 'open'; }).length;
+    var badge = document.getElementById('btBadge');
+    if(badge) {
+      if(openCount > 0) { badge.textContent = openCount; badge.style.display = ''; }
+      else               badge.style.display = 'none';
+    }
+  } catch(e) {
+    if(tb) tb.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:2rem;color:#A32D2D;">Error: ' + e.message + '</td></tr>';
+  }
+}
+
+function renderBtStats(stats) {
+  function el(id, v, cls) {
+    var e = document.getElementById(id);
+    if(!e) return;
+    e.textContent = v;
+    if(cls) e.className = 'hstat-n ' + cls;
+  }
+
+  var total   = stats.total || 0;
+  var winRate = stats.win_rate != null ? stats.win_rate : null;
+  var tgtRate = stats.target_hit_rate != null ? stats.target_hit_rate : null;
+  var avgPnl  = stats.avg_pnl_pct != null ? stats.avg_pnl_pct : null;
+
+  el('btTotal',   total || '—');
+  el('btWinRate', winRate != null ? winRate + '%' : '—',
+     winRate != null ? (winRate >= 55 ? 'n-green' : winRate >= 40 ? '' : 'n-red') : '');
+  el('btTgtRate', tgtRate != null ? tgtRate + '%' : '—',
+     tgtRate != null ? (tgtRate >= 40 ? 'n-green' : 'n-red') : '');
+  el('btAvgPnl',  avgPnl != null ? (avgPnl >= 0 ? '+' : '') + avgPnl + '%' : '—',
+     avgPnl != null ? (avgPnl > 0 ? 'n-green' : 'n-red') : '');
+
+  // Accuracy breakdown bars
+  var accEl = document.getElementById('btAccRows');
+  if(!accEl) return;
+
+  var groups = [];
+  // By signal
+  if(stats.by_signal) {
+    Object.entries(stats.by_signal).forEach(function(pair) {
+      var name = pair[0], s = pair[1];
+      groups.push({ lbl: name + ' signals', won: s.won, total: s.total, rate: s.win_rate });
+    });
+  }
+  // By confidence
+  if(stats.by_conf) {
+    Object.entries(stats.by_conf).forEach(function(pair) {
+      var name = pair[0], s = pair[1];
+      groups.push({ lbl: 'Conf ' + name, won: s.won, total: s.total, rate: s.win_rate });
+    });
+  }
+
+  if(!groups.length || total === 0) {
+    accEl.innerHTML = '<div style="color:#aaa;font-size:12px;padding:8px 0;">No settled trades yet. Accuracy will appear after market close.</div>';
+    return;
+  }
+
+  accEl.innerHTML = groups.map(function(g) {
+    if(!g.total) return '<div class="acc-row"><span class="acc-lbl">' + g.lbl + '</span><div class="acc-bg"></div><span class="acc-cnt">No data</span></div>';
+    var col = g.rate >= 60 ? '#639922' : g.rate >= 40 ? '#EF9F27' : '#E24B4A';
+    return '<div class="acc-row">' +
+      '<span class="acc-lbl">' + g.lbl + '</span>' +
+      '<div class="acc-bg"><div class="acc-fill" style="width:' + g.rate + '%;background:' + col + ';">' + g.rate + '%</div></div>' +
+      '<span class="acc-cnt">' + g.won + '/' + g.total + '</span>' +
+      '</div>';
+  }).join('');
+}
+
+function renderBtTable() {
+  var tb      = document.getElementById('btBody');
+  var emptyEl = document.getElementById('btEmpty');
+  if(!tb) return;
+
+  var ocFilter = (document.getElementById('btOcFilter') || {}).value || '';
+  var rows = ocFilter
+    ? _btTrades.filter(function(t) { return t.outcome === ocFilter; })
+    : _btTrades;
+
+  if(!rows.length) {
+    tb.innerHTML = '';
+    if(emptyEl) emptyEl.style.display = '';
+    return;
+  }
+  if(emptyEl) emptyEl.style.display = 'none';
+
+  tb.innerHTML = '';
+  rows.forEach(function(t) {
+    var sigCls  = t.sig === 'BUY' ? 'buy' : 'sell';
+    var ocLabel = { won: 'Won', lost: 'Lost', partial_win: 'Partial +', partial_loss: 'Partial −', open: 'Open' }[t.outcome] || t.outcome;
+    var ocCls   = { won: 'oc-hit', lost: 'oc-sl', partial_win: 'oc-partial', partial_loss: 'oc-loss', open: 'oc-pending' }[t.outcome] || '';
+    var pnlPts  = t.pnl_pts != null ? (t.pnl_pts >= 0 ? '+' : '') + fc(t.pnl_pts) : '—';
+    var pnlPct  = t.pnl_pct != null ? (t.pnl_pct >= 0 ? '+' : '') + t.pnl_pct.toFixed(2) + '%' : '—';
+    var pnlCls  = t.pnl_pts != null ? (t.pnl_pts >= 0 ? 'pnl-pos' : 'pnl-neg') : '';
+    var closePx = t.close_price != null ? '₹' + fc(t.close_price) : '—';
+    var confMt  = confMeta(t.conf || 0);
+    var dateStr = t.trade_date ? fmtDate(t.trade_date) : '—';
+
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td style="white-space:nowrap;"><div style="font-weight:600;font-size:12px;">' + dateStr + '</div>' +
+        '<div style="color:#888;font-size:11px;">' + (t.signal_time || '') + ' IST</div></td>' +
+      '<td><div class="sym">' + (t.sym || '') + '</div><div class="sec">' + (t.sec || '') + '</div></td>' +
+      '<td><span class="sig ' + sigCls + '"><span class="dot"></span>' + t.sig + '</span></td>' +
+      '<td><span class="conf-n ' + confMt.cls + '">' + (t.conf || 0) + '%</span></td>' +
+      '<td class="r">₹' + fc(t.entry) + '</td>' +
+      '<td class="r" style="color:#3B6D11;">₹' + fc(t.target) + '</td>' +
+      '<td class="r" style="color:#A32D2D;">₹' + fc(t.stop_loss) + '</td>' +
+      '<td class="r htbl-hide-mobile">' + (t.rr ? t.rr + ':1' : '—') + '</td>' +
+      '<td class="r">' + closePx + '</td>' +
+      '<td class="r"><span class="' + pnlCls + '">' + pnlPts + '</span></td>' +
+      '<td class="r"><span class="' + pnlCls + '">' + pnlPct + '</span></td>' +
+      '<td><span class="' + ocCls + '">' + ocLabel + '</span>' +
+        (t.target_hit ? ' <span style="font-size:10px;background:#EAF3DE;color:#27500A;padding:1px 5px;border-radius:3px;">TGT</span>' : '') +
+        (t.sl_hit     ? ' <span style="font-size:10px;background:#FCEBEB;color:#791F1F;padding:1px 5px;border-radius:3px;">SL</span>' : '') +
+      '</td>';
+    tb.appendChild(tr);
+  });
+}
 
 // ─── CORPORATE EVENTS ────────────────────────────────────────────────────────
 let corpEvents={};

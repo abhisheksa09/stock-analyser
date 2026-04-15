@@ -25,6 +25,7 @@ from ai_insights import get_ai_setup_insight
 import scanner
 import macro as macro_module
 import db as _db_module
+import auto_login as _auto_login
 
 log = logging.getLogger("app")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [app] %(message)s")
@@ -461,6 +462,15 @@ OAUTH_REDIRECT    = RENDER_BASE_URL + "/auth/callback"
 # Store last OAuth attempt result for debugging
 _last_oauth = {"status": "never attempted", "detail": "", "time": ""}
 
+# Store last auto-login attempt result
+_last_auto_login = {
+    "status":    "never attempted",   # never attempted | success | failed | running
+    "detail":    "",
+    "time":      "",
+    "next_run":  "08:30 IST (daily)",
+    "configured": False,
+}
+
 
 # ─── Session helpers ──────────────────────────────────────────────────────────
 
@@ -709,6 +719,88 @@ def auth_callback():
             title="Unexpected error",
             message=str(e),
         )
+
+
+# ─── Auto-login (headless daily token refresh) ────────────────────────────────
+
+def perform_auto_login_job():
+    """
+    Scheduled job — runs at 08:30 IST every weekday.
+    Uses UPSTOX_MOBILE + UPSTOX_PIN + UPSTOX_TOTP_SECRET env vars to obtain
+    a fresh Upstox access token without any human interaction.
+    """
+    global _last_auto_login
+    ist_time = datetime.now(IST).strftime("%H:%M IST")
+    log.info("Auto-login job started at %s", ist_time)
+
+    _last_auto_login["status"]  = "running"
+    _last_auto_login["time"]    = ist_time
+    _last_auto_login["detail"]  = "Login in progress…"
+
+    api_key    = os.environ.get("UPSTOX_API_KEY",    "").strip()
+    api_secret = os.environ.get("UPSTOX_API_SECRET", "").strip()
+
+    if not api_key or not api_secret:
+        _last_auto_login["status"] = "failed"
+        _last_auto_login["detail"] = "UPSTOX_API_KEY or UPSTOX_API_SECRET not set"
+        log.error("Auto-login: %s", _last_auto_login["detail"])
+        return
+
+    success, result = _auto_login.try_auto_login(api_key, api_secret, OAUTH_REDIRECT)
+
+    if success:
+        token = result
+        scanner.set_token(token)
+        _db_module.set_token(token, set_by="auto_login")
+        scanner.STATE.check_date()
+        ist_time = datetime.now(IST).strftime("%H:%M IST")
+        _last_auto_login["status"] = "success"
+        _last_auto_login["detail"] = f"Token refreshed at {ist_time} (length={len(token)})"
+        _last_auto_login["time"]   = ist_time
+        log.info("Auto-login succeeded — token set at %s", ist_time)
+    else:
+        _last_auto_login["status"] = "failed"
+        _last_auto_login["detail"] = result
+        _last_auto_login["time"]   = ist_time
+        log.error("Auto-login failed: %s", result)
+
+
+@app.route("/auth/auto-login-status")
+def auto_login_status():
+    """Return current auto-login state (no auth required — status only, no secrets)."""
+    return jsonify({
+        "configured": _auto_login.is_configured(),
+        "status":     _last_auto_login["status"],
+        "detail":     _last_auto_login["detail"],
+        "time":       _last_auto_login["time"],
+        "next_run":   _last_auto_login["next_run"],
+    })
+
+
+@app.route("/auth/trigger-auto-login", methods=["POST"])
+def trigger_auto_login():
+    """Manually trigger auto-login now (admin only)."""
+    _, err = _require_admin(request)
+    if err:
+        return err
+
+    if _last_auto_login.get("status") == "running":
+        return jsonify({"status": "already_running", "message": "Auto-login already in progress"}), 409
+
+    # Run synchronously so the response reflects the result
+    perform_auto_login_job()
+
+    if _last_auto_login["status"] == "success":
+        return jsonify({
+            "status":  "success",
+            "message": _last_auto_login["detail"],
+            "time":    _last_auto_login["time"],
+        })
+    return jsonify({
+        "status":  "failed",
+        "message": _last_auto_login["detail"],
+        "time":    _last_auto_login["time"],
+    }), 500
 
 
 # ─── Admin misc ───────────────────────────────────────────────────────────────
@@ -1067,6 +1159,189 @@ def history_read():
 def history_write():
     return jsonify({"error": "File history not available on cloud."}), 410
 
+# ── Paper trades (backtesting) ────────────────────────────────────────────────
+
+@app.route("/paper-trades", methods=["GET"])
+def get_paper_trades():
+    sess, err = _require_session(request)
+    if err:
+        return err
+    if not _has_db():
+        return jsonify({"trades": [], "note": "No DB"})
+    trades = _db_module.get_paper_trades(
+        from_date=request.args.get("from_date"),
+        to_date=request.args.get("to_date"),
+        sym=request.args.get("sym"),
+        outcome=request.args.get("outcome"),
+        limit=int(request.args.get("limit", 500)),
+    )
+    return jsonify({"trades": trades, "count": len(trades)})
+
+
+@app.route("/paper-trades/stats", methods=["GET"])
+def get_paper_trade_stats():
+    sess, err = _require_session(request)
+    if err:
+        return err
+    if not _has_db():
+        return jsonify({"stats": {}})
+    days = int(request.args.get("days", 30))
+    stats = _db_module.get_paper_trade_stats(days=days)
+    return jsonify({"stats": stats})
+
+
+@app.route("/paper-trades/settle", methods=["POST"])
+def trigger_paper_trade_settlement():
+    """Manually trigger EOD settlement for today's open paper trades (admin only)."""
+    sess, err = _require_admin(request)
+    if err:
+        return err
+    settled, skipped, errors = _settle_paper_trades_for_date()
+    return jsonify({
+        "status":  "ok",
+        "settled": settled,
+        "skipped": skipped,
+        "errors":  errors,
+        "ist_now": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
+    })
+
+
+def _compute_outcome(sig: str, entry: float, target: float,
+                     stop_loss: float, close: float):
+    """
+    Given signal direction and actual closing price, return:
+      (outcome, pnl_pts, pnl_pct, target_hit, sl_hit)
+
+    Outcomes:
+      won          — price reached the full target
+      partial_win  — moved in right direction but didn't hit target
+      partial_loss — moved against but didn't hit stop loss
+      lost         — price hit stop loss
+    """
+    if sig == "BUY":
+        target_hit = close >= target
+        sl_hit     = close <= stop_loss
+        pnl_pts    = round(close - entry, 2)
+    else:  # SELL
+        target_hit = close <= target
+        sl_hit     = close >= stop_loss
+        pnl_pts    = round(entry - close, 2)
+
+    pnl_pct = round(pnl_pts / entry * 100, 3) if entry else 0
+
+    if target_hit:
+        outcome = "won"
+    elif sl_hit:
+        outcome = "lost"
+    elif pnl_pts > 0:
+        outcome = "partial_win"
+    else:
+        outcome = "partial_loss"
+
+    return outcome, pnl_pts, pnl_pct, target_hit, sl_hit
+
+
+def _settle_paper_trades_for_date(date_str: str = None):
+    """
+    Fetch closing prices for all open paper trades on date_str (default: today IST)
+    and mark them as settled.
+
+    Returns: (settled_count, skipped_count, error_list)
+    """
+    from signals import get_daily, STOCKS
+
+    if date_str is None:
+        date_str = datetime.now(IST).strftime("%Y-%m-%d")
+
+    open_trades = _db_module.get_paper_trades(
+        from_date=date_str,
+        to_date=date_str,
+        outcome="open",
+        limit=200,
+    )
+
+    if not open_trades:
+        log.info("EOD settlement: no open paper trades for %s", date_str)
+        return 0, 0, []
+
+    token = get_effective_token()
+    if not token:
+        log.warning("EOD settlement: no Upstox token — cannot fetch closing prices")
+        return 0, len(open_trades), ["No Upstox token available"]
+
+    # Build sym → ikey lookup from STOCKS
+    sym_to_ikey = {s["sym"]: s["ikey"] for s in STOCKS}
+
+    settled, skipped, errors = 0, 0, []
+
+    for trade in open_trades:
+        sym = trade["sym"]
+        ikey = sym_to_ikey.get(sym)
+        if not ikey:
+            log.warning("EOD settlement: unknown symbol %s", sym)
+            errors.append(f"Unknown symbol: {sym}")
+            skipped += 1
+            continue
+
+        try:
+            daily = get_daily(ikey, token)
+            if not daily:
+                raise ValueError("Empty daily candle data")
+
+            # Last candle's close price = today's closing price
+            close_price = float(daily[-1]["close"])
+
+            outcome, pnl_pts, pnl_pct, target_hit, sl_hit = _compute_outcome(
+                sig       = trade["sig"],
+                entry     = float(trade["entry"]),
+                target    = float(trade["target"]),
+                stop_loss = float(trade["stop_loss"]),
+                close     = close_price,
+            )
+
+            ok = _db_module.settle_paper_trade(
+                trade_id   = trade["id"],
+                close_price= close_price,
+                outcome    = outcome,
+                pnl_pts    = pnl_pts,
+                pnl_pct    = pnl_pct,
+                target_hit = target_hit,
+                sl_hit     = sl_hit,
+            )
+
+            if ok:
+                settled += 1
+                log.info(
+                    "Settled %s %s: close=%.2f entry=%.2f → %s (%.2f pts, %.2f%%)",
+                    trade["sig"], sym, close_price,
+                    float(trade["entry"]), outcome, pnl_pts, pnl_pct
+                )
+            else:
+                skipped += 1
+                errors.append(f"{sym}: DB update failed (already settled?)")
+
+        except Exception as e:
+            log.warning("EOD settlement error for %s: %s", sym, e)
+            errors.append(f"{sym}: {str(e)}")
+            skipped += 1
+
+    log.info("EOD settlement done: %d settled, %d skipped", settled, skipped)
+    return settled, skipped, errors
+
+
+def _eod_settlement_job():
+    """APScheduler job — runs at 15:35 IST on market days."""
+    now_ist = datetime.now(IST)
+    # Skip weekends
+    if now_ist.weekday() >= 5:
+        log.info("EOD settlement: skipping weekend")
+        return
+    log.info("EOD settlement job triggered at %s IST",
+             now_ist.strftime("%H:%M"))
+    settled, skipped, errors = _settle_paper_trades_for_date()
+    if errors:
+        log.warning("EOD settlement errors: %s", errors)
+
 @app.route("/ai/setup-insight", methods=["POST"])
 def ai_setup_insight():
     sess, err = _require_session(request)
@@ -1090,13 +1365,45 @@ def ai_setup_insight():
 def start_scheduler():
     interval = int(os.environ.get("SCAN_INTERVAL_MINS", "5"))
     sched = BackgroundScheduler(timezone="Asia/Kolkata")
+
+    # Stock scanner — every N minutes
     sched.add_job(scanner.run_scan, trigger="interval", minutes=interval,
                   id="nse_scan", max_instances=1, misfire_grace_time=60)
+
+    # EOD settlement — runs at 15:35 IST every weekday to close paper trades
+    sched.add_job(
+        _eod_settlement_job,
+        trigger="cron",
+        hour=15, minute=35,
+        id="eod_settlement",
+        max_instances=1,
+        misfire_grace_time=300,
+    )
+    log.info("EOD paper-trade settlement job scheduled at 15:35 IST daily")
+
+    # Auto-login — every day at 08:30 IST (before market opens at 09:15)
+    # Only registered if all three credential env vars are present
+    if _auto_login.is_configured():
+        sched.add_job(
+            perform_auto_login_job,
+            trigger="cron",
+            hour=8, minute=30,
+            id="upstox_auto_login",
+            max_instances=1,
+            misfire_grace_time=300,
+        )
+        _last_auto_login["next_run"] = "08:30 IST (daily, configured)"
+        log.info("Auto-login job scheduled at 08:30 IST daily")
+    else:
+        _last_auto_login["next_run"] = "not scheduled — set UPSTOX_MOBILE, UPSTOX_PIN, UPSTOX_TOTP_SECRET"
+        log.info("Auto-login not scheduled — credential env vars missing")
+
     sched.start()
     log.info("Scheduler started — scanning every %d min", interval)
     return sched
 
 _load_token_from_db()
+_last_auto_login["configured"] = _auto_login.is_configured()
 _scheduler = start_scheduler()
 
 if __name__ == "__main__":

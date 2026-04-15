@@ -139,6 +139,32 @@ CREATE INDEX IF NOT EXISTS idx_app_sessions_token    ON app_sessions(token);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_expires  ON app_sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_token_store_date      ON token_store(ist_date);
 CREATE INDEX IF NOT EXISTS idx_trade_history_date    ON trade_history(ist_date);
+
+CREATE TABLE IF NOT EXISTS paper_trades (
+    id           TEXT        PRIMARY KEY,
+    trade_date   DATE        NOT NULL,
+    signal_time  TEXT        NOT NULL,
+    sym          TEXT        NOT NULL,
+    sec          TEXT        NOT NULL DEFAULT '',
+    sig          TEXT        NOT NULL,
+    conf         INTEGER     NOT NULL,
+    signal_price NUMERIC     NOT NULL,
+    entry        NUMERIC     NOT NULL,
+    target       NUMERIC     NOT NULL,
+    stop_loss    NUMERIC     NOT NULL,
+    rr           NUMERIC,
+    rsi          NUMERIC,
+    reason       TEXT        NOT NULL DEFAULT '',
+    close_price  NUMERIC,
+    settled_at   TIMESTAMPTZ,
+    outcome      TEXT        NOT NULL DEFAULT 'open',
+    pnl_pct      NUMERIC,
+    pnl_pts      NUMERIC,
+    target_hit   BOOLEAN,
+    sl_hit       BOOLEAN,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_paper_trades_date ON paper_trades(trade_date);
 """
 
 def init_db():
@@ -560,7 +586,7 @@ def db_status():
         counts = {}
         with conn.cursor() as cur:
             for tbl in ["token_store","session_state","trade_history",
-                        "alert_log","users","app_sessions"]:
+                        "alert_log","users","app_sessions","paper_trades"]:
                 try:
                     cur.execute(f"SELECT COUNT(*) AS n FROM {tbl}")
                     counts[tbl] = cur.fetchone()["n"]
@@ -594,3 +620,153 @@ def load_session(date_str: str) -> dict:
 def save_session(state: dict):
     """Alias for save_session_state()."""
     return save_session_state(state)
+
+# ── Paper trades ──────────────────────────────────────────────────────────────
+def save_paper_trade(trade: dict) -> bool:
+    """Insert a new paper trade (simulated order at signal time). Ignores duplicates."""
+    conn = db()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO paper_trades
+                    (id, trade_date, signal_time, sym, sec, sig, conf,
+                     signal_price, entry, target, stop_loss, rr, rsi, reason)
+                VALUES
+                    (%(id)s, %(trade_date)s, %(signal_time)s, %(sym)s, %(sec)s,
+                     %(sig)s, %(conf)s, %(signal_price)s, %(entry)s, %(target)s,
+                     %(stop_loss)s, %(rr)s, %(rsi)s, %(reason)s)
+                ON CONFLICT (id) DO NOTHING
+            """, trade)
+        return True
+    except Exception as e:
+        log.warning("save_paper_trade: %s", e)
+        return False
+
+def get_paper_trades(from_date=None, to_date=None, sym=None,
+                     outcome=None, limit=500) -> list:
+    conn = db()
+    if not conn:
+        return []
+    try:
+        where, params = [], []
+        if from_date:
+            where.append("trade_date >= %s"); params.append(from_date)
+        if to_date:
+            where.append("trade_date <= %s"); params.append(to_date)
+        if sym:
+            where.append("sym = %s"); params.append(sym.upper())
+        if outcome:
+            where.append("outcome = %s"); params.append(outcome)
+        sql = "SELECT * FROM paper_trades"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY created_at DESC LIMIT %s"
+        params.append(limit)
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+        # Convert Decimal/date to JSON-safe types
+        result = []
+        for r in rows:
+            row = dict(r)
+            for k, v in row.items():
+                if hasattr(v, "isoformat"):        # date / datetime
+                    row[k] = v.isoformat()
+                elif hasattr(v, "__float__"):       # Decimal
+                    row[k] = float(v)
+            result.append(row)
+        return result
+    except Exception as e:
+        log.warning("get_paper_trades: %s", e)
+        return []
+
+def settle_paper_trade(trade_id: str, close_price: float,
+                       outcome: str, pnl_pts: float, pnl_pct: float,
+                       target_hit: bool, sl_hit: bool) -> bool:
+    """Update a paper trade with end-of-day settlement data."""
+    conn = db()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE paper_trades
+                SET close_price=%s, settled_at=NOW(), outcome=%s,
+                    pnl_pts=%s, pnl_pct=%s, target_hit=%s, sl_hit=%s
+                WHERE id=%s AND outcome='open'
+            """, (close_price, outcome, pnl_pts, pnl_pct,
+                  target_hit, sl_hit, trade_id))
+        return True
+    except Exception as e:
+        log.warning("settle_paper_trade: %s", e)
+        return False
+
+def get_paper_trade_stats(days: int = 30) -> dict:
+    """Accuracy metrics over the last N calendar days."""
+    conn = db()
+    if not conn:
+        return {}
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT outcome, sig, conf,
+                       pnl_pts, pnl_pct, target_hit, sl_hit
+                FROM paper_trades
+                WHERE trade_date >= CURRENT_DATE - %s
+                  AND outcome <> 'open'
+            """, (days,))
+            rows = [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        log.warning("get_paper_trade_stats: %s", e)
+        return {}
+
+    if not rows:
+        return {"total": 0, "settled": 0}
+
+    settled = rows
+    won     = [r for r in settled if r["outcome"] in ("won", "partial_win")]
+    lost    = [r for r in settled if r["outcome"] in ("lost", "partial_loss")]
+    tgt_hit = [r for r in settled if r.get("target_hit")]
+    sl_hit  = [r for r in settled if r.get("sl_hit")]
+    pnl_pts = [float(r["pnl_pts"]) for r in settled if r.get("pnl_pts") is not None]
+    pnl_pct = [float(r["pnl_pct"]) for r in settled if r.get("pnl_pct") is not None]
+
+    # Break down by signal direction
+    by_sig = {}
+    for sig in ("BUY", "SELL"):
+        sub = [r for r in settled if r["sig"] == sig]
+        sub_won = [r for r in sub if r["outcome"] in ("won", "partial_win")]
+        by_sig[sig] = {
+            "total": len(sub),
+            "won":   len(sub_won),
+            "win_rate": round(len(sub_won) / len(sub) * 100, 1) if sub else 0,
+        }
+
+    # Confidence bucket breakdown
+    buckets = {}
+    for lo, hi, label in [(75, 101, "75-100%"), (55, 75, "55-74%"), (0, 55, "<55%")]:
+        sub = [r for r in settled if lo <= r["conf"] < hi]
+        sub_won = [r for r in sub if r["outcome"] in ("won", "partial_win")]
+        buckets[label] = {
+            "total": len(sub),
+            "won":   len(sub_won),
+            "win_rate": round(len(sub_won) / len(sub) * 100, 1) if sub else 0,
+        }
+
+    return {
+        "total":       len(settled),
+        "settled":     len(settled),
+        "won":         len(won),
+        "lost":        len(lost),
+        "win_rate":    round(len(won) / len(settled) * 100, 1) if settled else 0,
+        "target_hit_rate": round(len(tgt_hit) / len(settled) * 100, 1) if settled else 0,
+        "sl_hit_rate": round(len(sl_hit) / len(settled) * 100, 1) if settled else 0,
+        "avg_pnl_pts": round(sum(pnl_pts) / len(pnl_pts), 2) if pnl_pts else 0,
+        "avg_pnl_pct": round(sum(pnl_pct) / len(pnl_pct), 2) if pnl_pct else 0,
+        "total_pnl_pts": round(sum(pnl_pts), 2) if pnl_pts else 0,
+        "by_signal":   by_sig,
+        "by_conf":     buckets,
+        "days":        days,
+    }
