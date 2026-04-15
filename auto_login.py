@@ -58,14 +58,11 @@ def _headless_login(api_key: str, api_secret: str, redirect_uri: str,
     log.info("Step 1 — auth dialog: HTTP %d", r.status_code)
 
     # ── Step 2: Submit mobile number ──────────────────────────────────────────
+    # Must POST to the same URL (with query params) that was used in Step 1,
+    # so Upstox knows which OAuth app context this login belongs to.
     r = s.post(
-        f"{_AUTH_BASE}/dialog",
-        json={
-            "mobile":        mobile,
-            "client_id":     api_key,
-            "redirect_uri":  redirect_uri,
-            "response_type": "code",
-        },
+        auth_url,
+        json={"mobile": mobile},
         timeout=15,
     )
     r.raise_for_status()
