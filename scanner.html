@@ -1688,7 +1688,7 @@ async function verifyToken(){
 // ─── Auto-Login ───────────────────────────────────────────────────────────────
 async function loadAutoLoginStatus(){
   try {
-    const r = await fetch(BACKEND+'auth/auto-login-status');
+    const r = await fetch(BACKEND+'/auth/auto-login-status');
     const d = await r.json();
 
     const dot  = document.getElementById('alDot');
@@ -1735,7 +1735,7 @@ async function triggerAutoLogin(){
   msg.textContent = '';
 
   try {
-    const res = await fetch(BACKEND+'auth/trigger-auto-login', {
+    const res = await fetch(BACKEND+'/auth/trigger-auto-login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
