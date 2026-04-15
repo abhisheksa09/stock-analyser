@@ -1631,13 +1631,18 @@ def _token_reminder_job():
         return
 
     render_base = os.environ.get("RENDER_BASE_URL", "").rstrip("/")
-    login_url = f"{render_base}/auth/login" if render_base else "/auth/login"
+    login_url = f"{render_base}/auth/login" if render_base else None
+
+    if login_url:
+        link_line = f"\U0001f449 <a href=\"{login_url}\">Tap here to login</a>\n{login_url}"
+    else:
+        link_line = "\U0001f449 Login URL not available\n(Set RENDER_BASE_URL env var on Render)"
 
     msg = (
         "\u23f0 <b>NSE Scanner \u2014 Set Tomorrow\u2019s Token</b>\n\n"
         "Market opens in ~9\u00bd hours. Please log in to Upstox now so "
         "tomorrow\u2019s scan runs automatically.\n\n"
-        f"\U0001f449 <a href='{login_url}'>Tap here to login</a>\n\n"
+        f"{link_line}\n\n"
         "After login the token is saved automatically \u2014 nothing else needed."
     )
     try:
