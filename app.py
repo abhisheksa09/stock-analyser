@@ -1334,6 +1334,22 @@ def paper_trades_dry_test():
     })
 
 
+@app.route("/paper-trades/config", methods=["GET"])
+def get_paper_trade_config():
+    """Returns the active backtest configuration — no auth required (read-only status)."""
+    from scanner import _get_backtest_symbols, _get_backtest_min_conf, STATE
+    bt_syms = sorted(_get_backtest_symbols())
+    return jsonify({
+        "backtest_symbols":   bt_syms,
+        "symbol_count":       len(bt_syms),
+        "min_conf":           _get_backtest_min_conf(),
+        "saved_today":        sorted(STATE.bt_saved),
+        "saved_today_count":  len(STATE.bt_saved),
+        "source":             "env:BACKTEST_SYMBOLS" if os.environ.get("BACKTEST_SYMBOLS") else "hardcoded_default",
+        "ist_now":            datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
+    })
+
+
 @app.route("/paper-trades/stats", methods=["GET"])
 def get_paper_trade_stats():
     sess, err = _require_session(request)
@@ -1602,6 +1618,35 @@ def _eod_settlement_job():
     if errors:
         log.warning("EOD settlement errors: %s", errors)
 
+def _token_reminder_job():
+    """APScheduler job — sends Telegram reminder at 00:00 IST to set next day's Upstox token."""
+    now_ist = datetime.now(IST)
+    # Friday midnight → no Saturday trading, skip
+    if now_ist.weekday() == 4:
+        log.info("Token reminder: skipping Friday night (no Saturday market)")
+        return
+    # Also skip Saturday/Sunday just in case of clock drift
+    if now_ist.weekday() >= 5:
+        log.info("Token reminder: skipping weekend")
+        return
+
+    render_base = os.environ.get("RENDER_BASE_URL", "").rstrip("/")
+    login_url = f"{render_base}/auth/login" if render_base else "/auth/login"
+
+    msg = (
+        "\u23f0 <b>NSE Scanner \u2014 Set Tomorrow\u2019s Token</b>\n\n"
+        "Market opens in ~9\u00bd hours. Please log in to Upstox now so "
+        "tomorrow\u2019s scan runs automatically.\n\n"
+        f"\U0001f449 <a href='{login_url}'>Tap here to login</a>\n\n"
+        "After login the token is saved automatically \u2014 nothing else needed."
+    )
+    try:
+        scanner.send_telegram(msg)
+        log.info("Token reminder sent at midnight IST")
+    except Exception as e:
+        log.warning("Token reminder Telegram error: %s", e)
+
+
 @app.route("/ai/setup-insight", methods=["POST"])
 def ai_setup_insight():
     sess, err = _require_session(request)
@@ -1640,6 +1685,17 @@ def start_scheduler():
         misfire_grace_time=300,
     )
     log.info("EOD paper-trade settlement job scheduled at 15:35 IST daily")
+
+    # Midnight token reminder — 00:00 IST Sun–Thu (skip Fri night, no Sat market)
+    sched.add_job(
+        _token_reminder_job,
+        trigger="cron",
+        hour=0, minute=0,
+        id="token_reminder",
+        max_instances=1,
+        misfire_grace_time=300,
+    )
+    log.info("Midnight token reminder job scheduled at 00:00 IST daily")
 
     # Morning login reminder — every day at 08:30 IST
     # Requires TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (already used by the scanner)
