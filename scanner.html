@@ -1739,7 +1739,7 @@ async function triggerAutoLogin(){
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Session-Token': sessionToken || '',
+        'X-Session-Token': localStorage.getItem(ADMIN_SESSION_KEY) || '',
       },
     });
     const d = await res.json();
