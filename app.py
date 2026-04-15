@@ -721,53 +721,32 @@ def auth_callback():
         )
 
 
-# ─── Auto-login (headless daily token refresh) ────────────────────────────────
+# ─── Morning login reminder (Telegram) ────────────────────────────────────────
 
-def perform_auto_login_job():
+def send_login_reminder_job():
     """
-    Scheduled job — runs at 08:30 IST every weekday.
-    Uses UPSTOX_MOBILE + UPSTOX_PIN + UPSTOX_TOTP_SECRET env vars to obtain
-    a fresh Upstox access token without any human interaction.
+    Scheduled job — runs at 08:30 IST every day.
+    Sends a Telegram message with a one-tap Upstox login link.
+    Tapping it on your phone opens the OAuth flow and sets the token automatically.
     """
     global _last_auto_login
     ist_time = datetime.now(IST).strftime("%H:%M IST")
-    log.info("Auto-login job started at %s", ist_time)
+    log.info("Login reminder job started at %s", ist_time)
 
-    _last_auto_login["status"]  = "running"
-    _last_auto_login["time"]    = ist_time
-    _last_auto_login["detail"]  = "Login in progress…"
+    _last_auto_login["status"] = "running"
+    _last_auto_login["time"]   = ist_time
+    _last_auto_login["detail"] = "Sending reminder…"
 
-    api_key    = os.environ.get("UPSTOX_API_KEY",    "").strip()
-    api_secret = os.environ.get("UPSTOX_API_SECRET", "").strip()
+    success, msg = _auto_login.send_login_reminder()
 
-    if not api_key or not api_secret:
-        _last_auto_login["status"] = "failed"
-        _last_auto_login["detail"] = "UPSTOX_API_KEY or UPSTOX_API_SECRET not set"
-        log.error("Auto-login: %s", _last_auto_login["detail"])
-        return
-
-    success, result = _auto_login.try_auto_login(api_key, api_secret, OAUTH_REDIRECT)
-
-    if success:
-        token = result
-        scanner.set_token(token)
-        _db_module.set_token(token, set_by="auto_login")
-        scanner.STATE.check_date()
-        ist_time = datetime.now(IST).strftime("%H:%M IST")
-        _last_auto_login["status"] = "success"
-        _last_auto_login["detail"] = f"Token refreshed at {ist_time} (length={len(token)})"
-        _last_auto_login["time"]   = ist_time
-        log.info("Auto-login succeeded — token set at %s", ist_time)
-    else:
-        _last_auto_login["status"] = "failed"
-        _last_auto_login["detail"] = result
-        _last_auto_login["time"]   = ist_time
-        log.error("Auto-login failed: %s", result)
+    _last_auto_login["status"] = "success" if success else "failed"
+    _last_auto_login["detail"] = msg
+    _last_auto_login["time"]   = datetime.now(IST).strftime("%H:%M IST")
 
 
 @app.route("/auth/auto-login-status")
 def auto_login_status():
-    """Return current auto-login state (no auth required — status only, no secrets)."""
+    """Return current reminder state (no auth required)."""
     return jsonify({
         "configured": _auto_login.is_configured(),
         "status":     _last_auto_login["status"],
@@ -779,16 +758,12 @@ def auto_login_status():
 
 @app.route("/auth/trigger-auto-login", methods=["POST"])
 def trigger_auto_login():
-    """Manually trigger auto-login now (admin only)."""
+    """Send login reminder now (admin only)."""
     _, err = _require_admin(request)
     if err:
         return err
 
-    if _last_auto_login.get("status") == "running":
-        return jsonify({"status": "already_running", "message": "Auto-login already in progress"}), 409
-
-    # Run synchronously so the response reflects the result
-    perform_auto_login_job()
+    send_login_reminder_job()
 
     if _last_auto_login["status"] == "success":
         return jsonify({
@@ -1381,29 +1356,29 @@ def start_scheduler():
     )
     log.info("EOD paper-trade settlement job scheduled at 15:35 IST daily")
 
-    # Auto-login — every day at 08:30 IST (before market opens at 09:15)
-    # Only registered if all three credential env vars are present
+    # Morning login reminder — every day at 08:30 IST
+    # Requires TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (already used by the scanner)
     if _auto_login.is_configured():
         sched.add_job(
-            perform_auto_login_job,
+            send_login_reminder_job,
             trigger="cron",
             hour=8, minute=30,
-            id="upstox_auto_login",
+            id="login_reminder",
             max_instances=1,
             misfire_grace_time=300,
         )
-        _last_auto_login["next_run"] = "08:30 IST (daily, configured)"
-        log.info("Auto-login job scheduled at 08:30 IST daily")
+        _last_auto_login["next_run"] = "08:30 IST (daily)"
+        log.info("Login reminder job scheduled at 08:30 IST daily")
     else:
-        _last_auto_login["next_run"] = "not scheduled — set UPSTOX_MOBILE, UPSTOX_PIN, UPSTOX_TOTP_SECRET"
-        log.info("Auto-login not scheduled — credential env vars missing")
+        _last_auto_login["next_run"] = "not scheduled — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing"
+        log.warning("Login reminder not scheduled — Telegram not configured")
 
     sched.start()
     log.info("Scheduler started — scanning every %d min", interval)
     return sched
 
 _load_token_from_db()
-_last_auto_login["configured"] = _auto_login.is_configured()
+_last_auto_login["configured"] = _auto_login.is_configured()  # Telegram configured?
 _scheduler = start_scheduler()
 
 if __name__ == "__main__":

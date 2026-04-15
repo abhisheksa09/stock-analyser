@@ -916,9 +916,13 @@ th[data-tip]{cursor:default;}
       <div class="tok-msg" id="tokenMsg"></div>
     </div>
 
-    <!-- Auto-Login card -->
+    <!-- Morning Reminder card -->
     <div class="card" id="autoLoginCard">
-      <div class="card-title">Auto-Login <span style="font-size:11px;font-weight:400;color:#888;margin-left:6px;">Daily token refresh at 08:30 IST</span></div>
+      <div class="card-title">Morning Reminder <span style="font-size:11px;font-weight:400;color:#888;margin-left:6px;">Telegram login link at 08:30 IST daily</span></div>
+      <p style="font-size:12px;color:#888;margin-bottom:14px;">
+        Sends a Telegram message at 08:30 IST with a one-tap login link.
+        Tap it on your phone &rarr; Upstox opens &rarr; token is set automatically.
+      </p>
 
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
         <span id="alDot" style="width:10px;height:10px;border-radius:50%;background:#e0e0e0;flex-shrink:0;display:inline-block;"></span>
@@ -933,7 +937,7 @@ th[data-tip]{cursor:default;}
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
         <button id="alTriggerBtn" class="btn" onclick="triggerAutoLogin()"
                 style="background:#185FA5;color:#fff;border:none;font-weight:600;">
-          &#9654; Run now
+          &#128161; Send reminder now
         </button>
         <button class="btn" onclick="loadAutoLoginStatus()"
                 style="font-size:12px;padding:6px 14px;">
@@ -941,19 +945,17 @@ th[data-tip]{cursor:default;}
         </button>
       </div>
 
-      <!-- Setup note (shown when not configured) -->
+      <!-- Setup note (shown when Telegram not configured) -->
       <div id="alSetupNote" style="display:none;background:#FFF8E7;border:1px solid #F5C842;
            border-radius:8px;padding:12px 14px;font-size:12px;line-height:1.7;color:#555;">
-        <strong>One-time setup required</strong> &mdash; add these 3 env vars in your
+        <strong>Telegram not configured</strong> &mdash; set these env vars in
         <strong>Render dashboard &rarr; Environment</strong>:<br>
-        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">UPSTOX_MOBILE</code>
-        &nbsp;your registered mobile (digits only)<br>
-        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">UPSTOX_PIN</code>
-        &nbsp;your 6-digit Upstox PIN<br>
-        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">UPSTOX_TOTP_SECRET</code>
-        &nbsp;base-32 TOTP key (Upstox app &rarr; Settings &rarr; My Profile &rarr; Enable TOTP &rarr; &ldquo;Can&rsquo;t scan?&rdquo;)<br>
+        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">TELEGRAM_BOT_TOKEN</code>
+        &nbsp;from @BotFather<br>
+        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">TELEGRAM_CHAT_ID</code>
+        &nbsp;your personal chat ID<br>
         <span style="color:#888;font-size:11px;display:block;margin-top:6px;">
-          After adding, redeploy the Render service once &mdash; no other changes needed.
+          These are the same vars used by the alert scanner &mdash; if alerts already work, this is already configured.
         </span>
       </div>
 
