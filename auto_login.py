@@ -58,40 +58,53 @@ def _headless_login(api_key: str, api_secret: str, redirect_uri: str,
     log.info("Step 1 — auth dialog: HTTP %d", r.status_code)
 
     # ── Step 2: Submit mobile number ──────────────────────────────────────────
-    # Must POST to the same URL (with query params) that was used in Step 1,
-    # so Upstox knows which OAuth app context this login belongs to.
+    # POST to the same URL with query params so Upstox knows the OAuth context.
+    # Upstox's internal API uses "mobile_number", not "mobile".
+    # Add Origin + Referer so the request looks like it came from a browser.
     r = s.post(
         auth_url,
-        json={"mobile": mobile},
+        json={"mobile_number": mobile},
+        headers={
+            **_COMMON_HDRS,
+            "Origin":  "https://api.upstox.com",
+            "Referer": auth_url,
+        },
         timeout=15,
     )
-    r.raise_for_status()
+    if not r.ok:
+        raise Exception(f"Mobile step HTTP {r.status_code}: {r.text[:400]}")
     body = r.json()
     if body.get("status") != "success":
         raise Exception(f"Mobile step failed: {body}")
     otp_session_id = body.get("data", {}).get("otp_session_id", "")
     if not otp_session_id:
-        raise Exception(f"otp_session_id missing in mobile step response: {list(body.get('data', {}).keys())}")
+        raise Exception(f"otp_session_id missing. Keys: {list(body.get('data', {}).keys())}")
     log.info("Step 2 — mobile accepted, otp_session_id obtained")
 
     # ── Step 3: Submit PIN ─────────────────────────────────────────────────────
     r = s.post(
         f"{_AUTH_BASE}/dialog/pin-validation",
         json={
-            "mobile":         mobile,
+            "mobile_number":  mobile,
             "client_id":      api_key,
             "pin":            pin,
             "otp_session_id": otp_session_id,
         },
+        headers={
+            **_COMMON_HDRS,
+            "Origin":  "https://api.upstox.com",
+            "Referer": auth_url,
+        },
         timeout=15,
     )
-    r.raise_for_status()
+    if not r.ok:
+        raise Exception(f"PIN step HTTP {r.status_code}: {r.text[:400]}")
     body = r.json()
     if body.get("status") != "success":
         raise Exception(f"PIN step failed: {body}")
     pin_token = body.get("data", {}).get("token", "")
     if not pin_token:
-        raise Exception(f"pin token missing in PIN step response: {list(body.get('data', {}).keys())}")
+        raise Exception(f"pin token missing. Keys: {list(body.get('data', {}).keys())}")
     log.info("Step 3 — PIN validated")
 
     # ── Step 4: Submit TOTP ───────────────────────────────────────────────────
@@ -100,9 +113,14 @@ def _headless_login(api_key: str, api_secret: str, redirect_uri: str,
     r = s.post(
         f"{_AUTH_BASE}/dialog/totp-validation",
         json={
-            "mobile": mobile,
-            "otp":    totp_code,
-            "token":  pin_token,
+            "mobile_number": mobile,
+            "otp":           totp_code,
+            "token":         pin_token,
+        },
+        headers={
+            **_COMMON_HDRS,
+            "Origin":  "https://api.upstox.com",
+            "Referer": auth_url,
         },
         timeout=15,
         allow_redirects=False,   # must NOT follow — we need the Location header
