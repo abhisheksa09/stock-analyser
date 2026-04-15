@@ -1735,12 +1735,11 @@ async function triggerAutoLogin(){
   msg.textContent = '';
 
   try {
+    const tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
     const res = await fetch(BACKEND+'/auth/trigger-auto-login', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Token': localStorage.getItem(ADMIN_SESSION_KEY) || '',
-      },
+      credentials: 'include',
+      headers: (function(){ var h={'Content-Type':'application/json'}; if(tok) h['X-Session-Token']=tok; return h; })(),
     });
     const d = await res.json();
     if(res.ok && d.status === 'success'){
