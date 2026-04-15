@@ -1365,20 +1365,14 @@ def trigger_paper_trade_settlement():
 def _compute_outcome(sig: str, entry: float, target: float,
                      stop_loss: float, close: float):
     """
-    Given signal direction and actual closing price, return:
-      (outcome, pnl_pts, pnl_pct, target_hit, sl_hit)
-
-    Outcomes:
-      won          — price reached the full target
-      partial_win  — moved in right direction but didn't hit target
-      partial_loss — moved against but didn't hit stop loss
-      lost         — price hit stop loss
+    Fallback outcome using a single price (used by dry-test with mock data).
+    For real settlement use _compute_outcome_intraday() instead.
     """
     if sig == "BUY":
         target_hit = close >= target
         sl_hit     = close <= stop_loss
         pnl_pts    = round(close - entry, 2)
-    else:  # SELL
+    else:
         target_hit = close <= target
         sl_hit     = close >= stop_loss
         pnl_pts    = round(entry - close, 2)
@@ -1397,14 +1391,123 @@ def _compute_outcome(sig: str, entry: float, target: float,
     return outcome, pnl_pts, pnl_pct, target_hit, sl_hit
 
 
+def _compute_outcome_intraday(sig: str, entry: float, target: float,
+                               stop_loss: float, candles: list,
+                               signal_time_str: str):
+    """
+    Walk 1-minute intraday candles from signal_time forward to find the actual
+    exit point — the first candle where either the target or stop loss is touched.
+
+    Candle format (Upstox): [timestamp, open, high, low, close, volume, ...]
+    Candles are chronological (9:15 first).
+    Timestamp example: "2024-01-15T09:16:00+05:30"
+
+    Rules:
+      BUY  — check low  <= stop_loss first (adverse), then high >= target
+      SELL — check high >= stop_loss first (adverse), then low  <= target
+
+    When both levels are touched within the same candle:
+      - If candle open already past a level (gap through) → that level is hit at open
+      - Otherwise assume the adverse move (SL) happened first — conservative
+
+    If neither level is hit before session end:
+      - Exit is simulated at the last candle's close price
+
+    Returns: (exit_price, outcome, pnl_pts, pnl_pct, target_hit, sl_hit)
+    """
+    def _pnl(exit_px):
+        pts = round((exit_px - entry) if sig == "BUY" else (entry - exit_px), 2)
+        pct = round(pts / entry * 100, 3) if entry else 0.0
+        return pts, pct
+
+    def _candle_mins(c):
+        """Extract minutes-since-midnight from a candle timestamp string."""
+        try:
+            ts = str(c[0])          # "2024-01-15T09:16:00+05:30"
+            hhmm = ts[11:16]        # "09:16"
+            h, m = hhmm.split(":")
+            return int(h) * 60 + int(m)
+        except Exception:
+            return -1
+
+    # Parse signal time → minutes since midnight
+    try:
+        sh, sm = signal_time_str.split(":")
+        sig_mins = int(sh) * 60 + int(sm)
+    except Exception:
+        sig_mins = 9 * 60 + 15   # fallback: market open
+
+    # Only candles at or after the signal time
+    relevant = [c for c in candles if _candle_mins(c) >= sig_mins]
+
+    if not relevant:
+        # Signal fired after all available candles; use last candle's close
+        relevant = candles
+
+    for c in relevant:
+        o = float(c[1])
+        h = float(c[2])
+        l = float(c[3])
+
+        if sig == "BUY":
+            # ── Gap open past a level ────────────────────────────────────────
+            if o <= stop_loss:                          # gapped through SL
+                pts, pct = _pnl(o)
+                return o, "lost", pts, pct, False, True
+            if o >= target:                             # gapped through target
+                pts, pct = _pnl(o)
+                return o, "won", pts, pct, True, False
+
+            # ── Both levels hit within same candle → SL first (conservative) ─
+            if l <= stop_loss and h >= target:
+                pts, pct = _pnl(stop_loss)
+                return stop_loss, "lost", pts, pct, False, True
+
+            if l <= stop_loss:
+                pts, pct = _pnl(stop_loss)
+                return stop_loss, "lost", pts, pct, False, True
+
+            if h >= target:
+                pts, pct = _pnl(target)
+                return target, "won", pts, pct, True, False
+
+        else:  # SELL
+            if o >= stop_loss:
+                pts, pct = _pnl(o)
+                return o, "lost", pts, pct, False, True
+            if o <= target:
+                pts, pct = _pnl(o)
+                return o, "won", pts, pct, True, False
+
+            if h >= stop_loss and l <= target:
+                pts, pct = _pnl(stop_loss)
+                return stop_loss, "lost", pts, pct, False, True
+
+            if h >= stop_loss:
+                pts, pct = _pnl(stop_loss)
+                return stop_loss, "lost", pts, pct, False, True
+
+            if l <= target:
+                pts, pct = _pnl(target)
+                return target, "won", pts, pct, True, False
+
+    # Neither level hit — exit at last candle close
+    last_close = float(relevant[-1][4])
+    pts, pct   = _pnl(last_close)
+    outcome    = "partial_win" if pts > 0 else "partial_loss"
+    return last_close, outcome, pts, pct, False, False
+
+
 def _settle_paper_trades_for_date(date_str: str = None):
     """
-    Fetch closing prices for all open paper trades on date_str (default: today IST)
-    and mark them as settled.
+    Settle all open paper trades for date_str by replaying intraday 1-minute
+    candles from the signal time forward — finds the first candle where price
+    hits the target or stop loss.
 
+    Falls back to the session-close price if neither level is reached.
     Returns: (settled_count, skipped_count, error_list)
     """
-    from signals import get_daily, STOCKS
+    from signals import get_intraday, STOCKS
 
     if date_str is None:
         date_str = datetime.now(IST).strftime("%Y-%m-%d")
@@ -1422,16 +1525,15 @@ def _settle_paper_trades_for_date(date_str: str = None):
 
     token = get_effective_token()
     if not token:
-        log.warning("EOD settlement: no Upstox token — cannot fetch closing prices")
+        log.warning("EOD settlement: no Upstox token — cannot fetch intraday data")
         return 0, len(open_trades), ["No Upstox token available"]
 
-    # Build sym → ikey lookup from STOCKS
     sym_to_ikey = {s["sym"]: s["ikey"] for s in STOCKS}
 
     settled, skipped, errors = 0, 0, []
 
     for trade in open_trades:
-        sym = trade["sym"]
+        sym  = trade["sym"]
         ikey = sym_to_ikey.get(sym)
         if not ikey:
             log.warning("EOD settlement: unknown symbol %s", sym)
@@ -1440,37 +1542,39 @@ def _settle_paper_trades_for_date(date_str: str = None):
             continue
 
         try:
-            daily = get_daily(ikey, token)
-            if not daily:
-                raise ValueError("Empty daily candle data")
+            candles = get_intraday(ikey, token)
+            if not candles:
+                raise ValueError("Empty intraday candle data")
 
-            # Last candle's close price = today's closing price
-            close_price = float(daily[-1]["close"])
-
-            outcome, pnl_pts, pnl_pct, target_hit, sl_hit = _compute_outcome(
-                sig       = trade["sig"],
-                entry     = float(trade["entry"]),
-                target    = float(trade["target"]),
-                stop_loss = float(trade["stop_loss"]),
-                close     = close_price,
-            )
+            exit_price, outcome, pnl_pts, pnl_pct, target_hit, sl_hit = \
+                _compute_outcome_intraday(
+                    sig             = trade["sig"],
+                    entry           = float(trade["entry"]),
+                    target          = float(trade["target"]),
+                    stop_loss       = float(trade["stop_loss"]),
+                    candles         = candles,
+                    signal_time_str = trade.get("signal_time", "09:15"),
+                )
 
             ok = _db_module.settle_paper_trade(
-                trade_id   = trade["id"],
-                close_price= close_price,
-                outcome    = outcome,
-                pnl_pts    = pnl_pts,
-                pnl_pct    = pnl_pct,
-                target_hit = target_hit,
-                sl_hit     = sl_hit,
+                trade_id    = trade["id"],
+                close_price = exit_price,        # actual exit price, not just day close
+                outcome     = outcome,
+                pnl_pts     = pnl_pts,
+                pnl_pct     = pnl_pct,
+                target_hit  = target_hit,
+                sl_hit      = sl_hit,
             )
 
             if ok:
                 settled += 1
                 log.info(
-                    "Settled %s %s: close=%.2f entry=%.2f → %s (%.2f pts, %.2f%%)",
-                    trade["sig"], sym, close_price,
-                    float(trade["entry"]), outcome, pnl_pts, pnl_pct
+                    "Settled %s %s: exit=%.2f entry=%.2f → %s (%.2f pts, %.2f%%) "
+                    "[tgt=%s sl=%s]",
+                    trade["sig"], sym, exit_price, float(trade["entry"]),
+                    outcome, pnl_pts, pnl_pct,
+                    "HIT" if target_hit else "-",
+                    "HIT" if sl_hit     else "-",
                 )
             else:
                 skipped += 1
