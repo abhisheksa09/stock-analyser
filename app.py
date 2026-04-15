@@ -1165,6 +1165,175 @@ def get_paper_trades():
     return jsonify({"trades": trades, "count": len(trades)})
 
 
+@app.route("/paper-trades/dry-test", methods=["POST"])
+def paper_trades_dry_test():
+    """
+    End-to-end dry test for paper trading pipeline (admin only).
+
+    Creates 4 synthetic paper trades with realistic mock data, immediately
+    settles them with controlled closing prices, then returns a full audit
+    report — no real scan or market close needed.
+
+    The 4 test cases cover every possible outcome:
+      1. BUY  — close hits target        → WON
+      2. BUY  — close hits stop loss     → LOST
+      3. SELL — close hits target        → WON
+      4. BUY  — close between entry/tgt  → PARTIAL WIN
+    """
+    sess, err = _require_admin(request)
+    if err:
+        return err
+    if not _has_db():
+        return jsonify({"error": "No database connection"}), 503
+
+    now      = datetime.now(IST)
+    today    = now.strftime("%Y-%m-%d")
+    hhmm     = now.strftime("%H:%M")
+
+    # ── synthetic setups ──────────────────────────────────────────────────────
+    mock_trades = [
+        {
+            "label":       "BUY — should hit target",
+            "sig":         "BUY",
+            "sym":         "DRY_HDFCBANK",
+            "sec":         "Banking",
+            "conf":        82,
+            "signal_price": 1800.00,
+            "entry":       1805.00,
+            "target":      1835.00,   # +30 pts
+            "stop_loss":   1790.00,   # -15 pts  → R:R = 2:1
+            "rr":          2.0,
+            "rsi":         48.0,
+            "reason":      "DRY TEST — ORB breakout + above VWAP",
+            "mock_close":  1840.00,   # above target → WON
+        },
+        {
+            "label":       "BUY — should hit stop loss",
+            "sig":         "BUY",
+            "sym":         "DRY_TCS",
+            "sec":         "IT",
+            "conf":        76,
+            "signal_price": 3500.00,
+            "entry":       3510.00,
+            "target":      3560.00,
+            "stop_loss":   3480.00,
+            "rr":          1.67,
+            "rsi":         44.0,
+            "reason":      "DRY TEST — VWAP bounce",
+            "mock_close":  3472.00,   # below SL → LOST
+        },
+        {
+            "label":       "SELL — should hit target",
+            "sig":         "SELL",
+            "sym":         "DRY_INFY",
+            "sec":         "IT",
+            "conf":        79,
+            "signal_price": 1450.00,
+            "entry":       1445.00,
+            "target":      1415.00,   # -30 pts
+            "stop_loss":   1465.00,
+            "rr":          1.5,
+            "rsi":         68.0,
+            "reason":      "DRY TEST — ORB breakdown + below VWAP",
+            "mock_close":  1410.00,   # below target → WON
+        },
+        {
+            "label":       "BUY — partial win (moved right, missed target)",
+            "sig":         "BUY",
+            "sym":         "DRY_RELIANCE",
+            "sec":         "Energy",
+            "conf":        67,
+            "signal_price": 2400.00,
+            "entry":       2408.00,
+            "target":      2440.00,
+            "stop_loss":   2385.00,
+            "rr":          2.13,
+            "rsi":         51.0,
+            "reason":      "DRY TEST — above VWAP momentum",
+            "mock_close":  2425.00,   # above entry, below target → PARTIAL WIN
+        },
+    ]
+
+    report   = []
+    inserted = 0
+    settled  = 0
+
+    for m in mock_trades:
+        trade_id = f"drytest_{today.replace('-','')}_{m['sym']}"
+
+        # Step 1 — save the simulated order (as if scanner fired a green alert)
+        saved = _db_module.save_paper_trade({
+            "id":           trade_id,
+            "trade_date":   today,
+            "signal_time":  hhmm,
+            "sym":          m["sym"],
+            "sec":          m["sec"],
+            "sig":          m["sig"],
+            "conf":         m["conf"],
+            "signal_price": m["signal_price"],
+            "entry":        m["entry"],
+            "target":       m["target"],
+            "stop_loss":    m["stop_loss"],
+            "rr":           m["rr"],
+            "rsi":          m["rsi"],
+            "reason":       m["reason"],
+        })
+        if saved:
+            inserted += 1
+
+        # Step 2 — settle immediately with the mock close price
+        close = m["mock_close"]
+        outcome, pnl_pts, pnl_pct, target_hit, sl_hit = _compute_outcome(
+            sig       = m["sig"],
+            entry     = m["entry"],
+            target    = m["target"],
+            stop_loss = m["stop_loss"],
+            close     = close,
+        )
+
+        ok = _db_module.settle_paper_trade(
+            trade_id   = trade_id,
+            close_price= close,
+            outcome    = outcome,
+            pnl_pts    = pnl_pts,
+            pnl_pct    = pnl_pct,
+            target_hit = target_hit,
+            sl_hit     = sl_hit,
+        )
+        if ok:
+            settled += 1
+
+        report.append({
+            "label":       m["label"],
+            "sym":         m["sym"],
+            "sig":         m["sig"],
+            "conf":        m["conf"],
+            "entry":       m["entry"],
+            "target":      m["target"],
+            "stop_loss":   m["stop_loss"],
+            "mock_close":  close,
+            "outcome":     outcome,
+            "pnl_pts":     pnl_pts,
+            "pnl_pct":     round(pnl_pct, 3),
+            "target_hit":  target_hit,
+            "sl_hit":      sl_hit,
+            "saved_ok":    saved,
+            "settled_ok":  ok,
+        })
+
+    # Step 3 — pull back stats so we can show accuracy in the response
+    stats = _db_module.get_paper_trade_stats(days=1)
+
+    return jsonify({
+        "status":   "ok",
+        "message":  f"Created {inserted} mock trades and settled {settled} — check /paper-trades to see them in the UI.",
+        "note":     "All test symbols are prefixed DRY_ so they're easy to identify. They will appear in the Backtest tab.",
+        "trades":   report,
+        "stats_today": stats,
+        "ist_now":  now.strftime("%Y-%m-%d %H:%M:%S IST"),
+    })
+
+
 @app.route("/paper-trades/stats", methods=["GET"])
 def get_paper_trade_stats():
     sess, err = _require_session(request)

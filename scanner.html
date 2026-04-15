@@ -977,6 +977,24 @@ th[data-tip]{cursor:default;}
     </div>
 
     <div class="card">
+      <div class="card-title">Backtest Dry Test</div>
+      <p style="font-size:12px;color:#888;margin-bottom:12px;">
+        Creates 4 synthetic paper trades covering all outcome types (Won, Lost, Partial Win, Partial Loss)
+        and immediately settles them with mock closing prices.
+        Verifies the full pipeline end-to-end — no real scan or market close needed.
+        <br><span style="color:#aaa;">Test symbols are prefixed <code>DRY_</code> so they're easy to spot in the Backtest tab.</span>
+      </p>
+      <button class="btn" id="btDryTestBtn" onclick="runBtDryTest()"
+              style="background:#185FA5;color:#fff;border-color:#185FA5;">
+        &#9654; Run dry test
+      </button>
+      <div id="btDryTestMsg" style="font-size:12px;margin-top:10px;min-height:16px;"></div>
+      <pre id="btDryTestBox" style="display:none;background:#1a1a1a;color:#a8ff78;padding:14px;border-radius:8px;
+           font-size:11px;line-height:1.6;overflow-x:auto;max-height:400px;overflow-y:auto;
+           white-space:pre-wrap;margin-top:10px;"></pre>
+    </div>
+
+    <div class="card">
       <div class="card-title">Dry Scan</div>
       <p style="font-size:12px;color:#888;margin-bottom:10px;">Run a real scan right now ignoring the 9:15&#8211;10:30 window. Sends a Telegram alert for the best signal found.</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
@@ -2505,6 +2523,78 @@ function renderBtTable() {
       '</td>';
     tb.appendChild(tr);
   });
+}
+
+async function runBtDryTest() {
+  var btn = document.getElementById('btDryTestBtn');
+  var msg = document.getElementById('btDryTestMsg');
+  var box = document.getElementById('btDryTestBox');
+  if(!msg || !box) return;
+
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  msg.style.color = '#888';
+  msg.textContent = 'Creating mock trades and settling them…';
+  box.style.display = 'none';
+
+  try {
+    var r = await fetch(BACKEND + '/paper-trades/dry-test', {
+      method: 'POST',
+      headers: appHeaders({'Content-Type': 'application/json'}),
+      credentials: 'include'
+    });
+    var d = await r.json();
+
+    if(!r.ok) {
+      msg.textContent = 'Error: ' + (d.error || 'HTTP ' + r.status);
+      msg.style.color = '#A32D2D';
+      return;
+    }
+
+    msg.textContent = '✓ ' + d.message;
+    msg.style.color = '#27500A';
+
+    // Format result nicely in the pre box
+    var lines = ['=== DRY TEST RESULTS ===', ''];
+    (d.trades || []).forEach(function(t) {
+      var pnlSign = t.pnl_pts >= 0 ? '+' : '';
+      lines.push('► ' + t.label);
+      lines.push('  Signal  : ' + t.sig + ' @ ₹' + t.entry + '  |  Conf: ' + t.conf + '%');
+      lines.push('  Target  : ₹' + t.target + '   SL: ₹' + t.stop_loss);
+      lines.push('  Close   : ₹' + t.mock_close + '  (mock EOD price)');
+      lines.push('  Outcome : ' + t.outcome.toUpperCase() +
+        (t.target_hit ? '  [TARGET HIT]' : '') +
+        (t.sl_hit     ? '  [SL HIT]'     : ''));
+      lines.push('  P&L     : ' + pnlSign + t.pnl_pts + ' pts  (' + (t.pnl_pct >= 0 ? '+' : '') + t.pnl_pct + '%)');
+      lines.push('  DB save : ' + (t.saved_ok ? 'OK' : 'FAILED') +
+                 '  |  Settle : ' + (t.settled_ok ? 'OK' : 'FAILED (may already exist)'));
+      lines.push('');
+    });
+
+    var s = d.stats_today || {};
+    if(s.total) {
+      lines.push('=== STATS (last 1 day) ===');
+      lines.push('  Trades settled : ' + s.settled + ' / ' + s.total);
+      lines.push('  Win rate       : ' + s.win_rate + '%');
+      lines.push('  Avg P&L        : ' + s.avg_pnl_pct + '%');
+    }
+
+    box.textContent = lines.join('\n');
+    box.style.display = 'block';
+
+    // Auto-refresh backtest tab if it's visible
+    if(document.getElementById('tab-backtest') &&
+       document.getElementById('tab-backtest').classList.contains('active')) {
+      loadPaperTrades();
+    }
+
+  } catch(e) {
+    msg.textContent = 'Error: ' + e.message;
+    msg.style.color = '#A32D2D';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Run dry test';
+  }
 }
 
 // ─── CORPORATE EVENTS ────────────────────────────────────────────────────────
