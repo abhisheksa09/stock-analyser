@@ -7,11 +7,19 @@ Triggers Telegram alerts when:
   2. Confidence crosses 75% (was below, now above)
   3. Signal reversal detected
 
+Automated backtest mode:
+  For BACKTEST_SYMBOLS, paper trades are saved automatically at the first scan
+  where confidence >= BACKTEST_MIN_CONF (default 55%). This runs every market day
+  without any manual action, collecting data to calibrate signal thresholds.
+
 Environment variables (set in Render dashboard):
   UPSTOX_TOKEN          — set each morning via /set-token-form
   TELEGRAM_BOT_TOKEN    — from @BotFather  e.g. 7123456789:AAF-xxxxx
   TELEGRAM_CHAT_ID      — your personal chat ID  e.g. 123456789
-  SCAN_SYMBOLS          — comma-separated symbols (default: all 30)
+  SCAN_SYMBOLS          — comma-separated symbols for Telegram alerts (default: all)
+  BACKTEST_SYMBOLS      — comma-separated symbols for auto paper trades
+                          (default: 12 hardcoded diverse Nifty50 stocks)
+  BACKTEST_MIN_CONF     — min confidence to auto-save a paper trade (default: 55)
   ALERT_START_IST       — HH:MM  (default: 09:15)
   ALERT_STOP_IST        — HH:MM  (default: 10:30)
   SCAN_INTERVAL_MINS    — integer (default: 5)
@@ -26,7 +34,7 @@ import urllib.parse
 import urllib.error
 from datetime import datetime, timezone, timedelta
 
-from signals import STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context
+from signals import STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, READY_GREEN_MIN
 from macro import get_full_macro_context, apply_all_macro_penalties
 import db as _db_module
 
@@ -34,6 +42,37 @@ log = logging.getLogger("scanner")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [scanner] %(message)s")
 
 IST = timezone(timedelta(hours=5, minutes=30))
+
+# ─── Backtest config ──────────────────────────────────────────────────────────
+# 12 liquid Nifty50 stocks across 8 sectors — good diversity for calibration.
+# Override any time via the BACKTEST_SYMBOLS env var (comma-separated).
+_DEFAULT_BACKTEST_SYMBOLS = [
+    "HDFCBANK",    # Banking (private)
+    "ICICIBANK",   # Banking (private)
+    "SBIN",        # Banking (PSU — different behaviour)
+    "TCS",         # IT
+    "INFY",        # IT
+    "RELIANCE",    # Energy / Conglomerate
+    "TATAMOTORS",  # Auto
+    "MARUTI",      # Auto
+    "HINDUNILVR",  # FMCG
+    "SUNPHARMA",   # Pharma
+    "LT",          # Infrastructure
+    "BAJFINANCE",  # NBFC
+]
+
+def _get_backtest_symbols() -> set:
+    """Returns the active backtest symbol set (env override or hardcoded default)."""
+    raw = os.environ.get("BACKTEST_SYMBOLS", "").strip()
+    if raw:
+        return {s.strip().upper() for s in raw.split(",") if s.strip()}
+    return set(_DEFAULT_BACKTEST_SYMBOLS)
+
+def _get_backtest_min_conf() -> int:
+    try:
+        return int(os.environ.get("BACKTEST_MIN_CONF", "55"))
+    except ValueError:
+        return 55
 
 # ─── Session state ────────────────────────────────────────────────────────────
 
@@ -54,6 +93,7 @@ class SessionState:
         self.locked_sig = {}
         self.prev_conf  = {}
         self.alerted    = set()
+        self.bt_saved   = set()   # symbols already auto-saved as paper trades today
         log.info("Session state reset for %s", self.date)
 
     def check_date(self):
@@ -185,7 +225,7 @@ def format_alert(kind: str, s: dict, extra: str = "") -> str:
 
     elif kind == "conf_crossed":
         return (
-            f"📈 <b>NSE SCANNER — CONFIDENCE CROSSED 75%</b>\n"
+            f"📈 <b>NSE SCANNER — CONFIDENCE CROSSED {READY_GREEN_MIN}%</b>\n"
             f"\n"
             f"<b>{s['sym']}</b>  <code>{s['sec']}</code>\n"
             f"Signal  : <b>{s['sig']}</b>\n"
@@ -278,10 +318,21 @@ def run_scan():
         log.info("Outside window (%02d:%02d IST) — skip", mins // 60, mins % 60)
         return
 
+    # Telegram alert symbols (env override or all stocks)
     watch = [s.strip().upper() for s in os.environ.get("SCAN_SYMBOLS", "").split(",") if s.strip()]
-    syms  = [s for s in STOCKS if (not watch or s["sym"] in watch)]
 
-    log.info("Scanning %d symbols at %02d:%02d IST", len(syms), mins // 60, mins % 60)
+    # Backtest symbols always scanned regardless of SCAN_SYMBOLS filter
+    bt_syms    = _get_backtest_symbols()
+    bt_min_conf = _get_backtest_min_conf()
+
+    # Union: alert symbols + backtest symbols, deduped
+    all_syms = [
+        s for s in STOCKS
+        if (not watch or s["sym"] in watch) or s["sym"] in bt_syms
+    ]
+
+    log.info("Scanning %d symbols at %02d:%02d IST  (backtest: %d symbols, min_conf=%d%%)",
+             len(all_syms), mins // 60, mins % 60, len(bt_syms), bt_min_conf)
 
     # Refresh macro context every 30 min (expensive: news API + Claude call)
     macro_stale = (
@@ -296,7 +347,6 @@ def run_scan():
     sent = 0
 
     # Fetch market context ONCE per scan cycle (not per stock — saves API calls)
-    # We use HDFCBANK's sector as proxy to get Nifty50; sector context per stock below
     try:
         nifty_ctx = get_market_context("Banking", token)
         log.info("Nifty50: %+.1f%%  (market bias: %s)",
@@ -305,22 +355,23 @@ def run_scan():
         log.warning("Market context fetch failed: %s — proceeding without filters", e)
         nifty_ctx = None
 
-    for stock in syms:
-        sym = stock["sym"]
+    for stock in all_syms:
+        sym        = stock["sym"]
+        in_bt      = sym in bt_syms
+        in_watch   = not watch or sym in watch
+
         try:
             ltp   = get_ltp(stock["ikey"], token)
             intra = get_intraday(stock["ikey"], token)
             daily = get_daily(stock["ikey"], token)
 
-            # Get sector-specific context (reuses nifty_chg, fetches sector index)
             if nifty_ctx is not None:
                 try:
                     ctx = get_market_context(stock["sec"], token)
-                    # Reuse already-fetched nifty_chg to avoid duplicate call
                     ctx["nifty_chg"]   = nifty_ctx["nifty_chg"]
                     ctx["market_bias"] = nifty_ctx["market_bias"]
                 except Exception:
-                    ctx = nifty_ctx   # fallback to broad market
+                    ctx = nifty_ctx
             else:
                 ctx = None
 
@@ -329,44 +380,59 @@ def run_scan():
             log.warning("Fetch error %s: %s", sym, e)
             continue
 
-        verdict, _  = is_ready(s, mins)
-        prev_conf   = STATE.prev_conf.get(sym)
-        locked      = STATE.locked_sig.get(sym)
+        verdict, _ = is_ready(s, mins)
+        prev_conf  = STATE.prev_conf.get(sym)
+        locked     = STATE.locked_sig.get(sym)
 
         # Lock first signal of session
         if sym not in STATE.locked_sig and s["sig"] != "WATCH":
             STATE.locked_sig[sym] = s["sig"]
 
-        # ── Trigger 1: Green Ready ─────────────────────────────────────────
-        if verdict == "green" and not STATE.already_alerted(sym, "green_ready"):
-            if send_telegram(format_alert("green_ready", s)):
-                STATE.mark_alerted(sym, "green_ready")
-                sent += 1
-                # Simulate placing an order — save as paper trade for backtesting
-                _save_paper_trade(s)
-            time.sleep(1)   # avoid Telegram rate limit (30 msg/sec)
-
-        # ── Trigger 2: Confidence crossed 75% ─────────────────────────────
-        if (prev_conf is not None
-                and prev_conf < 75
-                and s["conf"] >= 75
+        # ── Auto paper trade for backtest symbols ──────────────────────────
+        # Saves at the FIRST scan where conf >= bt_min_conf, regardless of
+        # Telegram alerts. Captures both amber and green setups for comparison.
+        if (in_bt
                 and s["sig"] != "WATCH"
-                and not STATE.already_alerted(sym, "conf_crossed")):
-            if send_telegram(format_alert("conf_crossed", s, extra=str(prev_conf))):
-                STATE.mark_alerted(sym, "conf_crossed")
-                sent += 1
-            time.sleep(1)
+                and s["conf"] >= bt_min_conf
+                and sym not in STATE.bt_saved):
+            _save_paper_trade(s)
+            STATE.bt_saved.add(sym)
 
-        # ── Trigger 3: Reversal ────────────────────────────────────────────
-        if (locked
-                and locked != s["sig"]
-                and s["sig"] != "WATCH"
-                and not STATE.already_alerted(sym, "reversal")):
-            if send_telegram(format_alert("reversal", s, extra=locked)):
-                STATE.mark_alerted(sym, "reversal")
-                sent += 1
-            time.sleep(1)
+        # ── Telegram alerts (only for alert-watch symbols) ─────────────────
+        if in_watch:
+            # Trigger 1: Green Ready
+            if verdict == "green" and not STATE.already_alerted(sym, "green_ready"):
+                if send_telegram(format_alert("green_ready", s)):
+                    STATE.mark_alerted(sym, "green_ready")
+                    sent += 1
+                    # Also ensure paper trade saved for non-backtest alert symbols
+                    if sym not in STATE.bt_saved:
+                        _save_paper_trade(s)
+                        STATE.bt_saved.add(sym)
+                time.sleep(1)
+
+            # Trigger 2: Confidence crossed green threshold
+            if (prev_conf is not None
+                    and prev_conf < READY_GREEN_MIN
+                    and s["conf"] >= READY_GREEN_MIN
+                    and s["sig"] != "WATCH"
+                    and not STATE.already_alerted(sym, "conf_crossed")):
+                if send_telegram(format_alert("conf_crossed", s, extra=str(prev_conf))):
+                    STATE.mark_alerted(sym, "conf_crossed")
+                    sent += 1
+                time.sleep(1)
+
+            # Trigger 3: Reversal
+            if (locked
+                    and locked != s["sig"]
+                    and s["sig"] != "WATCH"
+                    and not STATE.already_alerted(sym, "reversal")):
+                if send_telegram(format_alert("reversal", s, extra=locked)):
+                    STATE.mark_alerted(sym, "reversal")
+                    sent += 1
+                time.sleep(1)
 
         STATE.prev_conf[sym] = s["conf"]
 
-    log.info("Scan done — %d alerts sent", sent)
+    log.info("Scan done — %d alerts sent, %d paper trades saved today",
+             sent, len(STATE.bt_saved))

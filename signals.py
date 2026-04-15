@@ -10,6 +10,7 @@ Filters added:
 """
 
 import math
+import os
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -26,7 +27,9 @@ DAY_TREND_PENALTY       = 10
 DAY_TREND_BONUS         = 5
 CANDLE_CONFIRM_PENALTY  = 20
 
-READY_GREEN_MIN = 75
+# ALERT_GREEN_THRESHOLD env var lets you lower the green bar for testing
+# e.g. set to 50 on Render to fire alerts at 50%+ confidence
+READY_GREEN_MIN = int(os.environ.get("ALERT_GREEN_THRESHOLD", "75"))
 READY_AMBER_MIN = 55
 MIN_RVOL_GREEN  = 100   # percent of avg daily volume proxy
 
