@@ -1081,6 +1081,18 @@ def update_trade(trade_id):
     return jsonify({"status": "ok" if ok else "error"})
 
 
+@app.route("/history/trades/all", methods=["DELETE"])
+@app.route("/history/trades/all/", methods=["DELETE"])
+def delete_all_trades():
+    sess, err = _require_session(request)
+    if err:
+        return err
+    if not _has_db():
+        return jsonify({"error": "No DB"}), 503
+    ok = _db_module.delete_all_trades(sess["username"])
+    return jsonify({"status": "ok" if ok else "error"})
+
+
 @app.route("/history/trades/<trade_id>", methods=["DELETE"])
 @app.route("/history/trades/<trade_id>/", methods=["DELETE"])
 def delete_trade(trade_id):

@@ -343,6 +343,18 @@ def delete_trade(trade_id: str):
         log.warning("delete_trade: %s", e)
         return False
 
+def delete_all_trades(username: str):
+    conn = db()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM trade_history WHERE username=%s", (username,))
+        return True
+    except Exception as e:
+        log.warning("delete_all_trades: %s", e)
+        return False
+
 def get_trade_stats(username=None):
     """Quick win/loss stats for a user."""
     trades   = get_trades(username=username, limit=2000)

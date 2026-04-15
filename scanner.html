@@ -2308,9 +2308,34 @@ function toggleRowSel(cb){const id=cb.dataset.id,tr=cb.closest('tr');if(cb.check
 function toggleSelAll(cb){document.querySelectorAll('.row-cb[data-id]').forEach(el=>{el.checked=cb.checked;const tr=el.closest('tr');if(cb.checked){selectedIds.add(el.dataset.id);tr.classList.add('row-sel');}else{selectedIds.delete(el.dataset.id);tr.classList.remove('row-sel');}});updateBulkBar();}
 function updateBulkBar(){const bar=document.getElementById('bulkBar'),cnt=document.getElementById('bulkCount');if(selectedIds.size>0){bar.classList.add('show');cnt.textContent=selectedIds.size+' row'+(selectedIds.size>1?'s':'')+' selected';}else bar.classList.remove('show');const selAll=document.getElementById('selAll'),allCbs=document.querySelectorAll('.row-cb[data-id]');if(selAll&&allCbs.length>0){selAll.checked=[...allCbs].every(cb=>cb.checked);selAll.indeterminate=selectedIds.size>0&&!selAll.checked;}}
 function clearSelection(){selectedIds.clear();document.querySelectorAll('.row-cb[data-id]').forEach(cb=>{cb.checked=false;cb.closest('tr').classList.remove('row-sel');});const s=document.getElementById('selAll');if(s){s.checked=false;s.indeterminate=false;}document.getElementById('bulkBar').classList.remove('show');}
-function deleteSelected(){if(!selectedIds.size)return;const count=selectedIds.size;if(!confirm('Delete '+count+' selected row'+(count>1?'s':'')+'? This cannot be undone.'))return;let h=loadH();h=h.filter(x=>!selectedIds.has(x.id));selectedIds.clear();saveH(h);renderHist();}
-function deleteRow(id){const h=loadH();const idx=h.findIndex(x=>x.id===id);if(idx===-1)return;const row=h[idx];if(!confirm('Delete '+row.sym+' ('+fmtDate(row.date)+')?'))return;h.splice(idx,1);selectedIds.delete(id);saveH(h);renderHist();}
-function clearHistory(){if(!confirm('Clear all history? This cannot be undone.'))return;localStorage.removeItem(SK);renderHistBadge();renderHist();}
+async function deleteSelected(){
+  if(!selectedIds.size)return;
+  const count=selectedIds.size;
+  if(!confirm('Delete '+count+' selected row'+(count>1?'s':'')+'? This cannot be undone.'))return;
+  const ids=[...selectedIds];
+  // Delete from DB
+  await Promise.all(ids.map(id=>
+    fetch(BACKEND+'/history/trades/'+encodeURIComponent(id),{method:'DELETE',headers:dbHeaders(),credentials:'include'}).catch(()=>{})
+  ));
+  // Remove from localStorage
+  let h=loadH();h=h.filter(x=>!ids.includes(x.id));
+  selectedIds.clear();saveH(h);renderHist();
+}
+async function deleteRow(id){
+  const h=loadH();const idx=h.findIndex(x=>x.id===id);if(idx===-1)return;
+  const row=h[idx];if(!confirm('Delete '+row.sym+' ('+fmtDate(row.date)+')?'))return;
+  // Delete from DB
+  await fetch(BACKEND+'/history/trades/'+encodeURIComponent(id),{method:'DELETE',headers:dbHeaders(),credentials:'include'}).catch(()=>{});
+  // Remove from localStorage
+  h.splice(idx,1);selectedIds.delete(id);saveH(h);renderHist();
+}
+async function clearHistory(){
+  if(!confirm('Clear all history? This cannot be undone.'))return;
+  // Delete from DB
+  await fetch(BACKEND+'/history/trades/all',{method:'DELETE',headers:dbHeaders(),credentials:'include'}).catch(()=>{});
+  // Clear localStorage
+  localStorage.removeItem(SK);renderHistBadge();renderHist();
+}
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
 function renderHistStats(all){const res=all.filter(h=>h.outcome!=='pending');const hits=res.filter(h=>h.outcome==='hit');const bads=res.filter(h=>h.outcome==='sl'||h.outcome==='loss');const profit=res.filter(h=>h.pnl!==null&&h.pnl>0);const acc=res.length?Math.round(profit.length/res.length*100):null;const pnls=res.filter(h=>h.pnl!==null).map(h=>h.pnl);const avg=pnls.length?+(pnls.reduce((a,b)=>a+b,0)/pnls.length).toFixed(2):null;document.getElementById('hTotal').textContent=all.length;document.getElementById('hHit').textContent=hits.length;document.getElementById('hSL').textContent=bads.length;const accEl=document.getElementById('hAcc');accEl.textContent=acc!==null?acc+'%':'\u2014';accEl.className='hstat-n '+(acc>=60?'n-green':acc!==null&&acc<40?'n-red':'');const pEl=document.getElementById('hPnL');pEl.textContent=avg!==null?'\u20b9'+fc(avg):'\u2014';pEl.className='hstat-n '+(avg>0?'n-green':avg!==null&&avg<0?'n-red':'');}
