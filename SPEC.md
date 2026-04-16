@@ -6,7 +6,7 @@ A real-time NSE intraday trading alert system. Monitors 30 Nifty50 stocks every 
 ## Deployment
 - **Backend:** Render.com — `https://nse-proxy-mojx.onrender.com`
 - **Frontend:** GitHub Pages — `https://abhisheksa09.github.io/stock-analyser/`
-- **Database:** Supabase (PostgreSQL)
+- **Database:** Neon (PostgreSQL)
 - **Process model:** Single Gunicorn worker; APScheduler runs inside the same process
 
 ## Tech stack
@@ -14,7 +14,7 @@ A real-time NSE intraday trading alert system. Monitors 30 Nifty50 stocks every 
 |-------|----------------|
 | Web server | Flask 3.0.3 + Gunicorn 22.0.0 |
 | Scheduler | APScheduler 3.10.4 |
-| Database | psycopg 3.2.10 (Supabase PostgreSQL) |
+| Database | psycopg 3.2.10 (Neon PostgreSQL) |
 | Auth | bcrypt 4.1.2 (passwords), random 32-byte session tokens |
 | HTTP client | requests 2.31.0 + urllib (stdlib) |
 | TOTP | pyotp 2.9.0 |
@@ -137,8 +137,8 @@ Simulates trade entries at signal time and settles them at end of day using intr
 
 ## All environment variables
 ```
-# Supabase
-DATABASE_URL            postgresql://...?sslmode=require
+# Neon DB
+DATABASE_URL            postgresql://...@ep-xxx.neon.tech/neondb?sslmode=require
 
 # Upstox
 UPSTOX_API_KEY          OAuth app client ID

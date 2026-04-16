@@ -778,6 +778,16 @@ def trigger_auto_login():
     }), 500
 
 
+# ─── DB init ──────────────────────────────────────────────────────────────────
+@app.route("/db/init", methods=["POST"])
+def db_init():
+    """Create any missing tables. Safe to call multiple times (IF NOT EXISTS)."""
+    sess, err = _require_admin(request)
+    if err:
+        return err
+    result = _db_module.init_db()
+    return jsonify(result)
+
 # ─── Admin misc ───────────────────────────────────────────────────────────────
 @app.route("/admin/check", methods=["POST", "OPTIONS"])
 def admin_check():
@@ -1729,6 +1739,7 @@ def start_scheduler():
     log.info("Scheduler started — scanning every %d min", interval)
     return sched
 
+_db_module.init_db()   # create any missing tables (IF NOT EXISTS — safe on every restart)
 _load_token_from_db()
 _last_auto_login["configured"] = _auto_login.is_configured()  # Telegram configured?
 _scheduler = start_scheduler()

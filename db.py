@@ -30,7 +30,7 @@ def get_connection():
                   "Env keys visible: %s",
                   [k for k in os.environ if "DATA" in k or "POST" in k or "DB" in k])
         return None
-    # Supabase pooler needs sslmode=require and no prepared statements
+    # Neon (and most managed PG poolers) need sslmode=require and no prepared statements
     # Append sslmode if not already in URL
     if "sslmode" not in url:
         url = url + ("&" if "?" in url else "?") + "sslmode=require"
