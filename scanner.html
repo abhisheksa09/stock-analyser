@@ -747,11 +747,19 @@ th[data-tip]{cursor:default;}
       accurate the predictions are over time — without risking real money.
     </div>
 
+    <!-- Bulk action bar -->
+    <div class="bulk-bar" id="btBulkBar">
+      <span id="btBulkCount">0 selected</span>
+      <button class="bulk-del-btn" onclick="deleteBtSelected()">Delete selected</button>
+      <button class="bulk-clear-btn" onclick="clearBtSelection()">Clear selection</button>
+    </div>
+
     <!-- Table -->
     <div class="htbl-box">
       <table class="htbl">
         <thead>
           <tr>
+            <th class="cb-col"><input type="checkbox" class="row-cb" id="btSelAll" onclick="toggleBtSelAll(this)" title="Select all" style="display:block;margin:0 auto;"></th>
             <th>Date / Time</th>
             <th>Stock</th>
             <th>Signal</th>
@@ -764,10 +772,11 @@ th[data-tip]{cursor:default;}
             <th class="r">P&amp;L pts</th>
             <th class="r">P&amp;L %</th>
             <th>Outcome</th>
+            <th class="cb-col"></th>
           </tr>
         </thead>
         <tbody id="btBody">
-          <tr><td colspan="12" style="text-align:center;padding:3rem;color:#aaa;font-size:13px;">
+          <tr><td colspan="14" style="text-align:center;padding:3rem;color:#aaa;font-size:13px;">
             Loading paper trades…
           </td></tr>
         </tbody>
@@ -2402,6 +2411,7 @@ function parseCsvRow(line){const out=[];let cur='',inQ=false;for(let i=0;i<line.
 
 // ─── PAPER TRADES / BACKTEST ─────────────────────────────────────────────────
 var _btTrades = [];   // cached raw paper trade rows
+var _btSelectedIds = new Set();
 
 async function loadPaperTrades() {
   const tb   = document.getElementById('btBody');
@@ -2428,6 +2438,7 @@ async function loadPaperTrades() {
     var stData = stRes.ok ? await stRes.json() : { stats: {} };
 
     _btTrades = trData.trades || [];
+    _btSelectedIds.clear();
     renderBtStats(stData.stats || {});
     renderBtTable();
 
@@ -2524,8 +2535,9 @@ function renderBtTable() {
     : _btTrades;
 
   if(!rows.length) {
-    tb.innerHTML = '';
+    tb.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:2rem;color:#aaa;">No trades found.</td></tr>';
     if(emptyEl) emptyEl.style.display = '';
+    updateBtBulkBar();
     return;
   }
   if(emptyEl) emptyEl.style.display = 'none';
@@ -2564,7 +2576,7 @@ function renderBtTable() {
     var hdr = document.createElement('tr');
     hdr.className = 'date-group-hdr';
     hdr.onclick = (function(d, g) { return function() { toggleBtDateGroup(d, g); }; })(date, gid);
-    hdr.innerHTML = '<td colspan="12" style="padding:0;"><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;flex-wrap:wrap;gap:6px;"><div class="dg-title"><span class="dg-arrow' + (isOpen ? ' open' : '') + '" id="btarr_' + gid + '">&#9658;</span><span>' + fmtDate(date) + '</span></div><div class="dg-meta">' + meta + '</div></div></td>';
+    hdr.innerHTML = '<td colspan="14" style="padding:0;"><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;flex-wrap:wrap;gap:6px;"><div class="dg-title"><span class="dg-arrow' + (isOpen ? ' open' : '') + '" id="btarr_' + gid + '">&#9658;</span><span>' + fmtDate(date) + '</span></div><div class="dg-meta">' + meta + '</div></div></td>';
     tb.appendChild(hdr);
 
     dayRows.forEach(function(t) {
@@ -2576,11 +2588,13 @@ function renderBtTable() {
       var pnlCls  = t.pnl_pts != null ? (t.pnl_pts >= 0 ? 'pnl-pos' : 'pnl-neg') : '';
       var closePx = t.close_price != null ? '₹' + fc(t.close_price) : '—';
       var confMt  = confMeta(t.conf || 0);
+      var isSel   = _btSelectedIds.has(t.id);
 
       var tr = document.createElement('tr');
-      tr.className = 'data-row' + (isOpen ? '' : ' hidden');
+      tr.className = (isSel ? 'row-sel ' : '') + 'data-row' + (isOpen ? '' : ' hidden');
       tr.dataset.btgroup = gid;
       tr.innerHTML =
+        '<td class="cb-col"><input type="checkbox" class="row-cb bt-row-cb" data-id="' + t.id + '" ' + (isSel ? 'checked' : '') + ' onclick="toggleBtRowSel(this)"></td>' +
         '<td style="white-space:nowrap;"><div style="font-weight:600;font-size:12px;">' + fmtDate(date) + '</div>' +
           '<div style="color:#888;font-size:11px;">' + (t.signal_time || '') + ' IST</div></td>' +
         '<td><div class="sym">' + (t.sym || '') + '</div><div class="sec">' + (t.sec || '') + '</div></td>' +
@@ -2596,10 +2610,87 @@ function renderBtTable() {
         '<td><span class="' + ocCls + '">' + ocLabel + '</span>' +
           (t.target_hit ? ' <span style="font-size:10px;background:#EAF3DE;color:#27500A;padding:1px 5px;border-radius:3px;">TGT</span>' : '') +
           (t.sl_hit     ? ' <span style="font-size:10px;background:#FCEBEB;color:#791F1F;padding:1px 5px;border-radius:3px;">SL</span>' : '') +
-        '</td>';
+        '</td>' +
+        '<td class="cb-col"><button class="del-btn" data-id="' + t.id + '" onclick="deleteBtRow(this.dataset.id)" title="Delete">&#x2715;</button></td>';
       tb.appendChild(tr);
     });
   });
+
+  updateBtBulkBar();
+}
+
+function toggleBtRowSel(cb) {
+  var id = cb.dataset.id, tr = cb.closest('tr');
+  if (cb.checked) { _btSelectedIds.add(id); tr.classList.add('row-sel'); }
+  else            { _btSelectedIds.delete(id); tr.classList.remove('row-sel'); }
+  updateBtBulkBar();
+}
+
+function toggleBtSelAll(cb) {
+  document.querySelectorAll('.bt-row-cb[data-id]').forEach(function(el) {
+    var tr = el.closest('tr');
+    if (tr && tr.classList.contains('hidden')) return;
+    el.checked = cb.checked;
+    if (cb.checked) { _btSelectedIds.add(el.dataset.id); tr.classList.add('row-sel'); }
+    else            { _btSelectedIds.delete(el.dataset.id); tr.classList.remove('row-sel'); }
+  });
+  updateBtBulkBar();
+}
+
+function updateBtBulkBar() {
+  var bar = document.getElementById('btBulkBar');
+  var cnt = document.getElementById('btBulkCount');
+  if (!bar) return;
+  if (_btSelectedIds.size > 0) {
+    bar.classList.add('show');
+    cnt.textContent = _btSelectedIds.size + ' row' + (_btSelectedIds.size > 1 ? 's' : '') + ' selected';
+  } else {
+    bar.classList.remove('show');
+  }
+  var selAll = document.getElementById('btSelAll');
+  var allCbs = document.querySelectorAll('.bt-row-cb[data-id]');
+  if (selAll && allCbs.length > 0) {
+    var visibleCbs = [...allCbs].filter(function(cb) { return !cb.closest('tr').classList.contains('hidden'); });
+    selAll.checked = visibleCbs.length > 0 && visibleCbs.every(function(cb) { return cb.checked; });
+    selAll.indeterminate = _btSelectedIds.size > 0 && !selAll.checked;
+  }
+}
+
+function clearBtSelection() {
+  _btSelectedIds.clear();
+  document.querySelectorAll('.bt-row-cb[data-id]').forEach(function(cb) {
+    cb.checked = false;
+    cb.closest('tr').classList.remove('row-sel');
+  });
+  var s = document.getElementById('btSelAll');
+  if (s) { s.checked = false; s.indeterminate = false; }
+  var bar = document.getElementById('btBulkBar');
+  if (bar) bar.classList.remove('show');
+}
+
+async function deleteBtSelected() {
+  if (!_btSelectedIds.size) return;
+  var count = _btSelectedIds.size;
+  if (!confirm('Delete ' + count + ' selected trade' + (count > 1 ? 's' : '') + '? This cannot be undone.')) return;
+  var ids = [..._btSelectedIds];
+  await Promise.all(ids.map(function(id) {
+    return fetch(BACKEND + '/paper-trades/' + encodeURIComponent(id), {
+      method: 'DELETE', headers: appHeaders(), credentials: 'include'
+    }).catch(function(){});
+  }));
+  _btSelectedIds.clear();
+  await loadPaperTrades();
+}
+
+async function deleteBtRow(id) {
+  var trade = _btTrades.find(function(t) { return t.id === id; });
+  if (!trade) return;
+  if (!confirm('Delete ' + trade.sym + ' (' + fmtDate(trade.trade_date) + ')? This cannot be undone.')) return;
+  await fetch(BACKEND + '/paper-trades/' + encodeURIComponent(id), {
+    method: 'DELETE', headers: appHeaders(), credentials: 'include'
+  }).catch(function(){});
+  _btSelectedIds.delete(id);
+  await loadPaperTrades();
 }
 
 async function loadBtConfig() {

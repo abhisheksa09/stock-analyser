@@ -1202,6 +1202,19 @@ def get_paper_trades_count():
     return jsonify({"count": count})
 
 
+@app.route("/paper-trades/<trade_id>", methods=["DELETE"])
+def delete_paper_trade(trade_id):
+    sess, err = _require_session(request)
+    if err:
+        return err
+    if not _has_db():
+        return jsonify({"error": "No DB"}), 503
+    ok = _db_module.delete_paper_trade(trade_id, sess["username"])
+    if not ok:
+        return jsonify({"error": "Not found or not authorized"}), 404
+    return jsonify({"status": "ok"})
+
+
 @app.route("/paper-trades/dry-test", methods=["POST"])
 def paper_trades_dry_test():
     """

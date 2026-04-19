@@ -724,6 +724,21 @@ def get_paper_trades(from_date=None, to_date=None, sym=None,
         log.warning("get_paper_trades: %s", e)
         return []
 
+def delete_paper_trade(trade_id: str, username: str) -> bool:
+    conn = db()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM paper_trades WHERE id = %s AND (created_by IS NULL OR created_by = %s)",
+                (trade_id, username)
+            )
+            return cur.rowcount > 0
+    except Exception as e:
+        log.warning("delete_paper_trade: %s", e)
+        return False
+
 def settle_paper_trade(trade_id: str, close_price: float,
                        outcome: str, pnl_pts: float, pnl_pct: float,
                        target_hit: bool, sl_hit: bool) -> bool:
