@@ -946,6 +946,10 @@ def auth_status():
 # ── NSE corporate actions ─────────────────────────────────────────────────────
 @app.route("/nse/corporate-actions")
 def nse_corporate_actions():
+    # Optional ?symbols=RELIANCE,TCS,... — filter response to only those symbols
+    symbols_param = request.args.get("symbols", "").strip()
+    symbol_filter = {s.upper().strip() for s in symbols_param.split(",") if s.strip()} if symbols_param else None
+
     target  = "https://www.nseindia.com/api/corporates-corporateActions?index=equities"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
@@ -955,8 +959,15 @@ def nse_corporate_actions():
         "Origin": "https://www.nseindia.com",
     }
     try:
+        import json as _json
         with urllib.request.urlopen(urllib.request.Request(target, headers=headers), timeout=10) as r:
-            return Response(r.read(), status=200, mimetype="application/json")
+            data = _json.loads(r.read())
+        if symbol_filter:
+            data = [
+                item for item in (data if isinstance(data, list) else [])
+                if (item.get("symbol") or "").upper().strip() in symbol_filter
+            ]
+        return jsonify(data)
     except Exception:
         return jsonify([])
 

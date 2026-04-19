@@ -963,6 +963,19 @@ th[data-tip]{cursor:default;}
     </div>
 
     <div class="card">
+      <div class="card-title">Backtest Config</div>
+      <p style="font-size:12px;color:#888;margin-bottom:12px;">
+        These stocks are scanned automatically every market day. A paper trade is saved the first time
+        confidence &ge; min threshold — no manual action needed.
+        Override via <code>BACKTEST_SYMBOLS</code> and <code>BACKTEST_MIN_CONF</code> env vars.
+      </p>
+      <button class="btn" onclick="loadBtConfig()" style="font-size:12px;padding:6px 14px;">
+        &#128202; Check config &amp; today's status
+      </button>
+      <div id="btConfigBox" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">System Status</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
         <button class="btn" onclick="adminLoad('alert-status','adminStatusBox')">&#128200; Alert status</button>
@@ -1553,9 +1566,7 @@ async function checkProxy(){
     if(cold) cold.style.display = 'none';
     if(ov) ov.style.display = 'none';
 
-    if(typeof fetchCorporateEvents === 'function'){
-      fetchCorporateEvents();
-    }
+    // Corporate events are fetched after a scan, not at startup
   }else{
     proxyOk = false;
 
@@ -1856,6 +1867,10 @@ async function runScan(){
   document.getElementById('dataChip').textContent='Live \u2713 '+now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
   document.getElementById('dataChip').className='chip chip-green';
   document.getElementById('footnote').textContent='Sorted by confidence \u00b7 '+now.toLocaleString('en-IN');
+  // Fetch corporate events for scanned stocks before rendering so badges appear immediately
+  btn.innerHTML='\u27f3 &nbsp;Fetching corporate events\u2026';
+  const scannedSyms = results.map(r => r.sym).filter(Boolean);
+  if(scannedSyms.length) await fetchCorporateEvents(scannedSyms);
   renderScanTable();updateReversalBanner();
   document.getElementById('tblBox').style.display='block';
   document.getElementById('emptyBox').style.display='none';
@@ -2525,6 +2540,45 @@ function renderBtTable() {
   });
 }
 
+async function loadBtConfig() {
+  var box = document.getElementById('btConfigBox');
+  if(!box) return;
+  box.innerHTML = '<span style="color:#888;font-size:12px;">Loading…</span>';
+  try {
+    var r = await fetch(BACKEND + '/paper-trades/config', {
+      headers: appHeaders(), credentials: 'include'
+    });
+    var d = await r.json();
+    if(!r.ok) { box.innerHTML = '<span style="color:#A32D2D;">Error: '+(d.error||r.status)+'</span>'; return; }
+
+    var savedSet = new Set(d.saved_today || []);
+    var pills = d.backtest_symbols.map(function(sym) {
+      var done = savedSet.has(sym);
+      var bg   = done ? '#EAF3DE' : '#f5f5f0';
+      var col  = done ? '#27500A' : '#555';
+      var bdr  = done ? '#C0DD97' : '#e0e0e0';
+      var tick = done ? ' ✓' : '';
+      return '<span style="display:inline-block;background:'+bg+';color:'+col+';border:1px solid '+bdr+
+             ';border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600;margin:2px;">'+sym+tick+'</span>';
+    }).join('');
+
+    box.innerHTML =
+      '<div style="margin-bottom:10px;">'+pills+'</div>'+
+      '<div style="font-size:12px;color:#555;display:flex;gap:16px;flex-wrap:wrap;">'+
+        '<span><strong>Min confidence:</strong> '+d.min_conf+'%</span>'+
+        '<span><strong>Saved today:</strong> '+d.saved_today_count+' / '+d.symbol_count+'</span>'+
+        '<span><strong>Source:</strong> '+d.source+'</span>'+
+        '<span style="color:#888;">'+d.ist_now+'</span>'+
+      '</div>'+
+      (d.saved_today_count === 0
+        ? '<div style="margin-top:8px;font-size:12px;color:#888;">No paper trades saved yet today — '+
+          'they are saved automatically during the 09:15–10:30 IST scan window.</div>'
+        : '');
+  } catch(e) {
+    box.innerHTML = '<span style="color:#A32D2D;">'+e.message+'</span>';
+  }
+}
+
 async function runBtDryTest() {
   var btn = document.getElementById('btDryTestBtn');
   var msg = document.getElementById('btDryTestMsg');
@@ -2602,7 +2656,7 @@ let corpEvents={};
 const EVT_TYPES={'RESULTS':{label:'Results',cls:'evt-results',icon:'\ud83d\udccb',warn:true},'DIVIDEND':{label:'Dividend',cls:'evt-dividend',icon:'\ud83d\udcb0',warn:false},'INTERIM DIVIDEND':{label:'Interim Div',cls:'evt-dividend',icon:'\ud83d\udcb0',warn:false},'FINAL DIVIDEND':{label:'Final Div',cls:'evt-dividend',icon:'\ud83d\udcb0',warn:false},'AGM':{label:'AGM',cls:'evt-agm',icon:'\ud83c\udfe5',warn:false},'BONUS ISSUE':{label:'Bonus',cls:'evt-bonus',icon:'\ud83c\udf81',warn:true},'RIGHTS ISSUE':{label:'Rights',cls:'evt-bonus',icon:'\ud83d\udce9',warn:true},'STOCK SPLIT':{label:'Split',cls:'evt-split',icon:'\u2702\ufe0f',warn:true},'FACE VALUE SPLIT':{label:'Split',cls:'evt-split',icon:'\u2702\ufe0f',warn:true}};
 function classifyEvent(purpose){if(!purpose)return null;const p=purpose.toUpperCase().trim();for(const[key,val]of Object.entries(EVT_TYPES)){if(p.includes(key))return{...val,key};}if(p.includes('DIVIDEND'))return{...EVT_TYPES['DIVIDEND'],key:'DIVIDEND'};return{label:purpose.slice(0,20),cls:'evt-other',icon:'\ud83d\udcc5',warn:false,key:'OTHER'};}
 function parseNSEDate(s){if(!s||s==='-')return null;const months={JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11};const parts=s.split('-');if(parts.length!==3)return null;const m=months[parts[1].toUpperCase()];if(m===undefined)return null;return new Date(+parts[2],m,+parts[0]);}
-async function fetchCorporateEvents(){try{const r=await fetch(BACKEND+'/nse/corporate-actions');if(!r.ok)return;const data=await r.json();if(!Array.isArray(data))return;const today=new Date();today.setHours(0,0,0,0);const in7=new Date(today.getTime()+7*24*60*60*1000);corpEvents={};data.forEach(item=>{const sym=(item.symbol||'').toUpperCase().trim();if(!sym)return;const dateStr=item.exDate||item.bcStartDate||item.ndStartDate||'';const dt=parseNSEDate(dateStr);if(!dt)return;if(dt<today||dt>in7)return;const evt=classifyEvent(item.purpose||item.subject||'');if(!evt)return;if(!corpEvents[sym])corpEvents[sym]=[];corpEvents[sym].push({...evt,date:dateStr,dateObj:dt,subject:item.subject||item.purpose||'',daysAway:Math.round((dt-today)/(24*60*60*1000))});});updateEventUI();}catch(e){console.warn('Corporate events fetch failed:',e.message);}}
+async function fetchCorporateEvents(syms){try{const qs=syms&&syms.length?'?symbols='+syms.map(encodeURIComponent).join(','):'';const r=await fetch(BACKEND+'/nse/corporate-actions'+qs);if(!r.ok)return;const data=await r.json();if(!Array.isArray(data))return;const today=new Date();today.setHours(0,0,0,0);const in7=new Date(today.getTime()+7*24*60*60*1000);corpEvents={};data.forEach(item=>{const sym=(item.symbol||'').toUpperCase().trim();if(!sym)return;const dateStr=item.exDate||item.bcStartDate||item.ndStartDate||'';const dt=parseNSEDate(dateStr);if(!dt)return;if(dt<today||dt>in7)return;const evt=classifyEvent(item.purpose||item.subject||'');if(!evt)return;if(!corpEvents[sym])corpEvents[sym]=[];corpEvents[sym].push({...evt,date:dateStr,dateObj:dt,subject:item.subject||item.purpose||'',daysAway:Math.round((dt-today)/(24*60*60*1000))});});updateEventUI();}catch(e){console.warn('Corporate events fetch failed:',e.message);}}
 function getStockEvents(sym){return corpEvents[sym]||corpEvents[sym.replace('-','')]||corpEvents[sym+'-EQ']||[];}
 function updateEventUI(){document.querySelectorAll('.qpill').forEach(pill=>{const sym=pill.textContent.trim(),evts=getStockEvents(sym);pill.classList.toggle('pill-evt',evts.some(e=>e.warn));const old=pill.querySelector('.evt-badge');if(old)old.remove();if(evts.length>0){const e=evts[0];const badge=document.createElement('span');badge.className='evt-badge '+e.cls;badge.textContent=e.icon+' '+e.daysAway+'d';badge.title=e.subject+' on '+e.date;pill.appendChild(badge);}});document.querySelectorAll('.tag').forEach(tag=>{const symEl=tag.querySelector('span[title]');if(!symEl)return;const sym=symEl.textContent.trim(),evts=getStockEvents(sym);tag.classList.toggle('tag-evt',evts.some(e=>e.warn));const old=tag.querySelector('.evt-badge');if(old)old.remove();if(evts.length>0){const e=evts[0];const badge=document.createElement('span');badge.className='evt-badge '+e.cls;badge.textContent=e.icon+' '+e.label;badge.title=e.subject+' on '+e.date;symEl.appendChild(badge);}});updateEventBanner();}
 function updateEventBanner(){const banner=document.getElementById('evtBanner');if(!banner)return;const selectedSyms=[...sel.keys()];const warnings=[];selectedSyms.forEach(sym=>{getStockEvents(sym).forEach(e=>{warnings.push({sym,...e});});});if(!warnings.length){banner.style.display='none';return;}const lines=warnings.map(w=>'<strong>'+w.sym+'</strong> \u2014 '+w.icon+' '+w.subject+' on '+w.date+' ('+w.daysAway+' day'+(w.daysAway!==1?'s':'')+' away)');banner.innerHTML='<strong>\u26a0 Corporate events in next 7 days:</strong><br>'+lines.join('<br>')+'<br><span style="font-size:11px;opacity:.8;">These events can cause unusual price moves. Trade with extra caution or consider skipping on event day.</span>';banner.style.display='block';}
