@@ -725,12 +725,16 @@ def auth_callback():
 
 def send_login_reminder_job():
     """
-    Scheduled job — runs at 08:30 IST every day.
+    Scheduled job — runs at 08:30 IST on weekdays only.
     Sends a Telegram message with a one-tap Upstox login link.
     Tapping it on your phone opens the OAuth flow and sets the token automatically.
     """
     global _last_auto_login
-    ist_time = datetime.now(IST).strftime("%H:%M IST")
+    now_ist = datetime.now(IST)
+    if now_ist.weekday() >= 5:   # 5 = Saturday, 6 = Sunday
+        log.info("Login reminder: skipping weekend")
+        return
+    ist_time = now_ist.strftime("%H:%M IST")
     log.info("Login reminder job started at %s", ist_time)
 
     _last_auto_login["status"] = "running"
@@ -1631,13 +1635,10 @@ def _eod_settlement_job():
 def _token_reminder_job():
     """APScheduler job — sends Telegram reminder at 00:00 IST to set next day's Upstox token."""
     now_ist = datetime.now(IST)
-    # Friday midnight → no Saturday trading, skip
-    if now_ist.weekday() == 4:
-        log.info("Token reminder: skipping Friday night (no Saturday market)")
-        return
-    # Also skip Saturday/Sunday just in case of clock drift
+    # Skip Saturday midnight (no Saturday market) and Sunday midnight (no Sunday market)
+    # Monday–Friday midnight all fire: each of those days has a market session
     if now_ist.weekday() >= 5:
-        log.info("Token reminder: skipping weekend")
+        log.info("Token reminder: skipping weekend (weekday=%d)", now_ist.weekday())
         return
 
     render_base = os.environ.get("RENDER_BASE_URL", "").rstrip("/")
