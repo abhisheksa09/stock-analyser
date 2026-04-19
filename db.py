@@ -162,7 +162,8 @@ CREATE TABLE IF NOT EXISTS paper_trades (
     pnl_pts      NUMERIC,
     target_hit   BOOLEAN,
     sl_hit       BOOLEAN,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    created_by   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_paper_trades_date ON paper_trades(trade_date);
 """
@@ -175,6 +176,11 @@ def init_db():
     try:
         with conn.cursor() as cur:
             cur.execute(SCHEMA)
+            # Migration: add created_by to existing paper_trades tables
+            cur.execute("""
+                ALTER TABLE paper_trades
+                ADD COLUMN IF NOT EXISTS created_by TEXT
+            """)
         log.info("DB schema initialised")
         return {"status": "ok"}
     except Exception as e:
@@ -644,20 +650,22 @@ def save_paper_trade(trade: dict) -> bool:
             cur.execute("""
                 INSERT INTO paper_trades
                     (id, trade_date, signal_time, sym, sec, sig, conf,
-                     signal_price, entry, target, stop_loss, rr, rsi, reason)
+                     signal_price, entry, target, stop_loss, rr, rsi, reason,
+                     created_by)
                 VALUES
                     (%(id)s, %(trade_date)s, %(signal_time)s, %(sym)s, %(sec)s,
                      %(sig)s, %(conf)s, %(signal_price)s, %(entry)s, %(target)s,
-                     %(stop_loss)s, %(rr)s, %(rsi)s, %(reason)s)
+                     %(stop_loss)s, %(rr)s, %(rsi)s, %(reason)s,
+                     %(created_by)s)
                 ON CONFLICT (id) DO NOTHING
-            """, trade)
+            """, {**trade, "created_by": trade.get("created_by")})
         return True
     except Exception as e:
         log.warning("save_paper_trade: %s", e)
         return False
 
 def get_paper_trades(from_date=None, to_date=None, sym=None,
-                     outcome=None, limit=500) -> list:
+                     outcome=None, limit=500, username=None) -> list:
     conn = db()
     if not conn:
         return []
@@ -671,6 +679,9 @@ def get_paper_trades(from_date=None, to_date=None, sym=None,
             where.append("sym = %s"); params.append(sym.upper())
         if outcome:
             where.append("outcome = %s"); params.append(outcome)
+        if username:
+            # Show scanner-generated trades (created_by IS NULL) + this user's own trades
+            where.append("(created_by IS NULL OR created_by = %s)"); params.append(username)
         sql = "SELECT * FROM paper_trades"
         if where:
             sql += " WHERE " + " AND ".join(where)
@@ -715,20 +726,25 @@ def settle_paper_trade(trade_id: str, close_price: float,
         log.warning("settle_paper_trade: %s", e)
         return False
 
-def get_paper_trade_stats(days: int = 30) -> dict:
+def get_paper_trade_stats(days: int = 30, username: str = None) -> dict:
     """Accuracy metrics over the last N calendar days."""
     conn = db()
     if not conn:
         return {}
     try:
+        sql = """
+            SELECT outcome, sig, conf,
+                   pnl_pts, pnl_pct, target_hit, sl_hit
+            FROM paper_trades
+            WHERE trade_date >= CURRENT_DATE - %s
+              AND outcome <> 'open'
+        """
+        params = [days]
+        if username:
+            sql += " AND (created_by IS NULL OR created_by = %s)"
+            params.append(username)
         with conn.cursor() as cur:
-            cur.execute("""
-                SELECT outcome, sig, conf,
-                       pnl_pts, pnl_pct, target_hit, sl_hit
-                FROM paper_trades
-                WHERE trade_date >= CURRENT_DATE - %s
-                  AND outcome <> 'open'
-            """, (days,))
+            cur.execute(sql, params)
             rows = [dict(r) for r in cur.fetchall()]
     except Exception as e:
         log.warning("get_paper_trade_stats: %s", e)

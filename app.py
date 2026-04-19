@@ -1186,6 +1186,7 @@ def get_paper_trades():
         sym=request.args.get("sym"),
         outcome=request.args.get("outcome"),
         limit=int(request.args.get("limit", 500)),
+        username=sess["username"],
     )
     return jsonify({"trades": trades, "count": len(trades)})
 
@@ -1302,6 +1303,7 @@ def paper_trades_dry_test():
             "rr":           m["rr"],
             "rsi":          m["rsi"],
             "reason":       m["reason"],
+            "created_by":   sess["username"],
         })
         if saved:
             inserted += 1
@@ -1383,7 +1385,7 @@ def get_paper_trade_stats():
     if not _has_db():
         return jsonify({"stats": {}})
     days = int(request.args.get("days", 30))
-    stats = _db_module.get_paper_trade_stats(days=days)
+    stats = _db_module.get_paper_trade_stats(days=days, username=sess["username"])
     return jsonify({"stats": stats})
 
 
