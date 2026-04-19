@@ -12,6 +12,7 @@ Environment variables:
 import os
 import json
 import logging
+import threading
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -32,6 +33,14 @@ def _get(url, headers=None, timeout=10):
         )
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read())
+    except urllib.error.URLError as e:
+        # DNS / network failure — log at DEBUG to avoid noisy warnings for blocked hosts
+        reason = str(e.reason) if hasattr(e, "reason") else str(e)
+        if "No address associated" in reason or "Name or service not known" in reason:
+            log.debug("GET %s unreachable (DNS): %s", url[:80], reason)
+        else:
+            log.warning("GET %s failed: %s", url[:80], e)
+        return None
     except Exception as e:
         log.warning("GET %s failed: %s", url[:80], e)
         return None
@@ -62,23 +71,36 @@ HARDCODED_EVENTS = [
      "impact": "medium",   "sectors": ["all"]},
 ]
 
+# Day-level cache — try once per IST day, don't spam retries
+_calendar_cache: dict = {"date": None, "events": []}
+
 def get_economic_calendar():
     """
-    Fetch today's economic events from Investing.com calendar API.
-    Returns list of high-impact events happening today/tomorrow.
-    Falls back to empty list on failure.
+    Fetch today's India economic events from TradingEconomics API.
+    Requires TRADING_ECONOMICS_KEY env var (paid plan).
+    If key is not set, returns empty list — hardcoded events in
+    get_full_macro_context() still cover RBI MPC, FOMC, Budget, Expiry.
 
-    Structure returned:
-    [{"time": "14:30", "event": "RBI Policy Rate", "impact": "high",
-      "actual": "6.50%", "forecast": "6.25%", "previous": "6.50%"}]
+    API docs: https://docs.tradingeconomics.com/economic_calendar/snapshot/
+    URL: https://api.tradingeconomics.com/calendar/country/india/{from}/{to}?c={key}&f=json
     """
     today = _ist_now().strftime("%Y-%m-%d")
-    tomorrow = (_ist_now() + timedelta(days=1)).strftime("%Y-%m-%d")
 
-    # Investing.com economic calendar (public endpoint)
+    # Return cached result for the rest of the day (avoids repeated API calls)
+    if _calendar_cache["date"] == today:
+        return _calendar_cache["events"]
+
+    api_key = os.environ.get("TRADING_ECONOMICS_KEY", "").strip()
+    if not api_key:
+        log.debug("TRADING_ECONOMICS_KEY not set — skipping live calendar fetch")
+        _calendar_cache["date"]   = today
+        _calendar_cache["events"] = []
+        return []
+
+    tomorrow = (_ist_now() + timedelta(days=1)).strftime("%Y-%m-%d")
     url = (
-        "https://economic-calendar.tradingeconomics.com/calendar?c=india&d1="
-        + today + "&d2=" + tomorrow
+        f"https://api.tradingeconomics.com/calendar/country/india"
+        f"/{today}/{tomorrow}?c={api_key}&f=json"
     )
     data = _get(url)
 
@@ -96,10 +118,12 @@ def get_economic_calendar():
                     "previous": item.get("previous", ""),
                     "country":  item.get("country", ""),
                 })
-        log.info("Economic calendar: %d medium/high events today", len(events))
+        log.info("Economic calendar: %d medium/high India events today", len(events))
     else:
-        log.info("Economic calendar: no data or empty response")
+        log.info("Economic calendar: empty response from API")
 
+    _calendar_cache["date"]   = today
+    _calendar_cache["events"] = events
     return events
 
 def is_high_impact_window(events, buffer_mins=30):
@@ -566,14 +590,35 @@ def get_full_macro_context():
     """
     Fetch all macro data in one call. Returns a dict with all layers.
     Safe to call — returns partial data if some sources fail.
+    All four independent data sources are fetched in parallel via threads.
     """
-    log.info("Fetching full macro context...")
+    log.info("Fetching full macro context (parallel)...")
 
-    # Fetch all layers (headlines + Claude classification can run together)
-    cal      = get_economic_calendar()
-    proxies  = get_macro_proxies()
-    fii      = get_fii_dii_flows()
-    headlines = fetch_market_headlines()
+    _results = {}
+
+    def _fetch(key, fn):
+        try:
+            _results[key] = fn()
+        except Exception as e:
+            log.warning("Macro fetch '%s' failed: %s", key, e)
+            _results[key] = None
+
+    threads = [
+        threading.Thread(target=_fetch, args=("cal",       get_economic_calendar),   daemon=True),
+        threading.Thread(target=_fetch, args=("proxies",   get_macro_proxies),        daemon=True),
+        threading.Thread(target=_fetch, args=("fii",       get_fii_dii_flows),        daemon=True),
+        threading.Thread(target=_fetch, args=("headlines", fetch_market_headlines),   daemon=True),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=15)   # max 15 s per source; stragglers skipped
+
+    cal       = _results.get("cal") or []
+    proxies   = _results.get("proxies") or {}
+    fii       = _results.get("fii")
+    headlines = _results.get("headlines") or []
+
     sentiment = classify_news_with_claude(headlines) if headlines else None
 
     in_event_window, event_desc = is_high_impact_window(cal)

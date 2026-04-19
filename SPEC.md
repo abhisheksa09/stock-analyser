@@ -168,6 +168,8 @@ TOKEN_REMINDER_TIME     HH:MM IST for the nightly token reminder (default 00:00)
 NEWS_API_KEY            NewsAPI key
 ANTHROPIC_KEY           Claude API key
 OPENAI_API_KEY          OpenAI key (ai_insights.py only)
+TRADING_ECONOMICS_KEY   TradingEconomics paid API key (optional)
+                        If not set, live calendar skipped — hardcoded RBI/FOMC/Budget events still apply
 
 # App
 ADMIN_PIN               Admin panel PIN
