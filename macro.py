@@ -52,24 +52,50 @@ def _ist_now():
 # LAYER 1 — Economic Calendar
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Hard-coded high-impact recurring events (dates updated manually or via API)
-# Format: (month, day, description, affected_sectors)
+# High-impact events with actual dates — used as fallback when live API unavailable.
+# Update annually. Format: month, day, time_ist (HH:MM), event, impact.
+# is_high_impact_window() suppresses signals ±30 min around each event time.
 HARDCODED_EVENTS = [
-    # RBI MPC dates 2025 (approximate — update each year)
-    # These are typically 1st Wednesday of every other month
-    {"type": "RBI_MPC",    "desc": "RBI Monetary Policy Committee Decision",
-     "impact": "high",     "sectors": ["Banking", "NBFC", "Infra"]},
-    {"type": "US_FOMC",    "desc": "US Federal Reserve FOMC Decision",
-     "impact": "high",     "sectors": ["all"]},
-    {"type": "INDIA_GDP",  "desc": "India GDP Data Release",
-     "impact": "medium",   "sectors": ["all"]},
-    {"type": "INDIA_CPI",  "desc": "India CPI Inflation Data",
-     "impact": "medium",   "sectors": ["all"]},
-    {"type": "INDIA_BUDGET","desc": "Union Budget",
-     "impact": "critical", "sectors": ["all"]},
-    {"type": "NIFTY_EXPIRY","desc": "Nifty Monthly Expiry",
-     "impact": "medium",   "sectors": ["all"]},
+    # ── RBI MPC FY2026-27 — decision announced ~10:00 AM IST on 3rd day ──────
+    {"month": 4,  "day": 8,  "time": "10:00", "event": "RBI MPC Policy Decision",       "impact": "high"},
+    {"month": 6,  "day": 5,  "time": "10:00", "event": "RBI MPC Policy Decision",       "impact": "high"},
+    {"month": 8,  "day": 5,  "time": "10:00", "event": "RBI MPC Policy Decision",       "impact": "high"},
+    {"month": 10, "day": 7,  "time": "10:00", "event": "RBI MPC Policy Decision",       "impact": "high"},
+    {"month": 12, "day": 4,  "time": "10:00", "event": "RBI MPC Policy Decision",       "impact": "high"},
+    {"month": 2,  "day": 5,  "time": "10:00", "event": "RBI MPC Policy Decision",       "impact": "high"},  # FY27
+
+    # ── US FOMC 2026 — Indian market reacts at open the morning after ────────
+    # FOMC announces at 2 PM ET = 23:30 IST; flagged at 09:45 IST next day
+    {"month": 1,  "day": 29, "time": "09:45", "event": "US FOMC Reaction",              "impact": "high"},
+    {"month": 3,  "day": 19, "time": "09:45", "event": "US FOMC Reaction",              "impact": "high"},
+    {"month": 4,  "day": 30, "time": "09:45", "event": "US FOMC Reaction",              "impact": "high"},
+    {"month": 6,  "day": 18, "time": "09:45", "event": "US FOMC Reaction",              "impact": "high"},
+    {"month": 7,  "day": 30, "time": "09:45", "event": "US FOMC Reaction",              "impact": "high"},
+    {"month": 9,  "day": 17, "time": "09:45", "event": "US FOMC Reaction",              "impact": "high"},
+    {"month": 10, "day": 29, "time": "09:45", "event": "US FOMC Reaction",              "impact": "high"},
+    {"month": 12, "day": 10, "time": "09:45", "event": "US FOMC Reaction",              "impact": "high"},
+
+    # ── Union Budget — typically 1 Feb at 11:00 AM IST ───────────────────────
+    {"month": 2,  "day": 1,  "time": "11:00", "event": "India Union Budget",            "impact": "high"},
 ]
+
+def _hardcoded_events_today():
+    """Return HARDCODED_EVENTS entries that fall on today's IST date,
+    formatted to match the live API event structure."""
+    now = _ist_now()
+    events = []
+    for ev in HARDCODED_EVENTS:
+        if ev["month"] == now.month and ev["day"] == now.day:
+            events.append({
+                "time":     ev["time"],
+                "event":    ev["event"],
+                "impact":   ev["impact"],
+                "actual":   "",
+                "forecast": "",
+                "previous": "",
+                "country":  "India",
+            })
+    return events
 
 # Day-level cache — try once per IST day, don't spam retries
 _calendar_cache: dict = {"date": None, "events": []}
@@ -90,37 +116,37 @@ def get_economic_calendar():
     if _calendar_cache["date"] == today:
         return _calendar_cache["events"]
 
+    # Always start with hardcoded events for today (no API key needed)
+    events = _hardcoded_events_today()
+    if events:
+        log.info("Economic calendar: %d hardcoded high-impact event(s) today: %s",
+                 len(events), [e["event"] for e in events])
+
+    # Optionally enrich with live data if TRADING_ECONOMICS_KEY is set
     api_key = os.environ.get("TRADING_ECONOMICS_KEY", "").strip()
-    if not api_key:
-        log.debug("TRADING_ECONOMICS_KEY not set — skipping live calendar fetch")
-        _calendar_cache["date"]   = today
-        _calendar_cache["events"] = []
-        return []
-
-    tomorrow = (_ist_now() + timedelta(days=1)).strftime("%Y-%m-%d")
-    url = (
-        f"https://api.tradingeconomics.com/calendar/country/india"
-        f"/{today}/{tomorrow}?c={api_key}&f=json"
-    )
-    data = _get(url)
-
-    events = []
-    if data and isinstance(data, list):
-        for item in data:
-            importance = item.get("importance", 0)
-            if importance >= 2:   # 1=low, 2=medium, 3=high
-                events.append({
-                    "time":     item.get("date", "")[-5:],
-                    "event":    item.get("event", "Unknown"),
-                    "impact":   "high" if importance == 3 else "medium",
-                    "actual":   item.get("actual", ""),
-                    "forecast": item.get("forecast", ""),
-                    "previous": item.get("previous", ""),
-                    "country":  item.get("country", ""),
-                })
-        log.info("Economic calendar: %d medium/high India events today", len(events))
+    if api_key:
+        tomorrow = (_ist_now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        url = (
+            f"https://api.tradingeconomics.com/calendar/country/india"
+            f"/{today}/{tomorrow}?c={api_key}&f=json"
+        )
+        data = _get(url)
+        if data and isinstance(data, list):
+            for item in data:
+                importance = item.get("importance", 0)
+                if importance >= 2:
+                    events.append({
+                        "time":     item.get("date", "")[-5:],
+                        "event":    item.get("event", "Unknown"),
+                        "impact":   "high" if importance == 3 else "medium",
+                        "actual":   item.get("actual", ""),
+                        "forecast": item.get("forecast", ""),
+                        "previous": item.get("previous", ""),
+                        "country":  item.get("country", ""),
+                    })
+            log.info("Economic calendar: %d total events after live API merge", len(events))
     else:
-        log.info("Economic calendar: empty response from API")
+        log.debug("TRADING_ECONOMICS_KEY not set — using hardcoded events only")
 
     _calendar_cache["date"]   = today
     _calendar_cache["events"] = events
