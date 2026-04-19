@@ -1191,6 +1191,17 @@ def get_paper_trades():
     return jsonify({"trades": trades, "count": len(trades)})
 
 
+@app.route("/paper-trades/count", methods=["GET"])
+def get_paper_trades_count():
+    sess, err = _require_session(request)
+    if err:
+        return err
+    if not _has_db():
+        return jsonify({"count": 0})
+    count = _db_module.count_paper_trades(username=sess["username"])
+    return jsonify({"count": count})
+
+
 @app.route("/paper-trades/dry-test", methods=["POST"])
 def paper_trades_dry_test():
     """

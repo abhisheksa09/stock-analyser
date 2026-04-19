@@ -1466,6 +1466,7 @@ window.addEventListener('load', function(){
   STOCKS.forEach(s=>{const el=document.createElement('span');el.className='qpill';el.id='qp_'+s.sym;el.textContent=s.sym;el.title=s.name;el.onclick=()=>sel.has(s.sym)?removeSel(s.sym):addSel(s);g.appendChild(el);});
   checkProxy();
   renderHistBadge();
+  fetchBtBadge();
   // Check if token already set on server (e.g. via OAuth)
   setTimeout(checkTokenStatus, 1500);
   // Listen for OAuth success message from the popup tab
@@ -2044,6 +2045,16 @@ async function genAISummary(){const box=document.getElementById('aiBox'),txt=doc
 function loadH(){try{return JSON.parse(localStorage.getItem(SK)||'[]');}catch(e){return[];}}
 function saveH(h){localStorage.setItem(SK,JSON.stringify(h));renderHistBadge();}
 function renderHistBadge(){document.getElementById('histBadge').textContent=loadH().length;}
+
+async function fetchBtBadge(){
+  try{
+    var r=await fetch(BACKEND+'/paper-trades/count',{headers:appHeaders(),credentials:'include'});
+    if(!r.ok)return;
+    var d=await r.json();
+    var badge=document.getElementById('btBadge');
+    if(badge){badge.textContent=d.count||0;badge.style.display=d.count>0?'':'none';}
+  }catch(e){}
+}
 
 
 // ── DB sync helpers ─────────────────────────────────────────────────────────

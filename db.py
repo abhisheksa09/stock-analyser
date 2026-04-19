@@ -664,6 +664,25 @@ def save_paper_trade(trade: dict) -> bool:
         log.warning("save_paper_trade: %s", e)
         return False
 
+def count_paper_trades(username=None) -> int:
+    """Return total number of paper trades visible to the given user."""
+    conn = db()
+    if not conn:
+        return 0
+    try:
+        sql = "SELECT COUNT(*) AS n FROM paper_trades"
+        params = []
+        if username:
+            sql += " WHERE (created_by IS NULL OR created_by = %s)"
+            params.append(username)
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            row = cur.fetchone()
+        return row["n"] if row else 0
+    except Exception as e:
+        log.warning("count_paper_trades: %s", e)
+        return 0
+
 def get_paper_trades(from_date=None, to_date=None, sym=None,
                      outcome=None, limit=500, username=None) -> list:
     conn = db()
