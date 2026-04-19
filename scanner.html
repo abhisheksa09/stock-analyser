@@ -2420,13 +2420,14 @@ async function loadPaperTrades() {
     renderBtStats(stData.stats || {});
     renderBtTable();
 
-    // Update tab badge with open count
-    var openCount = _btTrades.filter(function(t){ return t.outcome === 'open'; }).length;
+    // Update tab badge with total trade count
     var badge = document.getElementById('btBadge');
     if(badge) {
-      if(openCount > 0) { badge.textContent = openCount; badge.style.display = ''; }
-      else               badge.style.display = 'none';
+      badge.textContent = _btTrades.length;
+      badge.style.display = _btTrades.length ? '' : 'none';
     }
+    // Reset open groups so first date auto-opens on fresh load
+    window._btOpenGroups = new Set();
   } catch(e) {
     if(tb) tb.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:2rem;color:#A32D2D;">Error: ' + e.message + '</td></tr>';
   }
@@ -2489,6 +2490,18 @@ function renderBtStats(stats) {
   }).join('');
 }
 
+function toggleBtDateGroup(date, gid) {
+  if (!window._btOpenGroups) window._btOpenGroups = new Set();
+  var isOpen = window._btOpenGroups.has(date);
+  if (isOpen) window._btOpenGroups.delete(date);
+  else window._btOpenGroups.add(date);
+  var arr = document.getElementById('btarr_' + gid);
+  if (arr) arr.classList.toggle('open', !isOpen);
+  document.querySelectorAll('[data-btgroup="' + gid + '"]').forEach(function(tr) {
+    tr.classList.toggle('hidden', isOpen);
+  });
+}
+
 function renderBtTable() {
   var tb      = document.getElementById('btBody');
   var emptyEl = document.getElementById('btEmpty');
@@ -2506,37 +2519,75 @@ function renderBtTable() {
   }
   if(emptyEl) emptyEl.style.display = 'none';
 
-  tb.innerHTML = '';
+  // Group by trade_date
+  var groups = {}, groupOrder = [];
   rows.forEach(function(t) {
-    var sigCls  = t.sig === 'BUY' ? 'buy' : 'sell';
-    var ocLabel = { won: 'Won', lost: 'Lost', partial_win: 'Partial +', partial_loss: 'Partial −', open: 'Open' }[t.outcome] || t.outcome;
-    var ocCls   = { won: 'oc-hit', lost: 'oc-sl', partial_win: 'oc-partial', partial_loss: 'oc-loss', open: 'oc-pending' }[t.outcome] || '';
-    var pnlPts  = t.pnl_pts != null ? (t.pnl_pts >= 0 ? '+' : '') + fc(t.pnl_pts) : '—';
-    var pnlPct  = t.pnl_pct != null ? (t.pnl_pct >= 0 ? '+' : '') + t.pnl_pct.toFixed(2) + '%' : '—';
-    var pnlCls  = t.pnl_pts != null ? (t.pnl_pts >= 0 ? 'pnl-pos' : 'pnl-neg') : '';
-    var closePx = t.close_price != null ? '₹' + fc(t.close_price) : '—';
-    var confMt  = confMeta(t.conf || 0);
-    var dateStr = t.trade_date ? fmtDate(t.trade_date) : '—';
+    var d = t.trade_date || '—';
+    if (!groups[d]) { groups[d] = []; groupOrder.push(d); }
+    groups[d].push(t);
+  });
 
-    var tr = document.createElement('tr');
-    tr.innerHTML =
-      '<td style="white-space:nowrap;"><div style="font-weight:600;font-size:12px;">' + dateStr + '</div>' +
-        '<div style="color:#888;font-size:11px;">' + (t.signal_time || '') + ' IST</div></td>' +
-      '<td><div class="sym">' + (t.sym || '') + '</div><div class="sec">' + (t.sec || '') + '</div></td>' +
-      '<td><span class="sig ' + sigCls + '"><span class="dot"></span>' + t.sig + '</span></td>' +
-      '<td><span class="conf-n ' + confMt.cls + '">' + (t.conf || 0) + '%</span></td>' +
-      '<td class="r">₹' + fc(t.entry) + '</td>' +
-      '<td class="r" style="color:#3B6D11;">₹' + fc(t.target) + '</td>' +
-      '<td class="r" style="color:#A32D2D;">₹' + fc(t.stop_loss) + '</td>' +
-      '<td class="r htbl-hide-mobile">' + (t.rr ? t.rr + ':1' : '—') + '</td>' +
-      '<td class="r">' + closePx + '</td>' +
-      '<td class="r"><span class="' + pnlCls + '">' + pnlPts + '</span></td>' +
-      '<td class="r"><span class="' + pnlCls + '">' + pnlPct + '</span></td>' +
-      '<td><span class="' + ocCls + '">' + ocLabel + '</span>' +
-        (t.target_hit ? ' <span style="font-size:10px;background:#EAF3DE;color:#27500A;padding:1px 5px;border-radius:3px;">TGT</span>' : '') +
-        (t.sl_hit     ? ' <span style="font-size:10px;background:#FCEBEB;color:#791F1F;padding:1px 5px;border-radius:3px;">SL</span>' : '') +
-      '</td>';
-    tb.appendChild(tr);
+  if (!window._btOpenGroups) window._btOpenGroups = new Set();
+  if (window._btOpenGroups.size === 0 && groupOrder.length > 0)
+    window._btOpenGroups.add(groupOrder[0]);
+
+  tb.innerHTML = '';
+
+  groupOrder.forEach(function(date) {
+    var dayRows = groups[date];
+    var gid     = 'btdg_' + date.replace(/-/g, '');
+    var isOpen  = window._btOpenGroups.has(date);
+
+    var wins   = dayRows.filter(function(t) { return t.outcome === 'won' || t.outcome === 'partial_win'; });
+    var losses = dayRows.filter(function(t) { return t.outcome === 'lost' || t.outcome === 'partial_loss'; });
+    var open   = dayRows.filter(function(t) { return t.outcome === 'open'; });
+    var pnls   = dayRows.filter(function(t) { return t.pnl_pts != null; }).map(function(t) { return t.pnl_pts; });
+    var totalPnL = pnls.length ? +pnls.reduce(function(a,b){return a+b;},0).toFixed(2) : null;
+
+    var meta = '<span class="dg-badge dg-count">' + dayRows.length + ' trade' + (dayRows.length !== 1 ? 's' : '') + '</span>';
+    if (wins.length)   meta += '<span class="dg-badge dg-hit">'     + wins.length   + ' win'  + (wins.length   !== 1 ? 's' : '') + '</span>';
+    if (losses.length) meta += '<span class="dg-badge dg-loss">'    + losses.length + ' loss' + (losses.length !== 1 ? 'es' : '') + '</span>';
+    if (open.length)   meta += '<span class="dg-badge dg-pending">' + open.length   + ' open' + '</span>';
+    if (totalPnL !== null) meta += '<span class="dg-pnl ' + (totalPnL >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '">' + (totalPnL >= 0 ? '+' : '') + fc(totalPnL) + ' pts</span>';
+
+    var hdr = document.createElement('tr');
+    hdr.className = 'date-group-hdr';
+    hdr.onclick = (function(d, g) { return function() { toggleBtDateGroup(d, g); }; })(date, gid);
+    hdr.innerHTML = '<td colspan="12" style="padding:0;"><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;flex-wrap:wrap;gap:6px;"><div class="dg-title"><span class="dg-arrow' + (isOpen ? ' open' : '') + '" id="btarr_' + gid + '">&#9658;</span><span>' + fmtDate(date) + '</span></div><div class="dg-meta">' + meta + '</div></div></td>';
+    tb.appendChild(hdr);
+
+    dayRows.forEach(function(t) {
+      var sigCls  = t.sig === 'BUY' ? 'buy' : 'sell';
+      var ocLabel = { won: 'Won', lost: 'Lost', partial_win: 'Partial +', partial_loss: 'Partial −', open: 'Open' }[t.outcome] || t.outcome;
+      var ocCls   = { won: 'oc-hit', lost: 'oc-sl', partial_win: 'oc-partial', partial_loss: 'oc-loss', open: 'oc-pending' }[t.outcome] || '';
+      var pnlPts  = t.pnl_pts != null ? (t.pnl_pts >= 0 ? '+' : '') + fc(t.pnl_pts) : '—';
+      var pnlPct  = t.pnl_pct != null ? (t.pnl_pct >= 0 ? '+' : '') + t.pnl_pct.toFixed(2) + '%' : '—';
+      var pnlCls  = t.pnl_pts != null ? (t.pnl_pts >= 0 ? 'pnl-pos' : 'pnl-neg') : '';
+      var closePx = t.close_price != null ? '₹' + fc(t.close_price) : '—';
+      var confMt  = confMeta(t.conf || 0);
+
+      var tr = document.createElement('tr');
+      tr.className = 'data-row' + (isOpen ? '' : ' hidden');
+      tr.dataset.btgroup = gid;
+      tr.innerHTML =
+        '<td style="white-space:nowrap;"><div style="font-weight:600;font-size:12px;">' + fmtDate(date) + '</div>' +
+          '<div style="color:#888;font-size:11px;">' + (t.signal_time || '') + ' IST</div></td>' +
+        '<td><div class="sym">' + (t.sym || '') + '</div><div class="sec">' + (t.sec || '') + '</div></td>' +
+        '<td><span class="sig ' + sigCls + '"><span class="dot"></span>' + t.sig + '</span></td>' +
+        '<td><span class="conf-n ' + confMt.cls + '">' + (t.conf || 0) + '%</span></td>' +
+        '<td class="r">₹' + fc(t.entry) + '</td>' +
+        '<td class="r" style="color:#3B6D11;">₹' + fc(t.target) + '</td>' +
+        '<td class="r" style="color:#A32D2D;">₹' + fc(t.stop_loss) + '</td>' +
+        '<td class="r htbl-hide-mobile">' + (t.rr ? t.rr + ':1' : '—') + '</td>' +
+        '<td class="r">' + closePx + '</td>' +
+        '<td class="r"><span class="' + pnlCls + '">' + pnlPts + '</span></td>' +
+        '<td class="r"><span class="' + pnlCls + '">' + pnlPct + '</span></td>' +
+        '<td><span class="' + ocCls + '">' + ocLabel + '</span>' +
+          (t.target_hit ? ' <span style="font-size:10px;background:#EAF3DE;color:#27500A;padding:1px 5px;border-radius:3px;">TGT</span>' : '') +
+          (t.sl_hit     ? ' <span style="font-size:10px;background:#FCEBEB;color:#791F1F;padding:1px 5px;border-radius:3px;">SL</span>' : '') +
+        '</td>';
+      tb.appendChild(tr);
+    });
   });
 }
 
