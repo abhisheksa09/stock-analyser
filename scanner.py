@@ -89,11 +89,12 @@ class SessionState:
         self._reset()
 
     def _reset(self):
-        self.date       = datetime.now(IST).strftime("%Y-%m-%d")
-        self.locked_sig = {}
-        self.prev_conf  = {}
-        self.alerted    = set()
-        self.bt_saved   = set()   # symbols already auto-saved as paper trades today
+        self.date                = datetime.now(IST).strftime("%Y-%m-%d")
+        self.locked_sig          = {}
+        self.prev_conf           = {}
+        self.alerted             = set()
+        self.bt_saved            = set()   # symbols already auto-saved as paper trades today
+        self.token_expired_alerted = False  # send 401 Telegram alert only once per session
         log.info("Session state reset for %s", self.date)
 
     def check_date(self):
@@ -114,7 +115,10 @@ STATE = SessionState()
 _token = {"value": os.environ.get("UPSTOX_TOKEN", "")}
 
 def get_token():    return _token["value"]
-def set_token(tok): _token["value"] = tok.strip(); log.info("Upstox token updated")
+def set_token(tok):
+    _token["value"] = tok.strip()
+    STATE.token_expired_alerted = False   # reset so next expiry triggers a fresh alert
+    log.info("Upstox token updated")
 
 # ─── Telegram Bot API ─────────────────────────────────────────────────────────
 
@@ -377,6 +381,24 @@ def run_scan():
 
             s = build_setup(sym, stock["sec"], intra, daily, ltp, market_ctx=ctx)
         except Exception as e:
+            # Detect expired / invalid token (HTTP 401) and alert once via Telegram
+            is_401 = (
+                isinstance(e, urllib.error.HTTPError) and e.code == 401
+            ) or "401" in str(e)
+            if is_401 and not STATE.token_expired_alerted:
+                STATE.token_expired_alerted = True
+                render_base = os.environ.get("RENDER_BASE_URL", "").rstrip("/")
+                login_url   = f"{render_base}/auth/login" if render_base else None
+                link_line   = (f"\U0001f449 <a href=\"{login_url}\">Tap here to renew</a>\n{login_url}"
+                               if login_url else "\U0001f449 Go to your Render app → /auth/login")
+                send_telegram(
+                    "\u26a0\ufe0f <b>Upstox token expired</b>\n\n"
+                    "The scanner cannot fetch market data. "
+                    "Please log in to Upstox to get a fresh token.\n\n"
+                    f"{link_line}"
+                )
+                log.warning("Token expired (401) — Telegram alert sent, aborting scan")
+                return   # no point scanning remaining stocks with a dead token
             log.warning("Fetch error %s: %s", sym, e)
             continue
 
