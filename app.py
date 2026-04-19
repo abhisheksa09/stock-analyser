@@ -367,12 +367,17 @@ def dry_scan():
                     "market_ctx": {}, "cBd": [],
                 }
             else:
-                from signals import get_ltp, get_intraday, get_daily, get_market_context
+                from signals import get_ltp, get_intraday, get_daily, get_market_context, get_market_depth
                 ltp   = get_ltp(stock["ikey"], token)
                 intra = get_intraday(stock["ikey"], token)
                 daily = get_daily(stock["ikey"], token)
                 ctx   = get_market_context(stock["sec"], token)
-                s     = build_setup(sym, stock["sec"], intra, daily, ltp, market_ctx=ctx)
+                depth = None
+                try:
+                    depth = get_market_depth(stock["ikey"], token)
+                except Exception:
+                    pass
+                s     = build_setup(sym, stock["sec"], intra, daily, ltp, market_ctx=ctx, depth=depth)
 
             # Force IST minutes to 9:50 (prime window) for readiness check
             verdict, gates_ok = is_ready(s, ist_mins=590)
@@ -1398,6 +1403,32 @@ def get_paper_trade_config():
         "saved_today_count":  len(STATE.bt_saved),
         "source":             "env:BACKTEST_SYMBOLS" if os.environ.get("BACKTEST_SYMBOLS") else "hardcoded_default",
         "ist_now":            datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
+    })
+
+
+@app.route("/paper-trades/walk-forward", methods=["GET"])
+def get_walk_forward_stats():
+    """
+    Per-month accuracy breakdown for the last N months.
+    Shows how the strategy performed across different market regimes
+    (out-of-sample validation — the gold standard for strategy robustness).
+    Query params:
+      months — number of months to look back (default 6, max 24)
+    """
+    sess, err = _require_session(request)
+    if err:
+        return err
+    if not _has_db():
+        return jsonify({"months": [], "note": "No DB"})
+    months = min(int(request.args.get("months", 6)), 24)
+    data   = _db_module.get_walk_forward_stats(months=months, username=sess["username"])
+    return jsonify({
+        "months":       data,
+        "total_months": len(data),
+        "note": (
+            "Each row is one calendar month of settled paper trades. "
+            "Consistent win_rate across months = strategy is robust, not lucky."
+        ),
     })
 
 

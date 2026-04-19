@@ -760,6 +760,65 @@ def settle_paper_trade(trade_id: str, close_price: float,
         log.warning("settle_paper_trade: %s", e)
         return False
 
+def get_walk_forward_stats(months: int = 6, username: str = None) -> list:
+    """
+    Per-month accuracy breakdown for the last N months.
+    Used for walk-forward validation — proves the strategy works across
+    different market regimes (bull, bear, sideways) not just recent data.
+    """
+    conn = db()
+    if not conn:
+        return []
+    try:
+        sql = """
+            SELECT
+                TO_CHAR(trade_date, 'YYYY-MM') AS month,
+                COUNT(*)                        AS total,
+                SUM(CASE WHEN outcome IN ('won','partial_win')   THEN 1 ELSE 0 END) AS won,
+                SUM(CASE WHEN outcome IN ('lost','partial_loss') THEN 1 ELSE 0 END) AS lost,
+                ROUND(AVG(pnl_pts)::numeric, 2)  AS avg_pnl_pts,
+                ROUND(AVG(pnl_pct)::numeric, 3)  AS avg_pnl_pct,
+                ROUND(AVG(conf)::numeric, 1)      AS avg_conf,
+                ROUND(AVG(rr)::numeric, 2)        AS avg_rr,
+                SUM(CASE WHEN sig='BUY'  THEN 1 ELSE 0 END) AS buy_count,
+                SUM(CASE WHEN sig='SELL' THEN 1 ELSE 0 END) AS sell_count
+            FROM paper_trades
+            WHERE outcome <> 'open'
+              AND trade_date >= CURRENT_DATE - (%s * 31)
+        """
+        params = [months]
+        if username:
+            sql += " AND (created_by IS NULL OR created_by = %s)"
+            params.append(username)
+        sql += " GROUP BY month ORDER BY month DESC"
+
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = [dict(r) for r in cur.fetchall()]
+
+        result = []
+        for r in rows:
+            total = int(r["total"] or 0)
+            won   = int(r["won"]   or 0)
+            result.append({
+                "month":       r["month"],
+                "total":       total,
+                "won":         won,
+                "lost":        int(r["lost"] or 0),
+                "win_rate":    round(won / total * 100, 1) if total else 0,
+                "avg_pnl_pts": float(r["avg_pnl_pts"] or 0),
+                "avg_pnl_pct": float(r["avg_pnl_pct"] or 0),
+                "avg_conf":    float(r["avg_conf"]    or 0),
+                "avg_rr":      float(r["avg_rr"]      or 0),
+                "buy_count":   int(r["buy_count"]  or 0),
+                "sell_count":  int(r["sell_count"] or 0),
+            })
+        return result
+    except Exception as e:
+        log.warning("get_walk_forward_stats: %s", e)
+        return []
+
+
 def get_paper_trade_stats(days: int = 30, username: str = None) -> dict:
     """Accuracy metrics over the last N calendar days."""
     conn = db()

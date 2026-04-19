@@ -34,7 +34,7 @@ import urllib.parse
 import urllib.error
 from datetime import datetime, timezone, timedelta
 
-from signals import STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, READY_GREEN_MIN
+from signals import STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, READY_GREEN_MIN
 from macro import get_full_macro_context, apply_all_macro_penalties
 import db as _db_module
 
@@ -309,6 +309,11 @@ def run_scan():
     """Called every N minutes by APScheduler."""
     STATE.check_date()
 
+    now_ist = datetime.now(IST)
+    if now_ist.weekday() >= 5:   # 5 = Saturday, 6 = Sunday
+        log.info("Weekend — skipping scan")
+        return
+
     token = get_token()
     if not token:
         log.info("No Upstox token set — skipping scan")
@@ -379,7 +384,13 @@ def run_scan():
             else:
                 ctx = None
 
-            s = build_setup(sym, stock["sec"], intra, daily, ltp, market_ctx=ctx)
+            depth = None
+            try:
+                depth = get_market_depth(stock["ikey"], token)
+            except Exception:
+                pass
+
+            s = build_setup(sym, stock["sec"], intra, daily, ltp, market_ctx=ctx, depth=depth)
         except Exception as e:
             # Detect expired / invalid token (HTTP 401) and alert once via Telegram
             is_401 = (
