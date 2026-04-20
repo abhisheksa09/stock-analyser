@@ -482,5 +482,9 @@ def run_scan(force: bool = False):
 
         STATE.prev_conf[sym] = s["conf"]
 
+    # Log per-symbol summary for backtest symbols so it's easy to see why trades didn't fire
+    bt_summary = {sym: STATE.prev_conf.get(sym) for sym in bt_syms if sym in STATE.prev_conf}
+    log.info("Backtest conf snapshot: %s",
+             "  ".join(f"{s}={c}%" for s, c in sorted(bt_summary.items())))
     log.info("Scan done — %d alerts sent, %d paper trades saved today",
              sent, len(STATE.bt_saved))
