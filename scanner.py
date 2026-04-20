@@ -492,8 +492,13 @@ def run_scan(force: bool = False):
         STATE.prev_conf[sym] = s["conf"]
 
     # Log per-symbol summary for all backtest symbols (ERR if fetch failed)
-    bt_summary = {sym: (f"{STATE.prev_conf[sym]}%" if sym in STATE.prev_conf else "ERR")
-                  for sym in bt_syms}
+    def _bt_label(sym):
+        if sym not in STATE.prev_conf:
+            return "ERR"
+        sig = STATE.locked_sig.get(sym, "WATCH")
+        saved = "✓" if sym in STATE.bt_saved else ""
+        return f"{sig}/{STATE.prev_conf[sym]}%{saved}"
+    bt_summary = {sym: _bt_label(sym) for sym in bt_syms}
     log.info("Backtest conf snapshot: %s",
              "  ".join(f"{s}={v}" for s, v in sorted(bt_summary.items())))
     log.info("Scan done — %d alerts sent, %d paper trades saved today",
