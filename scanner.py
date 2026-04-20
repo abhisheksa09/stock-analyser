@@ -93,9 +93,18 @@ class SessionState:
         self.locked_sig          = {}
         self.prev_conf           = {}
         self.alerted             = set()
-        self.bt_saved            = set()   # symbols already auto-saved as paper trades today
-        self.token_expired_alerted = False  # send 401 Telegram alert only once per session
-        log.info("Session state reset for %s", self.date)
+        self.bt_saved            = self._load_bt_saved_from_db()
+        self.token_expired_alerted = False
+        log.info("Session state reset for %s (bt_saved from DB: %s)", self.date, sorted(self.bt_saved))
+
+    def _load_bt_saved_from_db(self) -> set:
+        """Load today's already-saved paper trade symbols from DB to survive restarts."""
+        try:
+            today = datetime.now(IST).strftime("%Y-%m-%d")
+            trades = _db_module.get_paper_trades(from_date=today, to_date=today)
+            return {t["sym"] for t in trades if t.get("sym")}
+        except Exception:
+            return set()
 
     def check_date(self):
         today = datetime.now(IST).strftime("%Y-%m-%d")
@@ -482,9 +491,10 @@ def run_scan(force: bool = False):
 
         STATE.prev_conf[sym] = s["conf"]
 
-    # Log per-symbol summary for backtest symbols so it's easy to see why trades didn't fire
-    bt_summary = {sym: STATE.prev_conf.get(sym) for sym in bt_syms if sym in STATE.prev_conf}
+    # Log per-symbol summary for all backtest symbols (ERR if fetch failed)
+    bt_summary = {sym: (f"{STATE.prev_conf[sym]}%" if sym in STATE.prev_conf else "ERR")
+                  for sym in bt_syms}
     log.info("Backtest conf snapshot: %s",
-             "  ".join(f"{s}={c}%" for s, c in sorted(bt_summary.items())))
+             "  ".join(f"{s}={v}" for s, v in sorted(bt_summary.items())))
     log.info("Scan done — %d alerts sent, %d paper trades saved today",
              sent, len(STATE.bt_saved))
