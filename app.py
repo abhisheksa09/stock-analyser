@@ -447,6 +447,29 @@ def dry_scan():
         ),
     })
 
+# ── Instrument key health check ──────────────────────────────────────────────
+@app.route("/check-ikeys")
+def check_ikeys():
+    """Probe every stock's LTP endpoint to find stale/invalid instrument keys."""
+    tok = get_effective_token()
+    if not tok:
+        return jsonify({"error": "No token. Visit /set-token-form first."}), 400
+    from signals import STOCKS, _upstox_get
+    import urllib.parse
+    results = []
+    for stock in STOCKS:
+        ikey = stock["ikey"]
+        try:
+            d    = _upstox_get(f"/v2/market-quote/ltp?instrument_key={urllib.parse.quote(ikey)}", tok)
+            data = d.get("data") or {}
+            results.append({"sym": stock["sym"], "ikey": ikey, "ok": bool(data),
+                             "ltp": list(data.values())[0].get("last_price") if data else None})
+        except Exception as e:
+            results.append({"sym": stock["sym"], "ikey": ikey, "ok": False, "error": str(e)[:120]})
+        import time as _t; _t.sleep(0.4)
+    bad = [r for r in results if not r["ok"]]
+    return jsonify({"total": len(results), "bad_count": len(bad), "bad": bad, "all": results})
+
 # ── Force scan (bypasses time window — for manual testing) ───────────────────
 @app.route("/force-scan", methods=["POST"])
 def force_scan():

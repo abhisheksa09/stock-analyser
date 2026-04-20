@@ -372,9 +372,19 @@ def run_scan(force: bool = False):
         time.sleep(0.4)   # avoid Upstox rate-limiting across 30 rapid calls
 
         try:
-            ltp   = get_ltp(stock["ikey"], token)
-            intra = get_intraday(stock["ikey"], token)
-            daily = get_daily(stock["ikey"], token)
+            # Retry once on empty-data errors (transient rate-limit vs bad ikey)
+            for _attempt in range(2):
+                try:
+                    ltp   = get_ltp(stock["ikey"], token)
+                    intra = get_intraday(stock["ikey"], token)
+                    daily = get_daily(stock["ikey"], token)
+                    break
+                except ValueError as _ve:
+                    if _attempt == 0 and "Empty LTP" in str(_ve):
+                        log.debug("Retry %s after empty LTP (attempt 1)", sym)
+                        time.sleep(1.5)
+                    else:
+                        raise
 
             if nifty_ctx is not None:
                 try:
