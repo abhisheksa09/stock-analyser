@@ -100,7 +100,6 @@ def _upstox_get(path, token, timeout=15):
         "Api-Version":    "2.0",
         "User-Agent":     "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
         "Origin":         "https://upstox.com",
         "Referer":        "https://upstox.com/",
     })
