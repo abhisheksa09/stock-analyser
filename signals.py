@@ -43,9 +43,9 @@ STOCKS = [
     {"sym": "ICICIBANK",  "ikey": "NSE_EQ|INE090A01021", "sec": "Banking"},
     {"sym": "SBIN",       "ikey": "NSE_EQ|INE062A01020", "sec": "Banking"},
     {"sym": "BHARTIARTL", "ikey": "NSE_EQ|INE397D01024", "sec": "Telecom"},
-    {"sym": "KOTAKBANK",  "ikey": "NSE_EQ|INE237A01028", "sec": "Banking"},
+    {"sym": "KOTAKBANK",  "ikey": "NSE_EQ|INE237A01036", "sec": "Banking"},
     {"sym": "HINDUNILVR", "ikey": "NSE_EQ|INE030A01027", "sec": "FMCG"},
-    {"sym": "BAJFINANCE", "ikey": "NSE_EQ|INE296A01024", "sec": "NBFC"},
+    {"sym": "BAJFINANCE", "ikey": "NSE_EQ|INE296A01032", "sec": "NBFC"},
     {"sym": "LT",         "ikey": "NSE_EQ|INE018A01030", "sec": "Infra"},
     {"sym": "AXISBANK",   "ikey": "NSE_EQ|INE238A01034", "sec": "Banking"},
     {"sym": "MARUTI",     "ikey": "NSE_EQ|INE585B01010", "sec": "Auto"},
@@ -56,7 +56,7 @@ STOCKS = [
     {"sym": "ITC",        "ikey": "NSE_EQ|INE154A01025", "sec": "FMCG"},
     {"sym": "TATAMOTORS", "ikey": "NSE_EQ|INE155A01022", "sec": "Auto"},
     {"sym": "TATASTEEL",  "ikey": "NSE_EQ|INE081A01020", "sec": "Metals"},
-    {"sym": "DRREDDY",    "ikey": "NSE_EQ|INE089A01023", "sec": "Pharma"},
+    {"sym": "DRREDDY",    "ikey": "NSE_EQ|INE089A01031", "sec": "Pharma"},
     {"sym": "CIPLA",      "ikey": "NSE_EQ|INE059A01026", "sec": "Pharma"},
     {"sym": "TECHM",      "ikey": "NSE_EQ|INE669C01036", "sec": "IT"},
     {"sym": "INDUSINDBK", "ikey": "NSE_EQ|INE095A01012", "sec": "Banking"},
@@ -65,7 +65,7 @@ STOCKS = [
     {"sym": "COALINDIA",  "ikey": "NSE_EQ|INE522F01014", "sec": "Energy"},
     {"sym": "ASIANPAINT", "ikey": "NSE_EQ|INE021A01026", "sec": "Consumer"},
     {"sym": "ULTRACEMCO", "ikey": "NSE_EQ|INE481G01011", "sec": "Cement"},
-    {"sym": "BAJAJAUTO",  "ikey": "NSE_EQ|INE917I01026", "sec": "Auto"},
+    {"sym": "BAJAJAUTO",  "ikey": "NSE_EQ|INE917I01010", "sec": "Auto"},
 ]
 
 # ─── Index instrument keys (for market/sector context) ───────────────────────
