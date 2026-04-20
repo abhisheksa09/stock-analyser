@@ -91,13 +91,25 @@ CONFIRM_CANDLES = 3
 # ─── Upstox API helpers ───────────────────────────────────────────────────────
 
 def _upstox_get(path, token, timeout=15):
+    import logging as _logging
+    _log = _logging.getLogger("scanner")
     url = UPSTOX_BASE + path
     req = urllib.request.Request(url, headers={
         "Authorization": f"Bearer {token}",
-        "Accept": "application/json",
+        "Accept":        "application/json",
+        "Api-Version":   "2.0",
     })
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", errors="replace")[:300]
+        except Exception:
+            pass
+        _log.warning("Upstox HTTP %s on %s — %s", e.code, path, body)
+        raise
 
 def get_ltp(ikey, token):
     d = _upstox_get(
