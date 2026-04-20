@@ -369,6 +369,8 @@ def run_scan(force: bool = False):
         in_bt      = sym in bt_syms
         in_watch   = not watch or sym in watch
 
+        time.sleep(0.4)   # avoid Upstox rate-limiting across 30 rapid calls
+
         try:
             ltp   = get_ltp(stock["ikey"], token)
             intra = get_intraday(stock["ikey"], token)

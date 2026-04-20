@@ -119,8 +119,11 @@ def get_ltp(ikey, token):
     d = _upstox_get(
         f"/v2/market-quote/ltp?instrument_key={urllib.parse.quote(ikey)}", token
     )
-    k   = list((d.get("data") or {}).keys())[0]
-    ltp = d["data"][k]["last_price"]
+    data = d.get("data") or {}
+    if not data:
+        raise ValueError(f"Empty LTP data for {ikey} (rate-limited or market closed?)")
+    k   = list(data.keys())[0]
+    ltp = data[k]["last_price"]
     if not ltp:
         raise ValueError("No LTP")
     return float(ltp)
