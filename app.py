@@ -447,6 +447,35 @@ def dry_scan():
         ),
     })
 
+# ── Force scan (bypasses time window — for manual testing) ───────────────────
+@app.route("/force-scan", methods=["POST"])
+def force_scan():
+    """
+    Immediately runs a full scan cycle, bypassing the time-window and weekend guards.
+    Saves paper trades just like the scheduled scan. Requires a valid Upstox token.
+    Returns a summary of what fired.
+    """
+    tok = get_effective_token()
+    if not tok:
+        return jsonify({"error": "No Upstox token set. Visit /set-token-form first."}), 400
+
+    import threading
+    result = {}
+
+    bt_before = set(scanner.STATE.bt_saved)
+    scanner.run_scan(force=True)
+    bt_after  = set(scanner.STATE.bt_saved)
+    new_trades = sorted(bt_after - bt_before)
+
+    return jsonify({
+        "status":           "ok",
+        "paper_trades_new": new_trades,
+        "paper_trades_all": sorted(bt_after),
+        "locked_signals":   scanner.STATE.locked_sig,
+        "alerts_sent":      sorted(scanner.STATE.alerted),
+        "ist_now":          datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
+    })
+
 # ── Upstox OAuth (mobile-friendly token flow) ────────────────────────────────
 #
 # How it works:

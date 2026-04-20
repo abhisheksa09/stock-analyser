@@ -305,12 +305,12 @@ def _save_paper_trade(s: dict):
         log.warning("_save_paper_trade failed for %s: %s", s.get("sym"), e)
 
 
-def run_scan():
-    """Called every N minutes by APScheduler."""
+def run_scan(force: bool = False):
+    """Called every N minutes by APScheduler. Pass force=True to bypass time/weekend guards."""
     STATE.check_date()
 
     now_ist = datetime.now(IST)
-    if now_ist.weekday() >= 5:   # 5 = Saturday, 6 = Sunday
+    if not force and now_ist.weekday() >= 5:   # 5 = Saturday, 6 = Sunday
         log.info("Weekend — skipping scan")
         return
 
@@ -323,7 +323,7 @@ def run_scan():
     stop  = parse_hhmm(os.environ.get("ALERT_STOP_IST",  "10:30"), 630)
     mins  = ist_now_mins()
 
-    if not (start <= mins <= stop):
+    if not force and not (start <= mins <= stop):
         log.info("Outside window (%02d:%02d IST) — skip", mins // 60, mins % 60)
         return
 
