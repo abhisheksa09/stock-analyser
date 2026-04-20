@@ -92,6 +92,7 @@ class SessionState:
         self.date                = datetime.now(IST).strftime("%Y-%m-%d")
         self.locked_sig          = {}
         self.prev_conf           = {}
+        self.prev_sig            = {}
         self.alerted             = set()
         self.bt_saved            = self._load_bt_saved_from_db()
         self.token_expired_alerted = False
@@ -412,6 +413,15 @@ def run_scan(force: bool = False):
                 pass
 
             s = build_setup(sym, stock["sec"], intra, daily, ltp, market_ctx=ctx, depth=depth)
+
+            if macro_ctx and s["sig"] != "WATCH":
+                pen, warns = apply_all_macro_penalties(s["sig"], stock["sec"], macro_ctx)
+                if pen != 0:
+                    s["conf"] = max(0, s["conf"] - pen)
+                    s.setdefault("ctxWarnings", []).extend(warns)
+                    log.debug("%s macro adj %+d → conf=%d%%  (%s)", sym, -pen, s["conf"],
+                              "; ".join(warns))
+
         except Exception as e:
             # Detect expired / invalid token (HTTP 401 or 403) and alert once via Telegram
             http_code = e.code if isinstance(e, urllib.error.HTTPError) else None
@@ -490,14 +500,15 @@ def run_scan(force: bool = False):
                 time.sleep(1)
 
         STATE.prev_conf[sym] = s["conf"]
+        STATE.prev_sig[sym]  = s["sig"]
 
     # Log per-symbol summary for all backtest symbols (ERR if fetch failed)
     def _bt_label(sym):
         if sym not in STATE.prev_conf:
             return "ERR"
-        sig = STATE.locked_sig.get(sym, "WATCH")
-        saved = "✓" if sym in STATE.bt_saved else ""
-        return f"{sig}/{STATE.prev_conf[sym]}%{saved}"
+        sig   = STATE.prev_sig.get(sym, "WATCH")
+        saved = "✓saved" if sym in STATE.bt_saved else f"UNSAVED(need {bt_min_conf}%+non-WATCH)"
+        return f"{sig}/{STATE.prev_conf[sym]}%/{saved}"
     bt_summary = {sym: _bt_label(sym) for sym in bt_syms}
     log.info("Backtest conf snapshot: %s",
              "  ".join(f"{s}={v}" for s, v in sorted(bt_summary.items())))
