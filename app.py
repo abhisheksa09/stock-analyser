@@ -111,6 +111,10 @@ def set_token():
     if not token:
         return jsonify({"error": "token field required"}), 400
     scanner.set_token(token)
+    try:
+        _db_module.set_token(token, set_by="manual_form")
+    except Exception as e:
+        log.warning("Could not persist token to DB: %s", e)
     scanner.STATE.check_date()
     return jsonify({
         "status":  "ok",
