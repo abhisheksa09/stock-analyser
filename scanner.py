@@ -432,17 +432,45 @@ def run_scan(force: bool = False):
             )
             if is_auth_error and not STATE.token_expired_alerted:
                 STATE.token_expired_alerted = True
+                log.warning("Token auth error (%s) — attempting auto-auth", http_code)
+
+                # Try fully automated renewal first
+                try:
+                    import upstox_auto_auth as _auto_auth
+                    if _auto_auth.is_configured():
+                        ok, result = _auto_auth.run_auto_auth()
+                        if ok:
+                            set_token(result)
+                            try:
+                                _db_module.set_token(result, set_by="auto_auth_on_401")
+                            except Exception:
+                                pass
+                            STATE.token_expired_alerted = False  # allow re-alert if it fails again
+                            send_telegram(
+                                "\u2705 <b>Auto-auth: token renewed automatically</b>\n\n"
+                                "The scanner detected an expired token and renewed it "
+                                "without any manual action. Resuming next scan cycle."
+                            )
+                            log.info("Auto-auth on 401 succeeded — token renewed")
+                            return
+                        else:
+                            log.error("Auto-auth on 401 failed: %s", result)
+                            # Fall through to send manual login reminder below
+                except Exception as _ae:
+                    log.error("Auto-auth import/call error: %s", _ae)
+
+                # Fall back: send Telegram reminder with manual login link
                 render_base = os.environ.get("RENDER_BASE_URL", "").rstrip("/")
                 login_url   = f"{render_base}/auth/login" if render_base else None
                 link_line   = (f"\U0001f449 <a href=\"{login_url}\">Tap here to renew</a>\n{login_url}"
                                if login_url else "\U0001f449 Go to your Render app → /auth/login")
                 send_telegram(
                     f"\u26a0\ufe0f <b>Upstox token invalid (HTTP {http_code or 'error'})</b>\n\n"
-                    "The scanner cannot fetch market data. "
+                    "Auto-renewal was not available or failed. "
                     "Please log in to Upstox to get a fresh token.\n\n"
                     f"{link_line}"
                 )
-                log.warning("Token auth error (%s) — Telegram alert sent, aborting scan", http_code)
+                log.warning("Token auth error — Telegram manual-login alert sent, aborting scan")
                 return   # no point scanning remaining stocks with a dead token
             log.warning("Fetch error %s: %s", sym, e)
             continue
