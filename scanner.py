@@ -86,6 +86,7 @@ class SessionState:
         self.alerted    = set()
         self.macro_ctx  = None
         self.macro_fetched_at = None
+        self.needs_token_refresh = False
         self._reset()
 
     def _reset(self):
@@ -96,6 +97,7 @@ class SessionState:
         self.alerted             = set()
         self.bt_saved            = self._load_bt_saved_from_db()
         self.token_expired_alerted = False
+        self.needs_token_refresh = True   # signal run_scan to reload token from DB
         log.info("Session state reset for %s (bt_saved from DB: %s)", self.date, sorted(self.bt_saved))
 
     def _load_bt_saved_from_db(self) -> set:
@@ -325,6 +327,14 @@ def run_scan(force: bool = False):
         return
 
     token = get_token()
+    # Refresh from DB when: (a) token is empty, or (b) date just rolled over.
+    if not token or STATE.needs_token_refresh:
+        db_tok = _db_module.get_token()
+        if db_tok:
+            set_token(db_tok)
+            token = db_tok
+            log.info("Upstox token refreshed from DB")
+        STATE.needs_token_refresh = False
     if not token:
         log.info("No Upstox token set — skipping scan")
         return
