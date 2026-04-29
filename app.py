@@ -28,8 +28,34 @@ import db as _db_module
 import auto_login as _auto_login
 import upstox_auto_auth as _auto_auth
 
+# ── Dual-timezone log formatter (IST + CET/CEST) ─────────────────────────────
+class _DualTZFormatter(logging.Formatter):
+    try:
+        from zoneinfo import ZoneInfo as _ZI
+        _ist = _ZI("Asia/Kolkata")
+        _cet = _ZI("Europe/Amsterdam")   # DST-aware: CET in winter, CEST in summer
+    except Exception:
+        _ist = timezone(timedelta(hours=5, minutes=30))
+        _cet = timezone(timedelta(hours=1))
+
+    def formatTime(self, record, datefmt=None):
+        utc = datetime.fromtimestamp(record.created, tz=timezone.utc)
+        ist = utc.astimezone(self._ist)
+        cet = utc.astimezone(self._cet)
+        return f"{ist.strftime('%Y-%m-%d %H:%M:%S')} IST / {cet.strftime('%H:%M:%S')} CET"
+
+# Replace whatever basicConfig (scanner.py on import) installed, or add fresh handler
+_fmt = _DualTZFormatter("%(asctime)s [%(name)s] %(message)s")
+if logging.root.handlers:
+    for _h in logging.root.handlers:
+        _h.setFormatter(_fmt)
+else:
+    _sh = logging.StreamHandler()
+    _sh.setFormatter(_fmt)
+    logging.root.addHandler(_sh)
+    logging.root.setLevel(logging.INFO)
+
 log = logging.getLogger("app")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [app] %(message)s")
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False  # prevent /path -> /path/ redirects

@@ -39,7 +39,7 @@ from macro import get_full_macro_context, apply_all_macro_penalties
 import db as _db_module
 
 log = logging.getLogger("scanner")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [scanner] %(message)s")
+logging.basicConfig(level=logging.INFO)  # formatter applied centrally in app.py
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -344,7 +344,7 @@ def run_scan(force: bool = False):
     mins  = ist_now_mins()
 
     if not force and not (start <= mins <= stop):
-        log.info("Outside window (%02d:%02d IST) — skip", mins // 60, mins % 60)
+        log.debug("Outside window (%02d:%02d IST) — skip", mins // 60, mins % 60)
         return
 
     # Telegram alert symbols (env override or all stocks)
