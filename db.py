@@ -34,20 +34,27 @@ def get_connection():
     # Append sslmode if not already in URL
     if "sslmode" not in url:
         url = url + ("&" if "?" in url else "?") + "sslmode=require"
-    try:
-        if _db is None or _db.closed:
-            _db = psycopg.connect(
-                url,
-                row_factory=dict_row,
-                autocommit=True,
-                prepare_threshold=None,   # disable prepared statements (pooler requirement)
-            )
-            _DB = True
-    except Exception as e:
-        log.error("DB connection failed: %s", e)
-        _db = None
-        return None
-    return _db
+    # Retry once — Neon pauses compute on inactivity; the first connection
+    # attempt after a cold start can fail with an SSL close. A single retry
+    # is enough for Neon to finish waking up (~1-2 s).
+    for attempt in range(2):
+        try:
+            if _db is None or _db.closed:
+                _db = psycopg.connect(
+                    url,
+                    row_factory=dict_row,
+                    autocommit=True,
+                    prepare_threshold=None,   # disable prepared statements (pooler requirement)
+                )
+                _DB = True
+            return _db
+        except Exception as e:
+            log.warning("DB connection attempt %d failed: %s", attempt + 1, e)
+            _db = None
+            if attempt == 0:
+                import time; time.sleep(2)
+    log.error("DB connection failed after 2 attempts")
+    return None
 
 def db():
     return get_connection()

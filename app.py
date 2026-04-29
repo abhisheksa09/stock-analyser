@@ -606,6 +606,23 @@ def auth_login():
     Redirects to Upstox login page.
     After login Upstox sends you back to /auth/callback automatically.
     """
+    # Guard: if a valid token is already stored for today, refuse to start a
+    # new OAuth flow. Starting a second OAuth session revokes the first token
+    # (Upstox UDAPI100050), which breaks the scanner mid-morning.
+    existing = get_effective_token()
+    if existing:
+        ist_time = datetime.now(IST).strftime("%H:%M IST")
+        return _auth_page(
+            success=True,
+            title="Already logged in",
+            message=(
+                f"Token is already set for today ({ist_time}). "
+                f"No action needed — the scanner is active.<br><br>"
+                f"<small style='color:#888'>If you believe the token is stale, "
+                f"use the admin panel to clear it first before logging in again.</small>"
+            ),
+        )
+
     api_key = os.environ.get("UPSTOX_API_KEY", "")
     if not api_key:
         return (
@@ -771,21 +788,29 @@ def auth_callback():
                 ),
             )
 
-        # Set token in scanner automatically
+        # Set token in scanner memory first so the scanner can use it immediately
         scanner.set_token(token)
-        _db_module.set_token(token, set_by="oauth")
         scanner.STATE.check_date()
 
-        # Verify it was set
-        stored = get_effective_token()
-        if not stored:
-            _last_oauth["status"] = "set_failed"
-            _last_oauth["detail"] = "set_token called but get_token returned empty"
+        # Persist to DB — retry once in case Neon was cold-starting
+        db_saved = _db_module.set_token(token, set_by="oauth")
+        if not db_saved:
+            import time as _time; _time.sleep(2)
+            db_saved = _db_module.set_token(token, set_by="oauth")
+
+        if not db_saved:
+            _last_oauth["status"] = "db_save_failed"
+            _last_oauth["detail"] = "Token received and set in memory but DB write failed (Neon unreachable)"
             _last_oauth["time"]   = datetime.now(IST).strftime("%H:%M IST")
+            log.error("OAuth: token received but DB save failed — token is in memory only")
             return _auth_page(
                 success=False,
-                title="Internal error — token not stored",
-                message="Token was received but could not be stored. Please try again.",
+                title="DB save failed — please tap again",
+                message=(
+                    "Your Upstox login succeeded but the token could not be saved to the database "
+                    "(the DB was likely waking up from sleep).<br><br>"
+                    "<b>Tap the login link one more time</b> — it will save correctly now."
+                ),
             )
 
         ist_time = datetime.now(IST).strftime("%H:%M IST")
