@@ -989,17 +989,27 @@ th[data-tip]{cursor:default;}
         <span id="emailCfgTxt" style="font-size:13px;color:#888;">Checking&#8230;</span>
       </div>
 
-      <!-- Kind selector + send button -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
-        <select id="emailTestKind" style="font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid #e0e0e0;background:#fff;min-width:190px;">
-          <option value="green_ready">Green Ready</option>
-          <option value="conf_crossed">Confidence Crossed</option>
-          <option value="reversal">Signal Reversal</option>
-          <option value="token_expiry">Token Expiry</option>
-          <option value="eod_settlement">EOD Settlement</option>
-          <option value="token_reminder">Token Reminder</option>
-          <option value="login_reminder">Login Reminder</option>
-        </select>
+      <!-- Recipient + kind selector + send button -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px;">
+        <div>
+          <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Send to</label>
+          <input id="emailTestTo" type="email" class="token-inp"
+                 placeholder="you@example.com"
+                 style="width:200px;font-size:13px;"
+                 onkeydown="if(event.key==='Enter')sendTestEmail()"/>
+        </div>
+        <div>
+          <label style="font-size:11px;color:#888;display:block;margin-bottom:4px;">Event type</label>
+          <select id="emailTestKind" style="font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid #e0e0e0;background:#fff;min-width:190px;">
+            <option value="green_ready">Green Ready</option>
+            <option value="conf_crossed">Confidence Crossed</option>
+            <option value="reversal">Signal Reversal</option>
+            <option value="token_expiry">Token Expiry</option>
+            <option value="eod_settlement">EOD Settlement</option>
+            <option value="token_reminder">Token Reminder</option>
+            <option value="login_reminder">Login Reminder</option>
+          </select>
+        </div>
         <button class="btn" id="emailTestBtn" onclick="sendTestEmail()"
                 style="background:#185FA5;color:#fff;border:none;font-weight:600;">
           &#9993; Send test email
@@ -1846,6 +1856,7 @@ async function checkEmailConfig(){
   const dot  = document.getElementById('emailCfgDot');
   const txt  = document.getElementById('emailCfgTxt');
   const note = document.getElementById('emailSetupNote');
+  const toField = document.getElementById('emailTestTo');
   try {
     const r = await fetch(BACKEND + '/test-email', { method: 'GET' });
     const d = await r.json();
@@ -1856,9 +1867,11 @@ async function checkEmailConfig(){
       note.style.display   = 'block';
     } else {
       dot.style.background = '#4CAF50';
-      txt.textContent      = 'Configured — ready to send to ' + (d.to || '');
+      txt.textContent      = 'Configured (default: ' + (d.to || '') + ')';
       txt.style.color      = '#27500A';
       note.style.display   = 'none';
+      // Pre-fill the to field only if it's still empty
+      if(toField && !toField.value && d.to) toField.value = d.to;
     }
   } catch(e) {
     dot.style.background = '#e0e0e0';
@@ -1868,15 +1881,18 @@ async function checkEmailConfig(){
 }
 
 async function sendTestEmail(){
-  const btn  = document.getElementById('emailTestBtn');
-  const msg  = document.getElementById('emailTestMsg');
-  const kind = document.getElementById('emailTestKind').value;
+  const btn     = document.getElementById('emailTestBtn');
+  const msg     = document.getElementById('emailTestMsg');
+  const kind    = document.getElementById('emailTestKind').value;
+  const toVal   = (document.getElementById('emailTestTo').value || '').trim();
   btn.disabled    = true;
   btn.textContent = 'Sending…';
   msg.textContent = '';
   msg.style.color = '#888';
   try {
-    const r = await fetch(BACKEND + '/test-email?kind=' + kind, { method: 'POST' });
+    let url = BACKEND + '/test-email?kind=' + kind;
+    if(toVal) url += '&to=' + encodeURIComponent(toVal);
+    const r = await fetch(url, { method: 'POST' });
     const d = await r.json();
     if(r.ok){
       msg.textContent = '✓ Sent! Subject: “' + d.subject + '” → ' + d.to;

@@ -300,7 +300,8 @@ def test_email():
             "message": "Email not configured — set EMAIL_TO, SMTP_USER, SMTP_PASS on Render",
         }), 503
 
-    kind = request.args.get("kind", "green_ready").strip().lower()
+    kind        = request.args.get("kind", "green_ready").strip().lower()
+    override_to = request.args.get("to", "").strip()
     render_base = os.environ.get("RENDER_BASE_URL", "").rstrip("/")
     login_url   = f"{render_base}/auth/login" if render_base else "https://your-render-app.onrender.com/auth/login"
 
@@ -339,13 +340,14 @@ def test_email():
         }), 400
 
     subject, html_body = formatters[kind]()
-    ok = _email.send_email(subject, html_body)
+    effective_to = override_to or os.environ.get("EMAIL_TO", "")
+    ok = _email.send_email(subject, html_body, to_override=effective_to or None)
     if ok:
         return jsonify({
             "status": "ok",
             "kind":    kind,
             "subject": subject,
-            "to":      os.environ.get("EMAIL_TO", ""),
+            "to":      effective_to,
             "message": f"Test email ({kind}) sent successfully",
         })
     return jsonify({

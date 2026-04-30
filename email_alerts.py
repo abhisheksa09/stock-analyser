@@ -52,13 +52,14 @@ def is_configured() -> bool:
 
 # ── Core send ─────────────────────────────────────────────────────────────────
 
-def send_email(subject: str, html_body: str) -> bool:
-    """Send an HTML email via SMTP. Returns True on success."""
+def send_email(subject: str, html_body: str, to_override: str = None) -> bool:
+    """Send an HTML email via SMTP. Returns True on success.
+    to_override lets callers send to a one-off address without changing EMAIL_TO."""
     if not is_configured():
         log.debug("Email not configured — skipping (set EMAIL_TO, SMTP_USER, SMTP_PASS)")
         return False
 
-    to_addr   = os.environ.get("EMAIL_TO",   "").strip()
+    to_addr   = (to_override or os.environ.get("EMAIL_TO", "")).strip()
     smtp_user = os.environ.get("SMTP_USER",  "").strip()
     smtp_pass = os.environ.get("SMTP_PASS",  "").strip().replace(" ", "")
     smtp_host = os.environ.get("SMTP_HOST",  "smtp.gmail.com").strip()
