@@ -1003,6 +1003,19 @@ th[data-tip]{cursor:default;}
     </div>
 
     <div class="card">
+      <div class="card-title">Settle Today's Trades</div>
+      <p style="font-size:12px;color:#888;margin-bottom:12px;">
+        Manually run EOD settlement for today's open paper trades.
+        Use this if the 15:35 IST automatic settlement failed (e.g. due to a DB connection drop).
+      </p>
+      <button class="btn" id="settleNowBtn" onclick="settleNow()"
+              style="background:#27500A;color:#fff;border-color:#27500A;">
+        &#9654; Settle now
+      </button>
+      <div id="settleNowMsg" style="font-size:12px;margin-top:10px;min-height:16px;"></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">Backtest Dry Test</div>
       <p style="font-size:12px;color:#888;margin-bottom:12px;">
         Creates 4 synthetic paper trades covering all outcome types (Won, Lost, Partial Win, Partial Loss)
@@ -1730,6 +1743,30 @@ async function verifyToken(){
     token='';msg.textContent='\u2717 '+e.message;msg.style.color='#A32D2D';
     setTokenStatusUI(false,'');
   }
+}
+
+async function settleNow(){
+  const btn=document.getElementById('settleNowBtn');
+  const msg=document.getElementById('settleNowMsg');
+  btn.disabled=true; btn.textContent='Settling…';
+  msg.textContent=''; msg.style.color='#888';
+  try{
+    const r=await fetch(BACKEND+'/paper-trades/settle',{
+      method:'POST',
+      headers:appHeaders({'Content-Type':'application/json'}),
+      credentials:'include'
+    });
+    const d=await r.json();
+    if(!r.ok){ msg.textContent='✗ '+(d.error||'Failed'); msg.style.color='#A32D2D'; return; }
+    if(d.settled===0){
+      msg.textContent='No open trades to settle.'; msg.style.color='#888';
+    } else {
+      msg.textContent=`✓ Settled ${d.settled} trade(s).`+(d.skipped?` Skipped: ${d.skipped}.`:'');
+      msg.style.color='#27500A';
+    }
+    if(d.errors&&d.errors.length) msg.textContent+=' Errors: '+d.errors.join(', ');
+  }catch(e){ msg.textContent='✗ '+e.message; msg.style.color='#A32D2D'; }
+  finally{ btn.disabled=false; btn.textContent='▶ Settle now'; }
 }
 
 async function clearTodayToken(){
