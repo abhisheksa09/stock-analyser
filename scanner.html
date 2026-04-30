@@ -976,6 +976,59 @@ th[data-tip]{cursor:default;}
       <div id="alMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
     </div>
 
+    <!-- Email Alerts test card -->
+    <div class="card" id="emailTestCard">
+      <div class="card-title">&#9993; Email Alerts <span style="font-size:11px;font-weight:400;color:#888;margin-left:6px;">Gmail SMTP &mdash; test delivery</span></div>
+      <p style="font-size:12px;color:#888;margin-bottom:14px;">
+        Send a test email for any event type. Each option fires a fully-rendered HTML email identical to the real alert.
+      </p>
+
+      <!-- Config status indicator -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+        <span id="emailCfgDot" style="width:10px;height:10px;border-radius:50%;background:#e0e0e0;flex-shrink:0;display:inline-block;"></span>
+        <span id="emailCfgTxt" style="font-size:13px;color:#888;">Checking&#8230;</span>
+      </div>
+
+      <!-- Kind selector + send button -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+        <select id="emailTestKind" style="font-size:13px;padding:8px 10px;border-radius:8px;border:1px solid #e0e0e0;background:#fff;min-width:190px;">
+          <option value="green_ready">Green Ready</option>
+          <option value="conf_crossed">Confidence Crossed</option>
+          <option value="reversal">Signal Reversal</option>
+          <option value="token_expiry">Token Expiry</option>
+          <option value="eod_settlement">EOD Settlement</option>
+          <option value="token_reminder">Token Reminder</option>
+          <option value="login_reminder">Login Reminder</option>
+        </select>
+        <button class="btn" id="emailTestBtn" onclick="sendTestEmail()"
+                style="background:#185FA5;color:#fff;border:none;font-weight:600;">
+          &#9993; Send test email
+        </button>
+        <button class="btn" onclick="checkEmailConfig()"
+                style="font-size:12px;padding:6px 14px;">
+          &#8635; Refresh
+        </button>
+      </div>
+
+      <div id="emailTestMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
+
+      <!-- Setup note (shown when not configured) -->
+      <div id="emailSetupNote" style="display:none;background:#FFF8E7;border:1px solid #F5C842;
+           border-radius:8px;padding:12px 14px;font-size:12px;line-height:1.8;color:#555;margin-top:12px;">
+        <strong>Email not configured</strong> &mdash; set these env vars in
+        <strong>Render dashboard &rarr; Environment</strong>:<br>
+        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">EMAIL_TO</code> &nbsp;recipient address (e.g. you@gmail.com)<br>
+        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">SMTP_USER</code> &nbsp;your Gmail address<br>
+        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">SMTP_PASS</code> &nbsp;16-char Gmail App Password<br>
+        <span style="color:#888;font-size:11px;display:block;margin-top:6px;">
+          Get an App Password at
+          <a href="https://myaccount.google.com/apppasswords" target="_blank"
+             style="color:#185FA5;">myaccount.google.com/apppasswords</a>
+          &nbsp;(requires 2-Step Verification on your Google account).
+        </span>
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-title">Backtest Config</div>
       <p style="font-size:12px;color:#888;margin-bottom:12px;">
@@ -1137,6 +1190,7 @@ function showAdminContent(){
   const clearBtn=document.getElementById('clearTokenBtn');
   if(clearBtn) clearBtn.style.display='';
   loadAutoLoginStatus();
+  checkEmailConfig();
 }
 
 async function verifyAdminPin(){
@@ -1785,6 +1839,59 @@ async function clearTodayToken(){
     msg.textContent='Token cleared — you can now log in again.'; msg.style.color='#27500A';
     setTokenStatusUI(false,'');
   }catch(e){ msg.textContent='✗ '+e.message; msg.style.color='#A32D2D'; }
+}
+
+// ─── Email Alerts ─────────────────────────────────────────────────────────────
+async function checkEmailConfig(){
+  const dot  = document.getElementById('emailCfgDot');
+  const txt  = document.getElementById('emailCfgTxt');
+  const note = document.getElementById('emailSetupNote');
+  try {
+    const r = await fetch(BACKEND + '/test-email', { method: 'GET' });
+    const d = await r.json();
+    if(r.status === 503){
+      dot.style.background = '#e0e0e0';
+      txt.textContent      = 'Not configured — set EMAIL_TO, SMTP_USER, SMTP_PASS on Render';
+      txt.style.color      = '#A32D2D';
+      note.style.display   = 'block';
+    } else {
+      dot.style.background = '#4CAF50';
+      txt.textContent      = 'Configured — ready to send to ' + (d.to || '');
+      txt.style.color      = '#27500A';
+      note.style.display   = 'none';
+    }
+  } catch(e) {
+    dot.style.background = '#e0e0e0';
+    txt.textContent      = 'Could not check status';
+    txt.style.color      = '#888';
+  }
+}
+
+async function sendTestEmail(){
+  const btn  = document.getElementById('emailTestBtn');
+  const msg  = document.getElementById('emailTestMsg');
+  const kind = document.getElementById('emailTestKind').value;
+  btn.disabled    = true;
+  btn.textContent = 'Sending…';
+  msg.textContent = '';
+  msg.style.color = '#888';
+  try {
+    const r = await fetch(BACKEND + '/test-email?kind=' + kind, { method: 'POST' });
+    const d = await r.json();
+    if(r.ok){
+      msg.textContent = '✓ Sent! Subject: “' + d.subject + '” → ' + d.to;
+      msg.style.color = '#27500A';
+    } else {
+      msg.textContent = '✗ ' + (d.message || d.error || 'Unknown error');
+      msg.style.color = '#A32D2D';
+    }
+  } catch(e) {
+    msg.textContent = '✗ ' + e.message;
+    msg.style.color = '#A32D2D';
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = '✉ Send test email';
+  }
 }
 
 // ─── Auto-Login ───────────────────────────────────────────────────────────────

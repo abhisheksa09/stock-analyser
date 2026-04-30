@@ -7,6 +7,7 @@ New endpoints for alert system:
   POST /set-token          — set today's Upstox token (call once each morning)
   GET  /alert-status       — see scanner state, last scan time, alerts sent
   POST /test-alert         — send a test Telegram message to verify setup
+  POST /test-email         — send a test email (optional ?kind= param) to verify Gmail SMTP
   GET  /set-token-form     — simple HTML form to paste token from phone browser
   GET  /get-chat-id        — find your Telegram chat ID (run once during setup)
 """
@@ -282,6 +283,76 @@ def test_alert():
     if ok:
         return jsonify({"status": "ok", "message": "Test Telegram message sent"})
     return jsonify({"status": "error", "message": "Failed - check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID"}), 500
+
+
+@app.route("/test-email", methods=["POST", "GET"])
+def test_email():
+    """
+    Send a test email to verify Gmail SMTP setup.
+    Optional query param:
+      ?kind=green_ready | conf_crossed | reversal | token_expiry |
+            eod_settlement | token_reminder | login_reminder
+    Defaults to green_ready when omitted.
+    """
+    if not _email.is_configured():
+        return jsonify({
+            "status": "error",
+            "message": "Email not configured — set EMAIL_TO, SMTP_USER, SMTP_PASS on Render",
+        }), 503
+
+    kind = request.args.get("kind", "green_ready").strip().lower()
+    render_base = os.environ.get("RENDER_BASE_URL", "").rstrip("/")
+    login_url   = f"{render_base}/auth/login" if render_base else "https://your-render-app.onrender.com/auth/login"
+
+    # Synthetic trade setup used by trading-event formatters
+    _dummy_s = {
+        "sym": "HDFCBANK", "sec": "Banking", "sig": "BUY",
+        "conf": 78, "en": 1520.5, "tg": 1540.0, "sl": 1500.0,
+        "rr": 1.0, "ltp": 1521.0, "chg": 0.15, "rsi": 42.0,
+        "reason": "ORB breakout + VWAP support",
+        "market_ctx": {"nifty_chg": 0.52, "sector_chg": 0.75},
+        "ctx_warnings": [],
+    }
+
+    formatters = {
+        "green_ready":    lambda: _email.format_green_ready(_dummy_s),
+        "conf_crossed":   lambda: _email.format_conf_crossed(_dummy_s, prev_conf=72, threshold=75),
+        "reversal":       lambda: _email.format_reversal({**_dummy_s, "sig": "SELL"}, locked_sig="BUY"),
+        "token_expiry":   lambda: _email.format_token_expiry(401, login_url),
+        "token_reminder": lambda: _email.format_token_reminder(login_url),
+        "login_reminder": lambda: _email.format_login_reminder(login_url),
+        "eod_settlement": lambda: _email.format_eod_settlement(
+            trades=[
+                {"sym": "HDFCBANK", "sig": "BUY",  "entry": 1520.5, "close_price": 1540.0,
+                 "outcome": "won",  "pnl_pts": 19.5, "signal_time": "09:22"},
+                {"sym": "TCS",      "sig": "SELL", "entry": 3450.0, "close_price": 3480.0,
+                 "outcome": "lost", "pnl_pts": -30.0, "signal_time": "09:35"},
+            ],
+            settled=2, skipped=0, errors=[],
+        ),
+    }
+
+    if kind not in formatters:
+        return jsonify({
+            "status": "error",
+            "message": f"Unknown kind '{kind}'. Choose from: {', '.join(formatters)}",
+        }), 400
+
+    subject, html_body = formatters[kind]()
+    ok = _email.send_email(subject, html_body)
+    if ok:
+        return jsonify({
+            "status": "ok",
+            "kind":    kind,
+            "subject": subject,
+            "to":      os.environ.get("EMAIL_TO", ""),
+            "message": f"Test email ({kind}) sent successfully",
+        })
+    return jsonify({
+        "status":  "error",
+        "kind":    kind,
+        "message": "Failed to send — check SMTP_USER / SMTP_PASS and that Gmail App Password is correct",
+    }), 500
 
 def get_effective_token():
     """
