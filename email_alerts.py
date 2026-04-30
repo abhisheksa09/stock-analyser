@@ -78,6 +78,8 @@ def send_email(subject: str, html_body: str, to_override: str = None) -> tuple:
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type":  "application/json",
+            "Accept":        "application/json",
+            "User-Agent":    "NSEScanner/1.0",
         },
         method="POST",
     )

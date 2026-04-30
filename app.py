@@ -285,19 +285,31 @@ def test_alert():
     return jsonify({"status": "error", "message": "Failed - check TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID"}), 500
 
 
-@app.route("/test-email", methods=["POST", "GET"])
+@app.route("/test-email", methods=["GET"])
+def test_email_status():
+    """Config-check only — called by the admin panel on load. Never sends."""
+    configured = _email.is_configured()
+    return jsonify({
+        "status":     "ok" if configured else "not_configured",
+        "configured": configured,
+        "to":         os.environ.get("EMAIL_TO", ""),
+    }), 200 if configured else 503
+
+
+@app.route("/test-email", methods=["POST"])
 def test_email():
     """
-    Send a test email to verify Gmail SMTP setup.
-    Optional query param:
+    Send a test email. Only fires on POST (never on admin panel load).
+    Optional query params:
       ?kind=green_ready | conf_crossed | reversal | token_expiry |
             eod_settlement | token_reminder | login_reminder
-    Defaults to green_ready when omitted.
+      &to=override@example.com
+    Defaults to green_ready when kind is omitted.
     """
     if not _email.is_configured():
         return jsonify({
             "status": "error",
-            "message": "Email not configured — set EMAIL_TO, SMTP_USER, SMTP_PASS on Render",
+            "message": "Email not configured — set RESEND_API_KEY and EMAIL_TO on Render",
         }), 503
 
     kind        = request.args.get("kind", "green_ready").strip().lower()
