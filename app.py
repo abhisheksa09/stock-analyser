@@ -1879,14 +1879,19 @@ def _settle_paper_trades_for_date(date_str: str = None):
                     signal_time_str = trade.get("signal_time", "09:15"),
                 )
 
+            day_high = round(max(float(c[2]) for c in candles), 2)
+            day_low  = round(min(float(c[3]) for c in candles), 2)
+
             ok = _db_module.settle_paper_trade(
                 trade_id    = trade["id"],
-                close_price = exit_price,        # actual exit price, not just day close
+                close_price = exit_price,
                 outcome     = outcome,
                 pnl_pts     = pnl_pts,
                 pnl_pct     = pnl_pct,
                 target_hit  = target_hit,
                 sl_hit      = sl_hit,
+                day_high    = day_high,
+                day_low     = day_low,
             )
 
             if ok:

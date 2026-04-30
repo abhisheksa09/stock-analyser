@@ -180,6 +180,11 @@ CREATE TABLE IF NOT EXISTS paper_trades (
 CREATE INDEX IF NOT EXISTS idx_paper_trades_date ON paper_trades(trade_date);
 """
 
+_MIGRATIONS = [
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS day_high NUMERIC",
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS day_low  NUMERIC",
+]
+
 def init_db():
     """Create all tables. Safe to call multiple times (IF NOT EXISTS)."""
     conn = db()
@@ -193,6 +198,8 @@ def init_db():
                 ALTER TABLE paper_trades
                 ADD COLUMN IF NOT EXISTS created_by TEXT
             """)
+            for migration in _MIGRATIONS:
+                cur.execute(migration)
         log.info("DB schema initialised")
         return {"status": "ok"}
     except Exception as e:
@@ -756,7 +763,8 @@ def delete_paper_trade(trade_id: str, username: str) -> bool:
 
 def settle_paper_trade(trade_id: str, close_price: float,
                        outcome: str, pnl_pts: float, pnl_pct: float,
-                       target_hit: bool, sl_hit: bool) -> bool:
+                       target_hit: bool, sl_hit: bool,
+                       day_high: float = None, day_low: float = None) -> bool:
     """Update a paper trade with end-of-day settlement data."""
     conn = db()
     if not conn:
@@ -766,10 +774,11 @@ def settle_paper_trade(trade_id: str, close_price: float,
             cur.execute("""
                 UPDATE paper_trades
                 SET close_price=%s, settled_at=NOW(), outcome=%s,
-                    pnl_pts=%s, pnl_pct=%s, target_hit=%s, sl_hit=%s
+                    pnl_pts=%s, pnl_pct=%s, target_hit=%s, sl_hit=%s,
+                    day_high=%s, day_low=%s
                 WHERE id=%s AND outcome='open'
             """, (close_price, outcome, pnl_pts, pnl_pct,
-                  target_hit, sl_hit, trade_id))
+                  target_hit, sl_hit, day_high, day_low, trade_id))
         return True
     except Exception as e:
         log.warning("settle_paper_trade: %s", e)

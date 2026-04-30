@@ -769,6 +769,7 @@ th[data-tip]{cursor:default;}
             <th class="r">Stop Loss</th>
             <th class="r htbl-hide-mobile">R:R</th>
             <th class="r" data-tip="Actual exit price — the candle where target or SL was first touched, or session close if neither was hit.">Exit price</th>
+            <th class="r htbl-hide-mobile" data-tip="Actual day range: lowest to highest price the stock traded during the session.">Day range</th>
             <th class="r">P&amp;L pts</th>
             <th class="r">P&amp;L %</th>
             <th>Outcome</th>
@@ -776,7 +777,7 @@ th[data-tip]{cursor:default;}
           </tr>
         </thead>
         <tbody id="btBody">
-          <tr><td colspan="14" style="text-align:center;padding:3rem;color:#aaa;font-size:13px;">
+          <tr><td colspan="15" style="text-align:center;padding:3rem;color:#aaa;font-size:13px;">
             Loading paper trades…
           </td></tr>
         </tbody>
@@ -2636,7 +2637,7 @@ function renderBtTable() {
     var hdr = document.createElement('tr');
     hdr.className = 'date-group-hdr';
     hdr.onclick = (function(d, g) { return function() { toggleBtDateGroup(d, g); }; })(date, gid);
-    hdr.innerHTML = '<td colspan="14" style="padding:0;"><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;flex-wrap:wrap;gap:6px;"><div class="dg-title"><span class="dg-arrow' + (isOpen ? ' open' : '') + '" id="btarr_' + gid + '">&#9658;</span><span>' + fmtDate(date) + '</span></div><div class="dg-meta">' + meta + '</div></div></td>';
+    hdr.innerHTML = '<td colspan="15" style="padding:0;"><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;flex-wrap:wrap;gap:6px;"><div class="dg-title"><span class="dg-arrow' + (isOpen ? ' open' : '') + '" id="btarr_' + gid + '">&#9658;</span><span>' + fmtDate(date) + '</span></div><div class="dg-meta">' + meta + '</div></div></td>';
     tb.appendChild(hdr);
 
     dayRows.forEach(function(t) {
@@ -2665,6 +2666,7 @@ function renderBtTable() {
         '<td class="r" style="color:#A32D2D;">₹' + fc(t.stop_loss) + '</td>' +
         '<td class="r htbl-hide-mobile">' + (t.rr ? t.rr + ':1' : '—') + '</td>' +
         '<td class="r">' + closePx + '</td>' +
+        '<td class="r htbl-hide-mobile">' + (t.day_low != null && t.day_high != null ? '₹' + fc(t.day_low) + ' – ₹' + fc(t.day_high) : '—') + '</td>' +
         '<td class="r"><span class="' + pnlCls + '">' + pnlPts + '</span></td>' +
         '<td class="r"><span class="' + pnlCls + '">' + pnlPct + '</span></td>' +
         '<td><span class="' + ocCls + '">' + ocLabel + '</span>' +
