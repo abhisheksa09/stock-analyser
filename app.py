@@ -341,7 +341,7 @@ def test_email():
 
     subject, html_body = formatters[kind]()
     effective_to = override_to or os.environ.get("EMAIL_TO", "")
-    ok = _email.send_email(subject, html_body, to_override=effective_to or None)
+    ok, detail = _email.send_email(subject, html_body, to_override=effective_to or None)
     if ok:
         return jsonify({
             "status": "ok",
@@ -353,7 +353,7 @@ def test_email():
     return jsonify({
         "status":  "error",
         "kind":    kind,
-        "message": "Failed to send — check SMTP_USER / SMTP_PASS and that Gmail App Password is correct",
+        "message": detail or "Failed to send — check SMTP_USER / SMTP_PASS",
     }), 500
 
 def get_effective_token():

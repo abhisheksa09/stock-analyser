@@ -57,7 +57,7 @@ def send_email(subject: str, html_body: str, to_override: str = None) -> bool:
     to_override lets callers send to a one-off address without changing EMAIL_TO."""
     if not is_configured():
         log.debug("Email not configured — skipping (set EMAIL_TO, SMTP_USER, SMTP_PASS)")
-        return False
+        return False, "Email not configured — set EMAIL_TO, SMTP_USER, SMTP_PASS"
 
     to_addr   = (to_override or os.environ.get("EMAIL_TO", "")).strip()
     smtp_user = os.environ.get("SMTP_USER",  "").strip()
@@ -78,10 +78,15 @@ def send_email(subject: str, html_body: str, to_override: str = None) -> bool:
             server.login(smtp_user, smtp_pass)
             server.sendmail(smtp_user, [to_addr], msg.as_string())
         log.info("Email sent: %s", subject)
-        return True
+        return True, ""
+    except smtplib.SMTPAuthenticationError as e:
+        detail = f"Authentication failed — wrong SMTP_USER or SMTP_PASS (Gmail App Password required, not your account password). SMTP said: {e.smtp_error.decode(errors='replace') if hasattr(e, 'smtp_error') else e}"
+        log.error("Email auth error: %s", detail)
+        return False, detail
     except Exception as e:
-        log.error("Email send failed: %s", e)
-        return False
+        detail = str(e)
+        log.error("Email send failed: %s", detail)
+        return False, detail
 
 
 # ── HTML building blocks ──────────────────────────────────────────────────────
