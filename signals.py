@@ -339,9 +339,13 @@ def _score_orb(s):
     if s["sig"] == "WATCH":
         return 0.30
     if s["sig"] == "BUY":
-        return 1.0 if s["bo"] else 0.35
+        if s["bo"]: return 1.0
+        if s.get("gap_signal"): return 0.80   # gap-and-go: no ORB breakout needed
+        return 0.35
     if s["sig"] == "SELL":
-        return 1.0 if s["bd"] else 0.35
+        if s["bd"]: return 1.0
+        if s.get("gap_signal"): return 0.80
+        return 0.35
     return 0.30
 
 def _score_volume(s):
@@ -375,6 +379,7 @@ def _score_rsi(s):
         if rsi >= 65: return 1.00
         if rsi >= 60: return 0.85
         if rsi >= 50: return 0.45
+        if rsi >= 35 and s.get("gap_signal"): return 0.50  # gap-down: RSI 35-50 is expected, not a penalty
         return 0.10
     return 0.35
 
@@ -548,7 +553,9 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
     # RSI > 45: not oversold — valid entry for an ORB breakdown downward
     # Target uses 1× ORB range (self-calibrating to today's actual volatility).
     # SL stays ATR-based so it reflects multi-day volatility context.
+    GAP_THRESHOLD = 1.5   # % gap needed to trigger gap-and-go signal
     orb_range = max(orb_h - orb_l, 0.5 * at)   # floor at 0.5×ATR for very tight ORBs
+    gap_signal = False
     if rs < 55 and av and bo:
         sig    = "BUY"
         en     = round(orb_h + 0.05, 2)
@@ -561,6 +568,24 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         sl     = round(max(orb_h + 0.3 * at, en + 0.5 * at), 2)
         tg     = round(en - orb_range, 2)
         reason = "Below VWAP with bearish momentum"
+    elif gap_pct <= -GAP_THRESHOLD and (not av) and rs > 35:
+        # Gap-down and-go: gap is the breakout, ORB low is the entry
+        sig        = "SELL"
+        gap_signal = True
+        en         = round(orb_l - 0.05, 2)
+        sl         = round(max(orb_h + 0.3 * at, en + 0.5 * at), 2)
+        half_gap   = round(abs(gap_pct / 100 * pc) * 0.5, 2)
+        tg         = round(en - max(half_gap, orb_range), 2)
+        reason     = f"Gap-down {gap_pct:+.1f}% — gap-and-go SELL"
+    elif gap_pct >= GAP_THRESHOLD and av and rs < 65:
+        # Gap-up and-go: gap is the breakout, ORB high is the entry
+        sig        = "BUY"
+        gap_signal = True
+        en         = round(orb_h + 0.05, 2)
+        sl         = round(min(orb_l - 0.3 * at, en - 0.5 * at), 2)
+        half_gap   = round(abs(gap_pct / 100 * pc) * 0.5, 2)
+        tg         = round(en + max(half_gap, orb_range), 2)
+        reason     = f"Gap-up {gap_pct:+.1f}% — gap-and-go BUY"
     else:
         sig    = "WATCH"
         en     = round(ltp, 2)
@@ -676,7 +701,7 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         sig=sig, en=en, tg=tg, sl=sl,
         reason=reason, rr=rr, av=av, bo=bo, bd=bd,
         confirmed=confirmed, confirm_count=confirm_count,
-        gap_pct=gap_pct,
+        gap_pct=gap_pct, gap_signal=gap_signal,
         market_ctx=market_ctx or {},
         ctx_warnings=ctx_warnings,
         market_blocked=market_blocked,
