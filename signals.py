@@ -546,17 +546,20 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
     # ── Base signal logic ────────────────────────────────────────────────────
     # RSI < 55: not overbought — valid entry for an ORB breakout upward
     # RSI > 45: not oversold — valid entry for an ORB breakdown downward
+    # Target uses 1× ORB range (self-calibrating to today's actual volatility).
+    # SL stays ATR-based so it reflects multi-day volatility context.
+    orb_range = max(orb_h - orb_l, 0.5 * at)   # floor at 0.5×ATR for very tight ORBs
     if rs < 55 and av and bo:
         sig    = "BUY"
         en     = round(orb_h + 0.05, 2)
         sl     = round(min(orb_l - 0.3 * at, en - 0.5 * at), 2)
-        tg     = round(en + 2.0 * at, 2)
+        tg     = round(en + orb_range, 2)
         reason = "Above VWAP with bullish momentum"
     elif rs > 45 and (not av) and bd:
         sig    = "SELL"
         en     = round(orb_l - 0.05, 2)
         sl     = round(max(orb_h + 0.3 * at, en + 0.5 * at), 2)
-        tg     = round(en - 2.0 * at, 2)
+        tg     = round(en - orb_range, 2)
         reason = "Below VWAP with bearish momentum"
     else:
         sig    = "WATCH"
