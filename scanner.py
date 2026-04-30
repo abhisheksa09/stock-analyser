@@ -37,6 +37,7 @@ from datetime import datetime, timezone, timedelta
 from signals import STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, READY_GREEN_MIN
 from macro import get_full_macro_context, apply_all_macro_penalties
 import db as _db_module
+import email_alerts as _email
 
 log = logging.getLogger("scanner")
 logging.basicConfig(level=logging.INFO)  # formatter applied centrally in app.py
@@ -461,6 +462,17 @@ def run_scan(force: bool = False):
                                 "The scanner detected an expired token and renewed it "
                                 "without any manual action. Resuming next scan cycle."
                             )
+                            _email.send_email(
+                                "NSE Scanner: Upstox token auto-renewed",
+                                _email._wrap(
+                                    "Token Auto-Renewed",
+                                    "Scanner resumed automatically",
+                                    "<p style='margin:0;color:#111827;font-size:14px;'>"
+                                    "The Upstox token expired but was renewed automatically. "
+                                    "No action needed — scanning resumes on the next cycle.</p>",
+                                    "token_reminder",
+                                ),
+                            )
                             log.info("Auto-auth on 401 succeeded — token renewed")
                             return
                         else:
@@ -480,7 +492,8 @@ def run_scan(force: bool = False):
                     "Please log in to Upstox to get a fresh token.\n\n"
                     f"{link_line}"
                 )
-                log.warning("Token auth error — Telegram manual-login alert sent, aborting scan")
+                _email.send_email(*_email.format_token_expiry(http_code, login_url))
+                log.warning("Token auth error — Telegram + email alert sent, aborting scan")
                 return   # no point scanning remaining stocks with a dead token
             log.warning("Fetch error %s: %s", sym, e)
             continue
@@ -514,6 +527,7 @@ def run_scan(force: bool = False):
                     if sym not in STATE.bt_saved:
                         _save_paper_trade(s)
                         STATE.bt_saved.add(sym)
+                _email.send_email(*_email.format_green_ready(s))
                 time.sleep(1)
 
             # Trigger 2: Confidence crossed green threshold
@@ -525,6 +539,7 @@ def run_scan(force: bool = False):
                 if send_telegram(format_alert("conf_crossed", s, extra=str(prev_conf))):
                     STATE.mark_alerted(sym, "conf_crossed")
                     sent += 1
+                _email.send_email(*_email.format_conf_crossed(s, prev_conf, READY_GREEN_MIN))
                 time.sleep(1)
 
             # Trigger 3: Reversal
@@ -535,6 +550,7 @@ def run_scan(force: bool = False):
                 if send_telegram(format_alert("reversal", s, extra=locked)):
                     STATE.mark_alerted(sym, "reversal")
                     sent += 1
+                _email.send_email(*_email.format_reversal(s, locked))
                 time.sleep(1)
 
         STATE.prev_conf[sym] = s["conf"]

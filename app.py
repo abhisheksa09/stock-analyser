@@ -27,6 +27,7 @@ import macro as macro_module
 import db as _db_module
 import auto_login as _auto_login
 import upstox_auto_auth as _auto_auth
+import email_alerts as _email
 
 # ── Dual-timezone log formatter (IST + CET/CEST) ─────────────────────────────
 class _DualTZFormatter(logging.Formatter):
@@ -930,6 +931,11 @@ def send_login_reminder_job():
     _last_auto_login["status"] = "success" if success else "failed"
     _last_auto_login["detail"] = msg
     _last_auto_login["time"]   = datetime.now(IST).strftime("%H:%M IST")
+    try:
+        login_url = _auto_login.LOGIN_URL
+        _email.send_email(*_email.format_login_reminder(login_url))
+    except Exception as _le:
+        log.warning("Login reminder email error: %s", _le)
 
 
 @app.route("/auth/auto-login-status")
@@ -1929,6 +1935,13 @@ def _eod_settlement_job():
     settled, skipped, errors = _settle_paper_trades_for_date()
     if errors:
         log.warning("EOD settlement errors: %s", errors)
+    # Email digest with today's settled trades
+    try:
+        today = now_ist.strftime("%Y-%m-%d")
+        trades = _db_module.get_paper_trades(from_date=today, to_date=today)
+        _email.send_email(*_email.format_eod_settlement(trades, settled, skipped, errors))
+    except Exception as _ee:
+        log.warning("EOD settlement email failed: %s", _ee)
 
 def _token_reminder_job():
     """APScheduler job — sends Telegram reminder at 00:00 IST to set next day's Upstox token."""
@@ -1959,6 +1972,10 @@ def _token_reminder_job():
         log.info("Token reminder sent at midnight IST")
     except Exception as e:
         log.warning("Token reminder Telegram error: %s", e)
+    try:
+        _email.send_email(*_email.format_token_reminder(login_url))
+    except Exception as e:
+        log.warning("Token reminder email error: %s", e)
 
 
 @app.route("/ai/setup-insight", methods=["POST"])
