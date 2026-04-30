@@ -1,20 +1,21 @@
 """
 email_alerts.py — Email notifications for NSE Scanner events
 
-Free option: Gmail SMTP with an App Password (built-in Python stdlib, no new deps).
+Uses Resend (https://resend.com) — free tier: 3,000 emails/month.
+Sends over HTTPS (not SMTP), so it works on Render where port 587 is blocked.
 
 Setup (one-time):
-  1. Enable 2-Step Verification on your Google account.
-  2. Go to https://myaccount.google.com/apppasswords
-  3. Create an App Password (select "Mail" / "Other").
-  4. Set these env vars on Render:
-       EMAIL_TO   — recipient address (e.g. you@example.com)
-       SMTP_USER  — your Gmail address (e.g. yourname@gmail.com)
-       SMTP_PASS  — the 16-char App Password (spaces optional, they are stripped)
+  1. Sign up at https://resend.com (free, no credit card)
+  2. Go to API Keys → Create API Key → copy it
+  3. Set these env vars on Render:
+       RESEND_API_KEY  — your Resend API key (re_xxxxxxxxxxxx)
+       EMAIL_TO        — recipient address (e.g. you@example.com)
 
-Optional overrides (defaults work for Gmail):
-  SMTP_HOST  — default: smtp.gmail.com
-  SMTP_PORT  — default: 587
+Optional:
+  EMAIL_FROM  — sender name/address shown in inbox
+                default: "NSE Scanner <onboarding@resend.dev>"
+                (Resend's shared sender — works on free plan without domain setup)
+                To use your own address: verify your domain at resend.com/domains
 
 Fires for all 5 event types:
   • green_ready       — confidence ≥ 75%, first BUY/SELL signal of session
@@ -28,60 +29,67 @@ Fires for all 5 event types:
 """
 
 import os
+import json
 import logging
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone, timedelta
 
 log = logging.getLogger("email_alerts")
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
+RESEND_API = "https://api.resend.com/emails"
+
 
 # ── Configuration check ───────────────────────────────────────────────────────
 
 def is_configured() -> bool:
-    """True when all three required env vars are set."""
+    """True when the required env vars are set."""
     return bool(
-        os.environ.get("EMAIL_TO",   "").strip()
-        and os.environ.get("SMTP_USER", "").strip()
-        and os.environ.get("SMTP_PASS", "").strip()
+        os.environ.get("RESEND_API_KEY", "").strip()
+        and os.environ.get("EMAIL_TO",    "").strip()
     )
 
 
 # ── Core send ─────────────────────────────────────────────────────────────────
 
-def send_email(subject: str, html_body: str, to_override: str = None) -> bool:
-    """Send an HTML email via SMTP. Returns True on success.
-    to_override lets callers send to a one-off address without changing EMAIL_TO."""
+def send_email(subject: str, html_body: str, to_override: str = None) -> tuple:
+    """Send an HTML email via Resend API. Returns (success: bool, detail: str).
+    to_override sends to a one-off address without changing EMAIL_TO env var."""
     if not is_configured():
-        log.debug("Email not configured — skipping (set EMAIL_TO, SMTP_USER, SMTP_PASS)")
-        return False, "Email not configured — set EMAIL_TO, SMTP_USER, SMTP_PASS"
+        log.debug("Email not configured — skipping (set RESEND_API_KEY and EMAIL_TO)")
+        return False, "Email not configured — set RESEND_API_KEY and EMAIL_TO on Render"
 
+    api_key   = os.environ.get("RESEND_API_KEY", "").strip()
     to_addr   = (to_override or os.environ.get("EMAIL_TO", "")).strip()
-    smtp_user = os.environ.get("SMTP_USER",  "").strip()
-    smtp_pass = os.environ.get("SMTP_PASS",  "").strip().replace(" ", "")
-    smtp_host = os.environ.get("SMTP_HOST",  "smtp.gmail.com").strip()
-    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    from_addr = os.environ.get("EMAIL_FROM", "NSE Scanner <onboarding@resend.dev>").strip()
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = f"NSE Scanner <{smtp_user}>"
-    msg["To"]      = to_addr
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
+    payload = json.dumps({
+        "from":    from_addr,
+        "to":      [to_addr],
+        "subject": subject,
+        "html":    html_body,
+    }).encode("utf-8")
 
+    req = urllib.request.Request(
+        RESEND_API,
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type":  "application/json",
+        },
+        method="POST",
+    )
     try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(smtp_user, smtp_pass)
-            server.sendmail(smtp_user, [to_addr], msg.as_string())
+        with urllib.request.urlopen(req, timeout=15) as r:
+            json.loads(r.read())
         log.info("Email sent: %s", subject)
         return True, ""
-    except smtplib.SMTPAuthenticationError as e:
-        detail = f"Authentication failed — wrong SMTP_USER or SMTP_PASS (Gmail App Password required, not your account password). SMTP said: {e.smtp_error.decode(errors='replace') if hasattr(e, 'smtp_error') else e}"
-        log.error("Email auth error: %s", detail)
+    except urllib.error.HTTPError as e:
+        body   = e.read().decode(errors="replace")
+        detail = f"Resend API error {e.code}: {body[:300]}"
+        log.error("Email send failed: %s", detail)
         return False, detail
     except Exception as e:
         detail = str(e)

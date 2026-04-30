@@ -1027,14 +1027,15 @@ th[data-tip]{cursor:default;}
            border-radius:8px;padding:12px 14px;font-size:12px;line-height:1.8;color:#555;margin-top:12px;">
         <strong>Email not configured</strong> &mdash; set these env vars in
         <strong>Render dashboard &rarr; Environment</strong>:<br>
+        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">RESEND_API_KEY</code> &nbsp;from
+        <a href="https://resend.com/api-keys" target="_blank" style="color:#185FA5;">resend.com/api-keys</a>
+        (free, 3,000 emails/month)<br>
         <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">EMAIL_TO</code> &nbsp;recipient address (e.g. you@gmail.com)<br>
-        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">SMTP_USER</code> &nbsp;your Gmail address<br>
-        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">SMTP_PASS</code> &nbsp;16-char Gmail App Password<br>
         <span style="color:#888;font-size:11px;display:block;margin-top:6px;">
-          Get an App Password at
-          <a href="https://myaccount.google.com/apppasswords" target="_blank"
-             style="color:#185FA5;">myaccount.google.com/apppasswords</a>
-          &nbsp;(requires 2-Step Verification on your Google account).
+          No domain setup needed &mdash; emails arrive from <em>onboarding@resend.dev</em> by default.
+          To use your own sender address, verify your domain at
+          <a href="https://resend.com/domains" target="_blank" style="color:#185FA5;">resend.com/domains</a>
+          and set <code style="background:#f4f4f4;padding:1px 4px;border-radius:3px;">EMAIL_FROM</code>.
         </span>
       </div>
     </div>
