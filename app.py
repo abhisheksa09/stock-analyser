@@ -1077,6 +1077,16 @@ def admin_activate_user(username):
     _db_module.set_user_active(username, True)
     return jsonify({"status": "ok"})
 
+@app.route("/admin/clear-token", methods=["POST", "OPTIONS"])
+def admin_clear_token():
+    """Clear today's Upstox token so a fresh OAuth login can proceed."""
+    sess, err = _require_admin(request)
+    if err: return err
+    ok = _db_module.delete_token()
+    if not ok:
+        return jsonify({"error": "Failed to clear token"}), 500
+    return jsonify({"status": "ok"})
+
 @app.route("/admin/verify", methods=["POST", "OPTIONS"])
 def admin_verify():
     """Verify admin PIN and unlock admin content."""

@@ -904,6 +904,10 @@ th[data-tip]{cursor:default;}
                 style="font-size:12px;padding:6px 14px;">
           &#8635; Refresh status
         </button>
+        <button class="btn" id="clearTokenBtn" onclick="clearTodayToken()"
+                style="font-size:12px;padding:6px 14px;background:#FFF0F0;color:#A32D2D;border-color:#F5C0C0;display:none;">
+          &#128473; Clear token
+        </button>
       </div>
 
       <!-- Secondary: manual paste (collapsed by default) -->
@@ -1116,6 +1120,8 @@ function showAdminContent(){
   const content=document.getElementById('adminContent');
   if(gate) gate.style.display='none';
   if(content) content.style.display='block';
+  const clearBtn=document.getElementById('clearTokenBtn');
+  if(clearBtn) clearBtn.style.display='';
   loadAutoLoginStatus();
 }
 
@@ -1724,6 +1730,23 @@ async function verifyToken(){
     token='';msg.textContent='\u2717 '+e.message;msg.style.color='#A32D2D';
     setTokenStatusUI(false,'');
   }
+}
+
+async function clearTodayToken(){
+  if(!confirm("Clear today's Upstox token? You'll need to log in again via OAuth.")) return;
+  const msg=document.getElementById('tokenMsg');
+  msg.textContent='Clearing…'; msg.style.color='#888';
+  try{
+    const r=await fetch(BACKEND+'/admin/clear-token',{
+      method:'POST',
+      headers:appHeaders({'Content-Type':'application/json'}),
+      credentials:'include'
+    });
+    const d=await r.json();
+    if(!r.ok){ msg.textContent='✗ '+(d.error||'Failed'); msg.style.color='#A32D2D'; return; }
+    msg.textContent='Token cleared — you can now log in again.'; msg.style.color='#27500A';
+    setTokenStatusUI(false,'');
+  }catch(e){ msg.textContent='✗ '+e.message; msg.style.color='#A32D2D'; }
 }
 
 // ─── Auto-Login ───────────────────────────────────────────────────────────────
