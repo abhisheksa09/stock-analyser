@@ -20,6 +20,11 @@ log = logging.getLogger(__name__)
 _DB  = None
 _db  = None   # psycopg v3 connection
 
+def _invalidate_conn():
+    """Mark the cached connection as dead so the next db() call reconnects."""
+    global _db
+    _db = None
+
 def get_connection():
     global _DB, _db
     import psycopg
@@ -692,44 +697,47 @@ def count_paper_trades(username=None) -> int:
 
 def get_paper_trades(from_date=None, to_date=None, sym=None,
                      outcome=None, limit=500, username=None) -> list:
-    conn = db()
-    if not conn:
-        return []
-    try:
-        where, params = [], []
-        if from_date:
-            where.append("trade_date >= %s"); params.append(from_date)
-        if to_date:
-            where.append("trade_date <= %s"); params.append(to_date)
-        if sym:
-            where.append("sym = %s"); params.append(sym.upper())
-        if outcome:
-            where.append("outcome = %s"); params.append(outcome)
-        if username:
-            # Show scanner-generated trades (created_by IS NULL) + this user's own trades
-            where.append("(created_by IS NULL OR created_by = %s)"); params.append(username)
-        sql = "SELECT * FROM paper_trades"
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY created_at DESC LIMIT %s"
-        params.append(limit)
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            rows = cur.fetchall()
-        # Convert Decimal/date to JSON-safe types
-        result = []
-        for r in rows:
-            row = dict(r)
-            for k, v in row.items():
-                if hasattr(v, "isoformat"):        # date / datetime
-                    row[k] = v.isoformat()
-                elif hasattr(v, "__float__"):       # Decimal
-                    row[k] = float(v)
-            result.append(row)
-        return result
-    except Exception as e:
-        log.warning("get_paper_trades: %s", e)
-        return []
+    for attempt in range(2):
+        conn = db()
+        if not conn:
+            return []
+        try:
+            where, params = [], []
+            if from_date:
+                where.append("trade_date >= %s"); params.append(from_date)
+            if to_date:
+                where.append("trade_date <= %s"); params.append(to_date)
+            if sym:
+                where.append("sym = %s"); params.append(sym.upper())
+            if outcome:
+                where.append("outcome = %s"); params.append(outcome)
+            if username:
+                # Show scanner-generated trades (created_by IS NULL) + this user's own trades
+                where.append("(created_by IS NULL OR created_by = %s)"); params.append(username)
+            sql = "SELECT * FROM paper_trades"
+            if where:
+                sql += " WHERE " + " AND ".join(where)
+            sql += " ORDER BY created_at DESC LIMIT %s"
+            params.append(limit)
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+            # Convert Decimal/date to JSON-safe types
+            result = []
+            for r in rows:
+                row = dict(r)
+                for k, v in row.items():
+                    if hasattr(v, "isoformat"):        # date / datetime
+                        row[k] = v.isoformat()
+                    elif hasattr(v, "__float__"):       # Decimal
+                        row[k] = float(v)
+                result.append(row)
+            return result
+        except Exception as e:
+            log.warning("get_paper_trades (attempt %d): %s", attempt + 1, e)
+            _invalidate_conn()
+            import time; time.sleep(1)
+    return []
 
 def delete_paper_trade(trade_id: str, username: str) -> bool:
     conn = db()
