@@ -27,7 +27,6 @@ import scanner
 import macro as macro_module
 import db as _db_module
 import auto_login as _auto_login
-import upstox_auto_auth as _auto_auth
 import email_alerts as _email
 
 # ── Dual-timezone log formatter (IST + CET/CEST) ─────────────────────────────
@@ -645,59 +644,6 @@ _last_auto_login = {
     "configured": False,
 }
 
-# Store last programmatic auto-auth result
-_last_auto_auth_result = {
-    "status":     "never attempted",   # never attempted | running | success | failed
-    "detail":     "",
-    "time":       "",
-    "triggered_by": "",
-}
-
-
-def _try_auto_auth(triggered_by: str = "scheduled") -> bool:
-    """
-    Run programmatic Upstox login, set token in scanner + DB, notify via Telegram.
-    Returns True on success.
-    """
-    global _last_auto_auth_result
-    ist_time = datetime.now(IST).strftime("%H:%M IST")
-
-    _last_auto_auth_result.update({"status": "running", "time": ist_time, "triggered_by": triggered_by})
-    log.info("Auto-auth attempt triggered by '%s'", triggered_by)
-
-    if not _auto_auth.is_configured():
-        msg = "Auto-auth not configured — missing UPSTOX_MOBILE / UPSTOX_PIN / UPSTOX_TOTP_SECRET"
-        _last_auto_auth_result.update({"status": "failed", "detail": msg})
-        log.warning(msg)
-        return False
-
-    ok, result = _auto_auth.run_auto_auth()
-    ist_time   = datetime.now(IST).strftime("%H:%M IST")
-
-    if ok:
-        scanner.set_token(result)
-        try:
-            _db_module.set_token(result, set_by=f"auto_auth_{triggered_by}")
-        except Exception as e:
-            log.warning("Could not persist auto-auth token to DB: %s", e)
-        scanner.STATE.check_date()
-        _last_auto_auth_result.update({
-            "status":  "success",
-            "detail":  f"Token obtained at {ist_time} (length={len(result)})",
-            "time":    ist_time,
-        })
-        scanner.send_telegram(
-            f"\u2705 <b>Auto-auth success ({triggered_by})</b>\n\n"
-            f"Upstox token renewed automatically at {ist_time}.\n"
-            "Scanner is active — no action needed."
-        )
-        log.info("Auto-auth success via '%s' at %s", triggered_by, ist_time)
-        return True
-    else:
-        _last_auto_auth_result.update({"status": "failed", "detail": result, "time": ist_time})
-        log.error("Auto-auth failed (%s): %s", triggered_by, result)
-        return False
-
 
 # ─── Session helpers ──────────────────────────────────────────────────────────
 
@@ -721,8 +667,10 @@ def auth_login():
     # Guard: if a valid token is already stored for today, refuse to start a
     # new OAuth flow. Starting a second OAuth session revokes the first token
     # (Upstox UDAPI100050), which breaks the scanner mid-morning.
+    # Exception: if token_expired_alerted is True the existing token is known to
+    # be dead (caused a 401), so a fresh OAuth flow is safe and necessary.
     existing = get_effective_token()
-    if existing:
+    if existing and not scanner.STATE.token_expired_alerted:
         ist_time = datetime.now(IST).strftime("%H:%M IST")
         return _auth_page(
             success=True,
@@ -978,8 +926,7 @@ def auth_callback():
 def send_login_reminder_job():
     """
     Scheduled job — runs at 08:30 IST on weekdays only.
-    If UPSTOX_MOBILE/PIN/TOTP_SECRET are configured, performs fully automated token
-    renewal (no user action needed). Otherwise falls back to sending a Telegram tap-link.
+    Sends a Telegram tap-link so the user can log in to Upstox before market open.
     """
     global _last_auto_login
     now_ist = datetime.now(IST)
@@ -988,24 +935,6 @@ def send_login_reminder_job():
         return
     ist_time = now_ist.strftime("%H:%M IST")
     log.info("Login reminder job started at %s", ist_time)
-
-    # Try fully automated renewal first
-    if _auto_auth.is_configured():
-        log.info("Auto-auth configured — attempting programmatic login at %s", ist_time)
-        _last_auto_login["status"] = "running"
-        _last_auto_login["time"]   = ist_time
-        _last_auto_login["detail"] = "Attempting auto-auth…"
-        ok = _try_auto_auth("morning_job_0830")
-        _last_auto_login["status"] = "success" if ok else "failed"
-        _last_auto_login["detail"] = (
-            _last_auto_auth_result["detail"]
-        )
-        _last_auto_login["time"] = datetime.now(IST).strftime("%H:%M IST")
-        if ok:
-            return   # token set, no manual tap needed
-
-        # Auto-auth failed — fall through to send Telegram reminder as backup
-        log.warning("Auto-auth failed at morning job — sending manual login reminder as fallback")
 
     _last_auto_login["status"] = "running"
     _last_auto_login["time"]   = ist_time
@@ -1057,40 +986,6 @@ def trigger_auto_login():
     }), 500
 
 
-@app.route("/auth/auto-auth-status")
-def auto_auth_status():
-    """Return current auto-auth state and configuration status."""
-    return jsonify({
-        "configured":      _auto_auth.is_configured(),
-        "missing_vars":    [
-            v for v in ("UPSTOX_MOBILE", "UPSTOX_PIN", "UPSTOX_TOTP_SECRET")
-            if not os.environ.get(v, "").strip()
-        ],
-        "last_attempt":    _last_auto_auth_result,
-        "token_currently_set": bool(get_effective_token()),
-        "ist_now":         datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
-    })
-
-
-@app.route("/auth/trigger-auto-auth", methods=["POST"])
-def trigger_auto_auth_endpoint():
-    """Run programmatic auto-auth now (admin only). Useful for testing."""
-    _, err = _require_admin(request)
-    if err:
-        return err
-
-    ok = _try_auto_auth("manual_trigger")
-    if ok:
-        return jsonify({
-            "status":  "success",
-            "message": _last_auto_auth_result["detail"],
-            "time":    _last_auto_auth_result["time"],
-        })
-    return jsonify({
-        "status":  "failed",
-        "message": _last_auto_auth_result["detail"],
-        "time":    _last_auto_auth_result["time"],
-    }), 500
 
 
 # ─── DB init ──────────────────────────────────────────────────────────────────
