@@ -2,20 +2,20 @@
 email_alerts.py — Email notifications for NSE Scanner events
 
 Uses Resend (https://resend.com) — free tier: 3,000 emails/month.
-Sends over HTTPS (not SMTP), so it works on Render where port 587 is blocked.
+Sends over HTTPS so it works on Render (SMTP port 587 is blocked there).
 
 Setup (one-time):
   1. Sign up at https://resend.com (free, no credit card)
   2. Go to API Keys → Create API Key → copy it
   3. Set these env vars on Render:
        RESEND_API_KEY  — your Resend API key (re_xxxxxxxxxxxx)
-       EMAIL_TO        — recipient address (e.g. you@example.com)
+       EMAIL_TO        — must be the email address you signed up to Resend with
+                         (free tier restriction — to send to any address, verify a
+                          domain at resend.com/domains and set EMAIL_FROM to use it)
 
 Optional:
-  EMAIL_FROM  — sender name/address shown in inbox
+  EMAIL_FROM  — sender shown in inbox
                 default: "NSE Scanner <onboarding@resend.dev>"
-                (Resend's shared sender — works on free plan without domain setup)
-                To use your own address: verify your domain at resend.com/domains
 
 Fires for all 5 event types:
   • green_ready       — confidence ≥ 75%, first BUY/SELL signal of session
@@ -24,7 +24,6 @@ Fires for all 5 event types:
   • token_expiry      — Upstox token invalid / auto-renewal failed
   • eod_settlement    — daily paper-trade P&L digest at 15:35 IST
   Also sends for:
-  • token_reminder    — midnight reminder to set next day's token
   • login_reminder    — 08:30 morning tap-to-login reminder
 """
 
@@ -106,7 +105,6 @@ _HEADER_COLORS = {
     "conf_crossed":   "#0369a1",
     "reversal":       "#c2410c",
     "token_expiry":   "#b91c1c",
-    "token_reminder": "#374151",
     "login_reminder": "#374151",
     "eod_settlement": "#1e3a5f",
 }
@@ -271,21 +269,6 @@ def format_token_expiry(http_code, login_url: str) -> tuple:
     )
     subject = "⚠️ NSE Scanner: Upstox token expired — action required"
     return subject, _wrap("Token Invalid", "Scanner paused — login required", body, "token_expiry")
-
-
-def format_token_reminder(login_url: str) -> tuple:
-    """Returns (subject, html_body) for the midnight token-reminder job."""
-    body = (
-        '<p style="margin:0 0 12px;color:#111827;font-size:14px;">'
-        'Market opens in ~9&frac12; hours. Please log in to Upstox now so '
-        "tomorrow's scan runs automatically.</p>"
-        '<p style="color:#6b7280;font-size:13px;">After login the token is saved '
-        'automatically &mdash; nothing else needed.</p>'
-        + (_btn("Login to Upstox", login_url) if login_url else
-           '<p style="margin:16px 0 0;color:#6b7280;font-size:13px;">Go to your Render app &rarr; /auth/login</p>')
-    )
-    subject = "⏰ NSE Scanner: Set tomorrow's Upstox token"
-    return subject, _wrap("Set Tomorrow's Token", "Log in before market open", body, "token_reminder")
 
 
 def format_login_reminder(login_url: str) -> tuple:

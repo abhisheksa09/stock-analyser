@@ -301,7 +301,7 @@ def test_email():
     Send a test email. Only fires on POST (never on admin panel load).
     Optional query params:
       ?kind=green_ready | conf_crossed | reversal | token_expiry |
-            eod_settlement | token_reminder | login_reminder
+            eod_settlement | login_reminder
       &to=override@example.com
     Defaults to green_ready when kind is omitted.
     """
@@ -331,7 +331,6 @@ def test_email():
         "conf_crossed":   lambda: _email.format_conf_crossed(_dummy_s, prev_conf=72, threshold=75),
         "reversal":       lambda: _email.format_reversal({**_dummy_s, "sig": "SELL"}, locked_sig="BUY"),
         "token_expiry":   lambda: _email.format_token_expiry(401, login_url),
-        "token_reminder": lambda: _email.format_token_reminder(login_url),
         "login_reminder": lambda: _email.format_login_reminder(login_url),
         "eod_settlement": lambda: _email.format_eod_settlement(
             trades=[
@@ -1923,39 +1922,6 @@ def _eod_settlement_job():
     except Exception as _ee:
         log.warning("EOD settlement email failed: %s", _ee)
 
-def _token_reminder_job():
-    """APScheduler job — sends Telegram reminder at 00:00 IST to set next day's Upstox token."""
-    now_ist = datetime.now(IST)
-    # Skip Saturday midnight (no Saturday market) and Sunday midnight (no Sunday market)
-    # Monday–Friday midnight all fire: each of those days has a market session
-    if now_ist.weekday() >= 5:
-        log.info("Token reminder: skipping weekend (weekday=%d)", now_ist.weekday())
-        return
-
-    render_base = os.environ.get("RENDER_BASE_URL", "").rstrip("/")
-    login_url = f"{render_base}/auth/login" if render_base else None
-
-    if login_url:
-        link_line = f"\U0001f449 <a href=\"{login_url}\">Tap here to login</a>\n{login_url}"
-    else:
-        link_line = "\U0001f449 Login URL not available\n(Set RENDER_BASE_URL env var on Render)"
-
-    msg = (
-        "\u23f0 <b>NSE Scanner \u2014 Set Tomorrow\u2019s Token</b>\n\n"
-        "Market opens in ~9\u00bd hours. Please log in to Upstox now so "
-        "tomorrow\u2019s scan runs automatically.\n\n"
-        f"{link_line}\n\n"
-        "After login the token is saved automatically \u2014 nothing else needed."
-    )
-    try:
-        scanner.send_telegram(msg)
-        log.info("Token reminder sent at midnight IST")
-    except Exception as e:
-        log.warning("Token reminder Telegram error: %s", e)
-    try:
-        _email.send_email(*_email.format_token_reminder(login_url))
-    except Exception as e:
-        log.warning("Token reminder email error: %s", e)
 
 
 @app.route("/ai/setup-insight", methods=["POST"])
@@ -1996,23 +1962,6 @@ def start_scheduler():
         misfire_grace_time=300,
     )
     log.info("EOD paper-trade settlement job scheduled at 15:35 IST daily")
-
-    # Token reminder — configurable via TOKEN_REMINDER_TIME (HH:MM IST, default 00:00)
-    _reminder_time = os.environ.get("TOKEN_REMINDER_TIME", "00:00").strip()
-    try:
-        _r_hour, _r_min = [int(x) for x in _reminder_time.split(":")]
-    except ValueError:
-        log.warning("Invalid TOKEN_REMINDER_TIME '%s', falling back to 00:00", _reminder_time)
-        _r_hour, _r_min = 0, 0
-    sched.add_job(
-        _token_reminder_job,
-        trigger="cron",
-        hour=_r_hour, minute=_r_min,
-        id="token_reminder",
-        max_instances=1,
-        misfire_grace_time=300,
-    )
-    log.info("Token reminder job scheduled at %02d:%02d IST daily", _r_hour, _r_min)
 
     # Morning login reminder — every day at 08:30 IST
     # Requires TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (already used by the scanner)
