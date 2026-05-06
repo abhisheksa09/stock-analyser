@@ -31,7 +31,8 @@ CANDLE_CONFIRM_PENALTY  = 20
 # e.g. set to 50 on Render to fire alerts at 50%+ confidence
 READY_GREEN_MIN = int(os.environ.get("ALERT_GREEN_THRESHOLD", "75"))
 READY_AMBER_MIN = 55
-MIN_RVOL_GREEN  = 100   # percent of avg daily volume proxy
+MIN_RVOL_GREEN  = 150   # percent of avg daily volume proxy — professional: 1.5× at open
+MIN_RR_SIGNAL   = 1.5   # hard R:R floor — below this the setup is mathematically poor
 
 
 # ─── Nifty 50 stocks ──────────────────────────────────────────────────────────
@@ -349,13 +350,14 @@ def _score_orb(s):
     return 0.30
 
 def _score_volume(s):
-    # Use per-minute rates so early-morning volume is fairly compared
+    # Professional standard: 2.0× daily avg at open, 3.0× midday
+    # Per-minute rates so early-morning volume is fairly compared
     rv = s["tVpm"] / (s["aVpm"] or 1)
-    if rv >= 1.5: return 1.0
-    if rv >= 1.2: return 0.85
-    if rv >= 1.0: return 0.70
-    if rv >= 0.7: return 0.45
-    return 0.15
+    if rv >= 2.0: return 1.0
+    if rv >= 1.5: return 0.75
+    if rv >= 1.2: return 0.50
+    if rv >= 1.0: return 0.30
+    return 0.10
 
 def _score_vwap(s):
     if s["sig"] == "WATCH":
@@ -399,13 +401,15 @@ def _score_atr(s):
     return 0.3
 
 def _score_rvol_spike(s):
-    """Recent candle volume spike vs 10-candle rolling average."""
+    """Recent candle volume spike vs 10-candle rolling average.
+    Professional: 2.0× indicates institutional entry; 5.0× = algo/fund activity."""
     spike = s.get("rvol_spike", 1.0)
-    if spike >= 3.0: return 1.0
-    if spike >= 2.0: return 0.85
-    if spike >= 1.5: return 0.70
-    if spike >= 1.0: return 0.50
-    return 0.20
+    if spike >= 5.0: return 1.0
+    if spike >= 3.0: return 0.90
+    if spike >= 2.0: return 0.75
+    if spike >= 1.5: return 0.50
+    if spike >= 1.0: return 0.25
+    return 0.10
 
 def _score_macd(s):
     """MACD (12,26,9) alignment with signal direction."""
@@ -551,21 +555,23 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
     # ── Base signal logic ────────────────────────────────────────────────────
     # RSI < 55: not overbought — valid entry for an ORB breakout upward
     # RSI > 45: not oversold — valid entry for an ORB breakdown downward
-    # Target uses 1× ORB range (self-calibrating to today's actual volatility).
-    # SL stays ATR-based so it reflects multi-day volatility context.
+    # Target: 1× ORB range; SL: ORB midpoint → ~2:1 R:R by construction.
     GAP_THRESHOLD = 1.5   # % gap needed to trigger gap-and-go signal
     orb_range = max(orb_h - orb_l, 0.5 * at)   # floor at 0.5×ATR for very tight ORBs
+    # ORB midpoint SL: professional technique giving ~2:1 R:R
+    # SL at midpoint = entry ± (0.5 × ORB range), target = entry ± (1× ORB range) → 2:1
+    orb_mid = round((orb_h + orb_l) / 2, 2)
     gap_signal = False
     if rs < 55 and av and bo:
         sig    = "BUY"
         en     = round(orb_h + 0.05, 2)
-        sl     = round(min(orb_l - 0.3 * at, en - 0.5 * at), 2)
+        sl     = round(orb_mid - 0.05, 2)
         tg     = round(en + orb_range, 2)
         reason = "Above VWAP with bullish momentum"
     elif rs > 45 and (not av) and bd:
         sig    = "SELL"
         en     = round(orb_l - 0.05, 2)
-        sl     = round(max(orb_h + 0.3 * at, en + 0.5 * at), 2)
+        sl     = round(orb_mid + 0.05, 2)
         tg     = round(en - orb_range, 2)
         reason = "Below VWAP with bearish momentum"
     elif gap_pct <= -GAP_THRESHOLD and (not av) and rs > 35:
@@ -573,7 +579,7 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         sig        = "SELL"
         gap_signal = True
         en         = round(orb_l - 0.05, 2)
-        sl         = round(max(orb_h + 0.3 * at, en + 0.5 * at), 2)
+        sl         = round(orb_mid + 0.05, 2)
         half_gap   = round(abs(gap_pct / 100 * pc) * 0.5, 2)
         tg         = round(en - max(half_gap, orb_range), 2)
         reason     = f"Gap-down {gap_pct:+.1f}% — gap-and-go SELL"
@@ -582,7 +588,7 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         sig        = "BUY"
         gap_signal = True
         en         = round(orb_h + 0.05, 2)
-        sl         = round(min(orb_l - 0.3 * at, en - 0.5 * at), 2)
+        sl         = round(orb_mid - 0.05, 2)
         half_gap   = round(abs(gap_pct / 100 * pc) * 0.5, 2)
         tg         = round(en + max(half_gap, orb_range), 2)
         reason     = f"Gap-up {gap_pct:+.1f}% — gap-and-go BUY"
@@ -594,6 +600,11 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         reason = "Mixed signals — wait for clear breakout or VWAP test"
 
     rr = round(abs(tg - en) / max(abs(en - sl), 0.01), 2)
+
+    # Hard R:R floor — professional minimum is 1.5:1 to cover realistic win rates
+    if sig != "WATCH" and rr < MIN_RR_SIGNAL:
+        sig    = "WATCH"
+        reason = f"R:R {rr:.1f}:1 below minimum {MIN_RR_SIGNAL}:1 — setup skipped"
 
     # ── Market / sector / gap / day-trend penalties ─────────────────────────
     conf_penalties = 0

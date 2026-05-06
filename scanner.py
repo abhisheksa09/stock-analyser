@@ -71,9 +71,9 @@ def _get_backtest_symbols() -> set:
 
 def _get_backtest_min_conf() -> int:
     try:
-        return int(os.environ.get("BACKTEST_MIN_CONF", "55"))
+        return int(os.environ.get("BACKTEST_MIN_CONF", "70"))
     except ValueError:
-        return 55
+        return 70
 
 # ─── Session state ────────────────────────────────────────────────────────────
 
