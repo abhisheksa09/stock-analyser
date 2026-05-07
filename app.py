@@ -1719,7 +1719,8 @@ def _compute_outcome_intraday(sig: str, entry: float, target: float,
       - Otherwise assume the adverse move (SL) happened first — conservative
 
     If neither level is hit before session end:
-      - Exit is simulated at the last candle's close price
+      - BUY: exit at the highest intraday high (closest price reached toward target)
+      - SELL: exit at the lowest intraday low  (closest price reached toward target)
 
     Returns: (exit_price, outcome, pnl_pts, pnl_pct, target_hit, sl_hit)
     """
@@ -1799,11 +1800,17 @@ def _compute_outcome_intraday(sig: str, entry: float, target: float,
                 pts, pct = _pnl(target)
                 return target, "won", pts, pct, True, False
 
-    # Neither level hit — exit at last candle close
-    last_close = float(relevant[-1][4])
-    pts, pct   = _pnl(last_close)
-    outcome    = "partial_win" if pts > 0 else "partial_loss"
-    return last_close, outcome, pts, pct, False, False
+    # Neither level hit — exit at the closest price reached towards the target.
+    # For BUY: highest intraday high is the peak move toward the target.
+    # For SELL: lowest intraday low is the furthest move toward the target.
+    if sig == "BUY":
+        best_price = max(float(c[2]) for c in relevant)   # max high
+    else:
+        best_price = min(float(c[3]) for c in relevant)   # min low
+
+    pts, pct = _pnl(best_price)
+    outcome  = "partial_win" if pts > 0 else "partial_loss"
+    return best_price, outcome, pts, pct, False, False
 
 
 def _settle_paper_trades_for_date(date_str: str = None):
