@@ -696,12 +696,23 @@ th[data-tip]{cursor:default;}
   <!-- =========== BACKTEST =========== -->
   <div class="tab-pane" id="tab-backtest">
 
+    <!-- Capital assumption input -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="font-size:12px;color:#666;">Trade capital</span>
+      <span style="font-size:12px;color:#666;">₹</span>
+      <input id="btCapitalInput" type="number" min="10000" step="10000" value="100000"
+             style="width:110px;padding:3px 7px;border:1px solid #ccc;border-radius:6px;font-size:13px;font-weight:600;"
+             title="Assumed capital deployed per trade — used to compute INR P&L">
+      <span style="font-size:11px;color:#999;">per trade · qty = ⌊capital ÷ entry⌋</span>
+    </div>
+
     <!-- Stats summary cards -->
-    <div class="hist-stats" id="btStatsRow" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;">
+    <div class="hist-stats" id="btStatsRow" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;">
       <div class="hstat-card"><div class="hstat-l">Simulated Trades</div><div class="hstat-n" id="btTotal">—</div></div>
       <div class="hstat-card"><div class="hstat-l">Win Rate</div><div class="hstat-n" id="btWinRate">—</div></div>
       <div class="hstat-card"><div class="hstat-l">Target Hit</div><div class="hstat-n" id="btTgtRate">—</div></div>
-      <div class="hstat-card"><div class="hstat-l">Avg P&amp;L</div><div class="hstat-n" id="btAvgPnl">—</div></div>
+      <div class="hstat-card"><div class="hstat-l">Avg P&amp;L %</div><div class="hstat-n" id="btAvgPnl">—</div></div>
+      <div class="hstat-card"><div class="hstat-l">Avg P&amp;L ₹</div><div class="hstat-n" id="btAvgPnlInr">—</div></div>
     </div>
 
     <!-- Accuracy bars by signal / confidence -->
@@ -772,6 +783,7 @@ th[data-tip]{cursor:default;}
             <th class="r htbl-hide-mobile" data-tip="Actual day range: lowest to highest price the stock traded during the session.">Day range</th>
             <th class="r">P&amp;L pts</th>
             <th class="r">P&amp;L %</th>
+            <th class="r">P&amp;L ₹</th>
             <th>Outcome</th>
             <th class="cb-col"></th>
           </tr>
@@ -1025,18 +1037,17 @@ th[data-tip]{cursor:default;}
       <!-- Setup note (shown when not configured) -->
       <div id="emailSetupNote" style="display:none;background:#FFF8E7;border:1px solid #F5C842;
            border-radius:8px;padding:12px 14px;font-size:12px;line-height:1.8;color:#555;margin-top:12px;">
-        <strong>Email not configured</strong> &mdash; set these env vars in
+        <strong>Email not configured</strong> &mdash; set these 3 env vars in
         <strong>Render dashboard &rarr; Environment</strong>:<br>
-        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">RESEND_API_KEY</code> &nbsp;from
-        <a href="https://resend.com/api-keys" target="_blank" style="color:#185FA5;">resend.com/api-keys</a>
-        (free, 3,000 emails/month)<br>
-        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">EMAIL_TO</code> &nbsp;recipient address (e.g. you@gmail.com)<br>
-        <span style="color:#888;font-size:11px;display:block;margin-top:6px;">
-          No domain setup needed &mdash; emails arrive from <em>onboarding@resend.dev</em> by default.
-          To use your own sender address, verify your domain at
-          <a href="https://resend.com/domains" target="_blank" style="color:#185FA5;">resend.com/domains</a>
-          and set <code style="background:#f4f4f4;padding:1px 4px;border-radius:3px;">EMAIL_FROM</code>.
-        </span>
+        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">BREVO_API_KEY</code>
+        &nbsp;from <a href="https://app.brevo.com/settings/keys/api" target="_blank" style="color:#185FA5;">brevo.com</a>
+        &rarr; SMTP &amp; API &rarr; API Keys (free, 300 emails/day)<br>
+        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">EMAIL_FROM</code>
+        &nbsp;your verified sender address &mdash; add it at
+        <a href="https://app.brevo.com/senders" target="_blank" style="color:#185FA5;">brevo.com &rarr; Senders</a>
+        then click the verification link<br>
+        <code style="font-size:11px;background:#f4f4f4;padding:2px 5px;border-radius:4px;">EMAIL_TO</code>
+        &nbsp;recipient address (any inbox)<br>
       </div>
     </div>
 
@@ -2640,6 +2651,16 @@ async function loadPaperTrades() {
   }
 }
 
+function btCapital() {
+  var v = parseFloat((document.getElementById('btCapitalInput') || {}).value);
+  return (isNaN(v) || v <= 0) ? 100000 : v;
+}
+
+(function() {
+  var inp = document.getElementById('btCapitalInput');
+  if(inp) inp.addEventListener('change', function() { renderBtTable(); });
+})();
+
 function renderBtStats(stats) {
   function el(id, v, cls) {
     var e = document.getElementById(id);
@@ -2652,6 +2673,7 @@ function renderBtStats(stats) {
   var winRate = stats.win_rate != null ? stats.win_rate : null;
   var tgtRate = stats.target_hit_rate != null ? stats.target_hit_rate : null;
   var avgPnl  = stats.avg_pnl_pct != null ? stats.avg_pnl_pct : null;
+  var capital = btCapital();
 
   el('btTotal',   total || '—');
   el('btWinRate', winRate != null ? winRate + '%' : '—',
@@ -2660,6 +2682,9 @@ function renderBtStats(stats) {
      tgtRate != null ? (tgtRate >= 40 ? 'n-green' : 'n-red') : '');
   el('btAvgPnl',  avgPnl != null ? (avgPnl >= 0 ? '+' : '') + avgPnl + '%' : '—',
      avgPnl != null ? (avgPnl > 0 ? 'n-green' : 'n-red') : '');
+  var avgInr = avgPnl != null ? Math.round(avgPnl / 100 * capital) : null;
+  el('btAvgPnlInr', avgInr != null ? (avgInr >= 0 ? '+' : '') + '₹' + avgInr.toLocaleString('en-IN') : '—',
+     avgInr != null ? (avgInr > 0 ? 'n-green' : 'n-red') : '');
 
   // Accuracy breakdown bars
   var accEl = document.getElementById('btAccRows');
@@ -2771,6 +2796,9 @@ function renderBtTable() {
       var pnlPts  = t.pnl_pts != null ? (t.pnl_pts >= 0 ? '+' : '') + fc(t.pnl_pts) : '—';
       var pnlPct  = t.pnl_pct != null ? (t.pnl_pct >= 0 ? '+' : '') + t.pnl_pct.toFixed(2) + '%' : '—';
       var pnlCls  = t.pnl_pts != null ? (t.pnl_pts >= 0 ? 'pnl-pos' : 'pnl-neg') : '';
+      var _qty    = t.entry > 0 ? Math.floor(btCapital() / t.entry) : 0;
+      var _inr    = (t.pnl_pts != null && _qty > 0) ? Math.round(t.pnl_pts * _qty) : null;
+      var pnlInr  = _inr != null ? ((_inr >= 0 ? '+' : '') + '₹' + Math.abs(_inr).toLocaleString('en-IN')) : '—';
       var closePx = t.close_price != null ? '₹' + fc(t.close_price) : '—';
       var confMt  = confMeta(t.conf || 0);
       var isSel   = _btSelectedIds.has(t.id);
@@ -2793,6 +2821,7 @@ function renderBtTable() {
         '<td class="r htbl-hide-mobile">' + (t.day_low != null && t.day_high != null ? '₹' + fc(t.day_low) + ' – ₹' + fc(t.day_high) : '—') + '</td>' +
         '<td class="r"><span class="' + pnlCls + '">' + pnlPts + '</span></td>' +
         '<td class="r"><span class="' + pnlCls + '">' + pnlPct + '</span></td>' +
+        '<td class="r"><span class="' + pnlCls + '">' + pnlInr + '</span></td>' +
         '<td><span class="' + ocCls + '">' + ocLabel + '</span>' +
           (t.target_hit ? ' <span style="font-size:10px;background:#EAF3DE;color:#27500A;padding:1px 5px;border-radius:3px;">TGT</span>' : '') +
           (t.sl_hit     ? ' <span style="font-size:10px;background:#FCEBEB;color:#791F1F;padding:1px 5px;border-radius:3px;">SL</span>' : '') +
