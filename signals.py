@@ -557,21 +557,26 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
     # RSI > 45: not oversold — valid entry for an ORB breakdown downward
     # Target: 1× ORB range; SL: ORB midpoint → ~2:1 R:R by construction.
     GAP_THRESHOLD = 1.5   # % gap needed to trigger gap-and-go signal
-    orb_range = max(orb_h - orb_l, 0.5 * at)   # floor at 0.5×ATR for very tight ORBs
-    # ORB midpoint SL: professional technique giving ~2:1 R:R
-    # SL at midpoint = entry ± (0.5 × ORB range), target = entry ± (1× ORB range) → 2:1
-    orb_mid = round((orb_h + orb_l) / 2, 2)
+    actual_orb  = orb_h - orb_l
+    tight_orb   = actual_orb < 0.25 * at   # ATR floor will inflate target; stop must scale too
+    orb_range   = max(actual_orb, 0.5 * at)
+    orb_mid     = round((orb_h + orb_l) / 2, 2)
+    # When the ORB is tight, the target is floored at 0.5×ATR but the stop would normally
+    # stay at the real ORB midpoint (tiny risk), creating artificially high R:R that favours
+    # high-priced stocks with large absolute ATR over genuinely better setups.
+    # Fix: when tight ORB, size the stop at 0.25×ATR so both sides scale together → true ~2:1.
+    atr_sl_dist = round(0.25 * at, 2)
     gap_signal = False
     if rs < 55 and av and bo:
         sig    = "BUY"
         en     = round(orb_h + 0.05, 2)
-        sl     = round(orb_mid - 0.05, 2)
+        sl     = round(en - atr_sl_dist, 2) if tight_orb else round(orb_mid - 0.05, 2)
         tg     = round(en + orb_range, 2)
         reason = "Above VWAP with bullish momentum"
     elif rs > 45 and (not av) and bd:
         sig    = "SELL"
         en     = round(orb_l - 0.05, 2)
-        sl     = round(orb_mid + 0.05, 2)
+        sl     = round(en + atr_sl_dist, 2) if tight_orb else round(orb_mid + 0.05, 2)
         tg     = round(en - orb_range, 2)
         reason = "Below VWAP with bearish momentum"
     elif gap_pct <= -GAP_THRESHOLD and (not av) and rs > 35:
@@ -579,7 +584,7 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         sig        = "SELL"
         gap_signal = True
         en         = round(orb_l - 0.05, 2)
-        sl         = round(orb_mid + 0.05, 2)
+        sl         = round(en + atr_sl_dist, 2) if tight_orb else round(orb_mid + 0.05, 2)
         half_gap   = round(abs(gap_pct / 100 * pc) * 0.5, 2)
         tg         = round(en - max(half_gap, orb_range), 2)
         reason     = f"Gap-down {gap_pct:+.1f}% — gap-and-go SELL"
@@ -588,7 +593,7 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         sig        = "BUY"
         gap_signal = True
         en         = round(orb_h + 0.05, 2)
-        sl         = round(orb_mid - 0.05, 2)
+        sl         = round(en - atr_sl_dist, 2) if tight_orb else round(orb_mid - 0.05, 2)
         half_gap   = round(abs(gap_pct / 100 * pc) * 0.5, 2)
         tg         = round(en + max(half_gap, orb_range), 2)
         reason     = f"Gap-up {gap_pct:+.1f}% — gap-and-go BUY"
@@ -751,7 +756,7 @@ def is_ready(s, ist_mins):
     vp = round(s["tVpm"] / (s["aVpm"] or 1) * 100)
 
     time_ok    = 585 <= ist_mins <= 900
-    time_prime = 585 <= ist_mins <= 630
+    time_prime = 585 <= ist_mins <= 660  # 9:45–11:00 AM — ORB momentum window
     is_actual  = s["sig"] != "WATCH"
     orb_ok     = (
         (s["sig"] == "BUY"  and s["bo"]) or
@@ -775,6 +780,8 @@ def is_ready(s, ist_mins):
         not orb_ok,
     ])
     warnings = sum([not time_prime and time_ok, conf_warn])
+    # time_prime exposed so callers can enforce the ORB window as a hard gate
+    s["_time_prime"] = time_prime
 
     if not is_actual:
         return "watch", 0
