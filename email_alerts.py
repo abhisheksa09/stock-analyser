@@ -285,6 +285,119 @@ def format_login_reminder(login_url: str) -> tuple:
     return subject, _wrap("Morning Reminder", "Market opens at 09:15 IST", body, "login_reminder")
 
 
+def _analysis_row_html(t: dict) -> str:
+    """Return a colspan-6 sub-row with pick analysis for one settled trade."""
+    reason      = t.get("reason") or "Signal conditions met"
+    conf        = t.get("conf")
+    rr          = t.get("rr")
+    rsi         = t.get("rsi")
+    sec         = t.get("sec") or ""
+    sig         = t.get("sig", "")
+    signal_time = t.get("signal_time") or ""
+    entry       = t.get("entry")
+    target      = t.get("target")
+    sl          = t.get("stop_loss")
+    day_high    = t.get("day_high")
+    day_low     = t.get("day_low")
+    target_hit  = t.get("target_hit")
+    sl_hit      = t.get("sl_hit")
+
+    def _pill(text, bg, fg):
+        return (
+            f'<span style="background:{bg};color:{fg};padding:2px 8px;border-radius:10px;'
+            f'font-size:10px;font-weight:700;margin-right:4px;display:inline-block;">{text}</span>'
+        )
+
+    pills = []
+
+    # Confidence pill
+    if conf is not None:
+        ci = int(conf)
+        if ci >= 75:
+            cc, cl = "#15803d", "HIGH"
+        elif ci >= 55:
+            cc, cl = "#b45309", "MED"
+        else:
+            cc, cl = "#6b7280", "LOW"
+        pills.append(_pill(f"Conf {ci}% ● {cl}", f"{cc}18", cc))
+
+    # R:R pill
+    if rr is not None:
+        rf = float(rr)
+        rc = "#15803d" if rf >= 2.0 else ("#b45309" if rf >= 1.5 else "#b91c1c")
+        pills.append(_pill(f"R:R {rf:.1f}:1", f"{rc}18", rc))
+
+    # RSI pill
+    if rsi is not None:
+        rv = float(rsi)
+        if rv < 40:
+            rl, rc2 = "Oversold", "#15803d" if sig == "SELL" else "#b45309"
+        elif rv > 60:
+            rl, rc2 = "Overbought", "#b91c1c" if sig == "BUY" else "#15803d"
+        else:
+            rl, rc2 = "Neutral", "#4b5563"
+        pills.append(_pill(f"RSI {rv:.0f} – {rl}", f"{rc2}18", rc2))
+
+    # Signal timing pill
+    if signal_time:
+        try:
+            h, m  = int(signal_time[:2]), int(signal_time[3:5])
+            prime = 585 <= h * 60 + m <= 660  # 09:45–11:00 prime window
+            tc    = "#0369a1" if prime else "#6b7280"
+            tlbl  = f"{signal_time} ✓ Prime" if prime else signal_time
+            pills.append(_pill(tlbl, f"{tc}18", tc))
+        except Exception:
+            pass
+
+    # Sector pill
+    if sec:
+        pills.append(_pill(sec, "#f3f4f6", "#374151"))
+
+    # Trade geometry line
+    geo_parts = []
+    if entry is not None and target is not None and sl is not None:
+        ef, tf, sf = float(entry), float(target), float(sl)
+        geo_parts.append(f"Target &#177;{abs(tf - ef):.1f} pts")
+        geo_parts.append(f"SL &#177;{abs(ef - sf):.1f} pts")
+    if day_high is not None and day_low is not None:
+        geo_parts.append(f"Day range &#8377;{float(day_low):.0f}–{float(day_high):.0f}")
+
+    # Outcome insight line
+    outcome = t.get("outcome", "open")
+    if target_hit:
+        insight = ('<span style="color:#15803d;font-size:10px;font-weight:600;">'
+                   '✓ Target reached — setup fully confirmed</span>')
+    elif sl_hit:
+        insight = ('<span style="color:#b91c1c;font-size:10px;font-weight:600;">'
+                   '✕ Stop loss triggered — setup invalidated at SL</span>')
+    elif outcome == "partial_win":
+        insight = ('<span style="color:#b45309;font-size:10px;">'
+                   'Partial win — moved in direction but target not reached by close</span>')
+    elif outcome == "partial_loss":
+        insight = ('<span style="color:#b91c1c;font-size:10px;">'
+                   'Partial loss — closed against entry; SL not triggered intraday</span>')
+    else:
+        insight = ""
+
+    pills_html  = "".join(pills)
+    geo_html    = (
+        f'<p style="margin:4px 0 0;font-size:10px;color:#6b7280;">'
+        + " &nbsp;|&nbsp; ".join(geo_parts) + "</p>"
+    ) if geo_parts else ""
+    insight_html = f'<p style="margin:4px 0 0;">{insight}</p>' if insight else ""
+
+    return (
+        '<tr style="background:#f9fafb;">'
+        '<td colspan="6" style="padding:5px 8px 10px 16px;border-bottom:2px solid #e5e7eb;">'
+        f'<p style="margin:0 0 5px;font-size:11px;color:#374151;font-style:italic;">'
+        f'\U0001f50d {reason}</p>'
+        f'<div style="line-height:1.8;">{pills_html}</div>'
+        + geo_html
+        + insight_html
+        + '</td></tr>'
+    )
+
+
 def format_eod_settlement(trades: list, settled: int, skipped: int, errors: list) -> tuple:
     """Returns (subject, html_body) for the EOD paper-trade settlement digest."""
     date_str  = datetime.now(IST).strftime("%d %b %Y")
@@ -324,7 +437,7 @@ def format_eod_settlement(trades: list, settled: int, skipped: int, errors: list
             pnl_str = f"{float(pnl):+.2f}" if pnl is not None else "&mdash;"
             sig_icon = "&#9650;" if t.get("sig") == "BUY" else "&#9660;"
             rows_html += (
-                '<tr style="border-bottom:1px solid #f3f4f6;">'
+                '<tr>'
                 f'<td style="padding:8px 6px;font-size:12px;font-weight:600;">{t.get("sym","")}</td>'
                 f'<td style="padding:8px 6px;font-size:12px;">{sig_icon} {t.get("sig","")}</td>'
                 f'<td style="padding:8px 6px;font-size:12px;text-align:right;">Rs&nbsp;{t.get("entry","")}</td>'
@@ -334,6 +447,7 @@ def format_eod_settlement(trades: list, settled: int, skipped: int, errors: list
                 f'<td style="padding:8px 6px;font-size:12px;text-align:right;'
                 f'color:{"#16a34a" if pnl and float(pnl) >= 0 else "#dc2626"};">{pnl_str}</td>'
                 '</tr>'
+                + _analysis_row_html(t)
             )
         trade_table_html = (
             '<h3 style="margin:20px 0 8px;font-size:12px;color:#374151;font-weight:600;'
