@@ -46,6 +46,43 @@ var _appSessionToken = localStorage.getItem('nse_app_token') || '';
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>NSE Scanner — User Guide</title>
+<script>
+// Version bumps mirror changelog.html data-bump sequence exactly.
+// Add a new entry here whenever a new iteration is added to changelog.html.
+// major → x+1.0.0 | minor → x.y+1.0 | patch → x.y.z+1
+const VERSION_BUMPS = [
+  'patch',  // V1  local html
+  'minor',  // V2  confidence + history
+  'minor',  // V3  signal lock
+  'minor',  // V4  corporate events
+  'major',  // V5  cloud deployment
+  'minor',  // V6  telegram alerts
+  'minor',  // V7  market context filters
+  'minor',  // V8  macro intelligence
+  'patch',  // V9  ui polish
+  'minor',  // V10 dry scan
+  'minor',  // V11 mobile oauth
+  'patch',  // V12 oauth ui
+  'major',  // V13 user auth + postgresql
+  'minor',  // V14 paper trading
+  'minor',  // V15 email alerts
+  'minor',  // V16 admin panel
+  'patch',  // V17 auto-login reminder
+];
+function computeAppVersion(bumps) {
+  let maj = 0, min = 0, pat = 0;
+  for (const b of bumps) {
+    if (b === 'major') { maj++; min = 0; pat = 0; }
+    else if (b === 'minor') { min++; pat = 0; }
+    else { pat++; }
+  }
+  return 'v' + maj + '.' + min + '.' + pat;
+}
+document.addEventListener('DOMContentLoaded', function () {
+  const el = document.getElementById('app-version');
+  if (el) el.textContent = computeAppVersion(VERSION_BUMPS);
+});
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f0;color:#1a1a1a;line-height:1.7;}
@@ -127,8 +164,9 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;border-top:1px
     <span>&#9889; Upstox API</span>
     <span>&#129302; Claude AI</span>
     <span>&#127760; Render.com cloud</span>
-    <span>&#128241; Telegram alerts</span>
+    <span>&#128241; Telegram + Email alerts</span>
     <span>&#128248; GitHub Pages</span>
+    <span style="font-family:monospace;background:#1a1a1a;color:#a8ff78;padding:2px 8px;border-radius:4px;font-size:12px;" id="app-version">v…</span>
   </div>
 </div>
 
@@ -168,6 +206,13 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;border-top:1px
     <li><a href="#trading">14. Trading Best Practices</a></li>
     <li><a href="#trouble">15. Troubleshooting</a></li>
     <li><a href="#api">16. API Reference</a></li>
+    <li><a href="#backtest">17. Backtest Tab</a></li>
+    <li class="toc-sub"><a href="#bt-how">&#8594; How paper trades are saved</a></li>
+    <li class="toc-sub"><a href="#bt-settle">&#8594; EOD settlement</a></li>
+    <li class="toc-sub"><a href="#bt-walkforward">&#8594; Walk-forward validation</a></li>
+    <li><a href="#admin">18. Admin Panel</a></li>
+    <li class="toc-sub"><a href="#admin-users">&#8594; User management</a></li>
+    <li class="toc-sub"><a href="#admin-tools">&#8594; Debug &amp; test tools</a></li>
   </ul>
 </div>
 
@@ -178,12 +223,16 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;border-top:1px
 
   <h3 class="sub-title">File Map</h3>
   <div class="card-grid">
-    <div class="card"><div class="card-icon">&#128214;</div><div class="card-title">nse_scanner.html</div><div class="card-desc">Frontend on GitHub Pages. Scanner UI, history tab, market context display, floating tooltips, AI trade plans.</div></div>
-    <div class="card"><div class="card-icon">&#128013;</div><div class="card-title">app.py</div><div class="card-desc">Flask web server on Render. All HTTP routes. Upstox + Anthropic proxy. OAuth login flow. Starts APScheduler on boot.</div></div>
-    <div class="card"><div class="card-icon">&#128270;</div><div class="card-title">scanner.py</div><div class="card-desc">Background alert engine. Runs every 5 min via APScheduler. Manages session state. Sends Telegram via Bot API.</div></div>
+    <div class="card"><div class="card-icon">&#128214;</div><div class="card-title">scanner.html</div><div class="card-desc">Main SPA on GitHub Pages. Scanner, History, Backtest and Admin tabs. Signal display, market context banner, floating tooltips, AI trade plans.</div></div>
+    <div class="card"><div class="card-icon">&#128274;</div><div class="card-title">login.html</div><div class="card-desc">Auth gate. Username/password login. Sessions stored in PostgreSQL. Auth guard on scanner.html, readme.html and changelog.html.</div></div>
+    <div class="card"><div class="card-icon">&#128013;</div><div class="card-title">app.py</div><div class="card-desc">Flask web server on Render. 50+ HTTP routes. Upstox + Anthropic proxy. OAuth flow. APScheduler for scan, EOD settlement and morning reminder.</div></div>
+    <div class="card"><div class="card-icon">&#128270;</div><div class="card-title">scanner.py</div><div class="card-desc">Background alert engine. Runs every 5 min. Manages session state. Sends Telegram alerts. Auto-saves paper trades on green/amber signals.</div></div>
     <div class="card"><div class="card-icon">&#128200;</div><div class="card-title">signals.py</div><div class="card-desc">Signal computation: ORB, VWAP, RSI(14), ATR(14), confidence scoring, 4-filter market context (Nifty, sector, gap, day trend).</div></div>
-    <div class="card"><div class="card-icon">&#127758;</div><div class="card-title">macro.py</div><div class="card-desc">4-layer macro intelligence: economic calendar, Yahoo Finance proxies, NSE FII/DII flows, NewsAPI + Claude Haiku sentiment.</div></div>
-    <div class="card"><div class="card-icon">&#128241;</div><div class="card-title">Telegram Bot</div><div class="card-desc">Native Bot API. Alerts fire once per stock per session for: Green Ready, conf crossed 75%, signal reversal.</div></div>
+    <div class="card"><div class="card-icon">&#127758;</div><div class="card-title">macro.py</div><div class="card-desc">4-layer macro intelligence: economic calendar, Yahoo Finance proxies, NSE FII/DII flows, NewsAPI + Claude Haiku sentiment. 30-min cache.</div></div>
+    <div class="card"><div class="card-icon">&#128452;</div><div class="card-title">db.py</div><div class="card-desc">PostgreSQL layer (Neon). Tables: users, app_sessions, token_store, session_state, trade_history, alert_log, paper_trades.</div></div>
+    <div class="card"><div class="card-icon">&#128140;</div><div class="card-title">email_alerts.py</div><div class="card-desc">Resend API integration. 6 email types: green_ready, conf_crossed, reversal, token_expiry, login_reminder, eod_settlement digest.</div></div>
+    <div class="card"><div class="card-icon">&#9201;</div><div class="card-title">auto_login.py</div><div class="card-desc">Morning reminder module. Fires Telegram + email tap-to-login link at 08:30 IST on weekdays via APScheduler cron job.</div></div>
+    <div class="card"><div class="card-icon">&#129504;</div><div class="card-title">ai_insights.py</div><div class="card-desc">OpenAI gpt-4o-mini integration. Reviews trade setup quality on demand from the stock detail panel in scanner.html.</div></div>
   </div>
 
   <h3 class="sub-title">Full Architecture Diagram</h3>
@@ -416,36 +465,53 @@ Readiness verdict:
 <div class="section" id="setup">
   <h2 class="sec-title">2. Daily Setup</h2>
 
-  <h3 class="sub-title" id="token">Generating your Upstox Token</h3>
-  <p>The Upstox access token expires at midnight IST every day. Run this once each morning:</p>
-  <div class="code">cd C:\Abhi\Learning\stock_preditor
-python GetUpstoxToken.ps1</div>
+  <h3 class="sub-title">First-time: App Login</h3>
+  <p>The scanner requires a username and password to access any page. On first visit you will be redirected to <span class="inline-code">login.html</span>. Your admin will create your account via the Admin tab.</p>
+  <div class="callout callout-info"><strong>&#128274; Sessions last 30 days</strong>After logging in once, your session is stored in PostgreSQL. You will stay logged in across browser restarts until the session expires or you log out.</div>
+
+  <h3 class="sub-title" id="token">Daily Upstox Login (every morning)</h3>
+  <p>The Upstox access token expires at midnight IST. You need to re-authenticate each morning before 9:15 IST. The process is now fully automated:</p>
+
+  <div class="callout callout-tip"><strong>&#9201; 08:30 IST reminder fires automatically</strong>A Telegram message and email are sent to you at 08:30 IST every weekday with a one-tap login link. No manual action needed until you see the reminder.</div>
+
   <div class="steps">
-    <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Run the script</div><div class="step-desc">Browser opens the Upstox login page automatically.</div></div></div>
-    <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">Log in with OTP</div><div class="step-desc">Browser redirects to https://localhost/?code=...</div></div></div>
-    <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Copy redirect URL and paste into PowerShell</div><div class="step-desc">Script prints the token and copies it to clipboard.</div></div></div>
+    <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Receive reminder at 08:30 IST</div><div class="step-desc">Telegram and email both arrive with a direct link to <span class="inline-code">/auth/login</span>.</div></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">Tap the link on your phone</div><div class="step-desc">Opens Upstox login page. Enter your mobile number and OTP.</div></div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Tap Authorize</div><div class="step-desc">Render exchanges the code for a token automatically. You see a green success card. The tab closes itself after 3 seconds.</div></div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body"><div class="step-title">Done — scanner is active</div><div class="step-desc">Token is saved in PostgreSQL. The status dot in scanner.html turns green. Alerts fire from 9:15&#8211;10:30 IST automatically.</div></div></div>
   </div>
 
-  <h3 class="sub-title" id="settoken">Activating Alerts Each Morning</h3>
-  <p>After generating the token, paste it into the cloud proxy so the background scanner can use it:</p>
+  <div class="callout callout-danger"><strong>&#9888; Never tap login twice in the same morning</strong>Opening <span class="inline-code">/auth/login</span> when a valid token already exists will show an "already logged in" page and do nothing — this is intentional. Upstox revokes the old token if you start a second OAuth session, which would break your live scanner mid-morning.</div>
+
+  <h3 class="sub-title" id="settoken">If You Need to Re-login Mid-day</h3>
+  <p>If the token expires unexpectedly (Upstox returns 401), you will receive a token expiry email. To fix:</p>
   <div class="steps">
-    <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Open on your phone</div><div class="step-desc"><span class="inline-code">https://nse-proxy-mojx.onrender.com/set-token-form</span></div></div></div>
-    <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">Paste token &#8594; tap Set token</div><div class="step-desc">Scanner activates immediately. Macro context (news, proxies, FII/DII) loads in the background.</div></div></div>
-    <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Done</div><div class="step-desc">Scanner checks every 5 min from 9:15&#8211;10:30 IST. Telegram alerts fire automatically.</div></div></div>
+    <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">Open Admin tab → clear today's token</div><div class="step-desc">This removes the stale token so the login guard allows a new OAuth flow.</div></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">Open <span class="inline-code">/auth/login</span> on phone</div><div class="step-desc">Complete Upstox OTP login as normal. New token is saved automatically.</div></div></div>
   </div>
-  <div class="callout callout-warning"><strong>&#9203; Render free tier cold start</strong>The service sleeps after 15 min of inactivity. Set up UptimeRobot (free) to ping <span class="inline-code">https://nse-proxy-mojx.onrender.com/ping</span> every 5 minutes so Render never sleeps and never misses the market open.</div>
+
+  <div class="callout callout-warning"><strong>&#9203; Render free tier cold start</strong>Set up UptimeRobot (free) to ping <span class="inline-code">https://nse-proxy-mojx.onrender.com/ping</span> every 5 minutes so Render never sleeps and never misses market open.</div>
 </div>
 
 <!-- 3. SCANNER TAB -->
 <div class="section" id="scanner">
   <h2 class="sec-title">3. Scanner Tab</h2>
 
+  <h3 class="sub-title">Four Tabs</h3>
+  <table>
+    <tr><th>Tab</th><th>What it does</th><th>Who can access</th></tr>
+    <tr><td><strong>Scanner</strong></td><td>Live scan results, market context banner, stock detail panel, AI trade plans</td><td>All users</td></tr>
+    <tr><td><strong>History</strong></td><td>Trade log saved to PostgreSQL, outcome editing, accuracy stats, CSV export</td><td>All users (own trades)</td></tr>
+    <tr><td><strong>Backtest</strong></td><td>Auto-saved paper trades from scanner alerts, EOD settlement results, walk-forward stats</td><td>All users</td></tr>
+    <tr><td><strong>Admin</strong></td><td>User management, DB controls, force scan, dry test, instrument key checker</td><td>Admin role only</td></tr>
+  </table>
+
   <h3 class="sub-title" id="stocks">Adding Stocks</h3>
   <table>
     <tr><th>Method</th><th>How</th></tr>
     <tr><td><strong>Search box</strong></td><td>Type symbol (INFY) or partial name. Arrow keys + Enter to add. Max 15 stocks.</td></tr>
     <tr><td><strong>Quick-add pills</strong></td><td>All 30 Nifty stocks. Click to add (turns green), click again to remove. Corporate event badges shown inline.</td></tr>
-    <tr><td><strong>Anthropic key</strong></td><td>Required once for AI features. Stored in localStorage permanently.</td></tr>
+    <tr><td><strong>Anthropic key</strong></td><td>Required once for AI trade plans. Stored in localStorage permanently.</td></tr>
   </table>
 
   <h3 class="sub-title" id="reading">Reading the Results Table</h3>
@@ -705,19 +771,29 @@ python GetUpstoxToken.ps1</div>
 <!-- 13. HISTORY TAB -->
 <div class="section" id="history">
   <h2 class="sec-title">13. History Tab</h2>
-  <p>Track predictions vs actual outcomes to measure scanner accuracy over time.</p>
+  <p>Track predictions vs actual outcomes to measure scanner accuracy over time. Trades are stored in PostgreSQL — they sync across devices and survive browser clears.</p>
   <h3 class="sub-title">Layout</h3>
   <ol>
-    <li>Stats bar &#8212; Predictions / Target hit / SL / Win rate / Avg P&amp;L</li>
+    <li>Stats bar &#8212; Predictions / Target hit / SL hit / Win rate / Avg P&amp;L / Total P&amp;L</li>
     <li>Accuracy by Category <em>(collapsible)</em></li>
     <li>Filters &amp; Sort <em>(collapsible)</em></li>
-    <li>Export / Import / Clear toolbar</li>
-    <li>Bulk action bar (appears on selection)</li>
+    <li>Export CSV / Import CSV / Clear toolbar</li>
+    <li>Bulk action bar (appears on row selection)</li>
     <li>History table grouped by date &#8212; click date header to expand</li>
   </ol>
-  <div class="callout callout-warning"><strong>&#9729;&#65039; Cloud version: localStorage only</strong>History is stored in your browser. Export CSV regularly as backup. It does not sync across devices in the cloud version.</div>
+  <div class="callout callout-tip"><strong>&#9729;&#65039; Cloud sync via PostgreSQL</strong>Trades are saved to your account in the Neon database on Render. They appear on every device you log in from. Export CSV is still available as an offline backup.</div>
   <h3 class="sub-title">Recording outcomes</h3>
-  <p>After each session, fill in Actual Entry and Actual Exit in the history table. Outcome (Hit/SL/Partial/Loss) and P&amp;L are calculated automatically.</p>
+  <p>After each session, fill in Actual Entry and Actual Exit in the history table. Outcome (Hit/SL/Partial/Loss) and P&amp;L are calculated automatically from those two values.</p>
+  <h3 class="sub-title">History API</h3>
+  <table>
+    <tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr>
+    <tr><td>GET</td><td>/history/trades</td><td>Fetch your trades. Params: from_date, to_date, sym, limit.</td></tr>
+    <tr><td>POST</td><td>/history/trades</td><td>Save a new trade prediction.</td></tr>
+    <tr><td>PATCH</td><td>/history/trades/&lt;id&gt;</td><td>Update actual entry, exit, outcome, notes.</td></tr>
+    <tr><td>DELETE</td><td>/history/trades/&lt;id&gt;</td><td>Delete one trade.</td></tr>
+    <tr><td>DELETE</td><td>/history/trades/all</td><td>Clear all your trades.</td></tr>
+    <tr><td>GET</td><td>/history/stats</td><td>Server-side accuracy summary: total, wins, losses, win rate, avg P&amp;L.</td></tr>
+  </table>
 </div>
 
 <!-- 14. TRADING BEST PRACTICES -->
@@ -750,16 +826,22 @@ python GetUpstoxToken.ps1</div>
   <h2 class="sec-title">15. Troubleshooting</h2>
   <table>
     <tr><th>Problem</th><th>Cause</th><th>Fix</th></tr>
-    <tr><td>Proxy not detected</td><td>Render dyno sleeping</td><td>Set up UptimeRobot to ping /ping every 5 min</td></tr>
-    <tr><td>No Telegram alerts during market hours</td><td>Token not set for today</td><td>Open /set-token-form and paste today's Upstox token</td></tr>
-    <tr><td>Duplicate Telegram alerts</td><td>Multiple gunicorn workers</td><td>Use --workers 1 in start command</td></tr>
-    <tr><td>ImportError: get_market_context</td><td>Old signals.py deployed</td><td>Re-upload signals.py &#8212; all 5 Python files must be current version</td></tr>
-    <tr><td>All signals showing WATCH</td><td>Nifty hard block active</td><td>Normal &#8212; market is up/down &gt;0.5%. Check market banner at top of scanner.</td></tr>
-    <tr><td>Confidence lower than expected</td><td>Macro penalties applied</td><td>Check /macro-status to see which penalties fired (VIX, crude, news etc.)</td></tr>
+    <tr><td>Redirected to login.html on every page</td><td>No valid session token</td><td>Log in at login.html. Sessions last 30 days — check browser isn't in private/incognito mode.</td></tr>
+    <tr><td>Login says "invalid username or password"</td><td>Wrong credentials or account inactive</td><td>Ask admin to check /admin/users and activate the account if needed.</td></tr>
+    <tr><td>Proxy not detected / cold start</td><td>Render dyno sleeping</td><td>Set up UptimeRobot to ping /ping every 5 min</td></tr>
+    <tr><td>No Telegram alerts during market hours</td><td>Token not set for today</td><td>Check 08:30 IST reminder arrived. If not, open /auth/login on phone manually.</td></tr>
+    <tr><td>/auth/login shows "already logged in"</td><td>Valid token already exists (guard working correctly)</td><td>Normal — no action needed. If token is truly stale, clear it in Admin tab first.</td></tr>
+    <tr><td>Token expired mid-morning (401)</td><td>Upstox occasionally revokes tokens early</td><td>You will receive an email alert. Go Admin tab → clear token → /auth/login again.</td></tr>
+    <tr><td>Duplicate Telegram alerts</td><td>Multiple gunicorn workers</td><td>Use <span class="inline-code">--workers 1</span> in start command</td></tr>
+    <tr><td>All signals showing WATCH</td><td>Nifty hard block active</td><td>Normal — market is up/down &gt;0.5%. Check market banner at top of scanner.</td></tr>
+    <tr><td>Confidence lower than expected</td><td>Macro penalties applied</td><td>Check /macro-status to see which penalties fired (VIX, crude, news, FII etc.)</td></tr>
     <tr><td>News sentiment not working</td><td>NEWS_API_KEY not set</td><td>Add key from newsapi.org to Render env vars</td></tr>
-    <tr><td>macro-status shows "not fetched yet"</td><td>Scanner hasn't run yet</td><td>Set token first. Macro fetches at first scan after 9:15 IST.</td></tr>
-    <tr><td>Token expired</td><td>Upstox tokens expire at midnight IST</td><td>Run GetUpstoxToken.ps1 each morning</td></tr>
-    <tr><td>Save to history error</td><td>saveH not defined</td><td>Hard reload the page (Ctrl+Shift+R or ?v=N in URL)</td></tr>
+    <tr><td>macro-status shows "not fetched yet"</td><td>Scanner hasn't run yet today</td><td>Set token first. Macro fetches at first scan after 9:15 IST.</td></tr>
+    <tr><td>Paper trades not appearing in Backtest tab</td><td>confidence below BACKTEST_MIN_CONF or symbol not in BACKTEST_SYMBOLS</td><td>Check /paper-trades/config — shows active symbols and min_conf threshold.</td></tr>
+    <tr><td>EOD settlement produced no outcomes</td><td>No Upstox token at 15:35 IST or intraday data empty</td><td>Token must be set. Run POST /paper-trades/settle manually to retry with current token.</td></tr>
+    <tr><td>Email alerts not arriving</td><td>RESEND_API_KEY or EMAIL_TO not set</td><td>Add both to Render env vars. Test with GET /test-email (config check) then POST /test-email.</td></tr>
+    <tr><td>Morning reminder not arriving</td><td>auto_login.py not configured</td><td>Check POST /auth/trigger-auto-login manually. Verify TELEGRAM_BOT_TOKEN and EMAIL_TO are set.</td></tr>
+    <tr><td>Stale instrument key error</td><td>Upstox changes instrument keys periodically</td><td>Run GET /check-ikeys to find broken keys, then update signals.py and redeploy.</td></tr>
     <tr><td>Tooltips not showing</td><td>GitHub Pages cache</td><td>Add ?v=N to URL to bypass cache</td></tr>
   </table>
 </div>
@@ -826,31 +908,168 @@ python GetUpstoxToken.ps1</div>
     <tr><td>GET</td><td>/nse/corporate-actions</td><td>NSE India corporate events feed. Used to show event badges on scanner pills and rows.</td><td>None</td></tr>
   </table>
 
-  <h3 class="sub-title">Disabled Endpoints</h3>
+  <h3 class="sub-title">App Authentication</h3>
   <table>
-    <tr><th>Method</th><th>Endpoint</th><th>Returns</th><th>Reason</th></tr>
-    <tr><td>GET</td><td>/history/read</td><td>410 Gone</td><td>Render filesystem is ephemeral. Use browser localStorage + Export CSV.</td></tr>
-    <tr><td>POST</td><td>/history/write</td><td>410 Gone</td><td>Same reason.</td></tr>
+    <tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr>
+    <tr><td>POST</td><td>/app/login</td><td>Login with username + password. Returns session token (also sets cookie). Body: <span class="inline-code">{"username":"…","password":"…"}</span></td></tr>
+    <tr><td>POST</td><td>/app/logout</td><td>Revoke current session. Send X-Session-Token header.</td></tr>
+    <tr><td>GET</td><td>/app/me</td><td>Check if session is valid. Returns <span class="inline-code">{"authenticated":true,"username":"…","role":"…"}</span></td></tr>
+    <tr><td>POST</td><td>/app/change-password</td><td>Change own password. Body: <span class="inline-code">{"current":"…","new":"…"}</span>. Min 8 chars. Revokes all other sessions.</td></tr>
+    <tr><td>GET</td><td>/auth/status</td><td>Last OAuth attempt result, token set status, redirect URI configured.</td></tr>
+    <tr><td>GET</td><td>/auth/auto-login-status</td><td>Last morning reminder attempt and next scheduled time.</td></tr>
+    <tr><td>POST</td><td>/auth/trigger-auto-login</td><td>Fire morning reminder immediately (admin only).</td></tr>
+  </table>
+
+  <h3 class="sub-title">Trade History</h3>
+  <table>
+    <tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr>
+    <tr><td>GET</td><td>/history/trades</td><td>Your trades. Optional: from_date, to_date, sym, limit.</td></tr>
+    <tr><td>POST</td><td>/history/trades</td><td>Save a trade prediction.</td></tr>
+    <tr><td>PATCH</td><td>/history/trades/&lt;id&gt;</td><td>Update actual_en, actual_ex, outcome, notes.</td></tr>
+    <tr><td>DELETE</td><td>/history/trades/&lt;id&gt;</td><td>Delete one trade.</td></tr>
+    <tr><td>DELETE</td><td>/history/trades/all</td><td>Delete all your trades.</td></tr>
+    <tr><td>GET</td><td>/history/stats</td><td>Win rate, avg P&amp;L, total P&amp;L for your account.</td></tr>
+  </table>
+
+  <h3 class="sub-title">Paper Trades / Backtest</h3>
+  <table>
+    <tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr>
+    <tr><td>GET</td><td>/paper-trades</td><td>List paper trades. Params: from_date, to_date, sym, outcome, limit.</td></tr>
+    <tr><td>GET</td><td>/paper-trades/count</td><td>Count of your paper trades.</td></tr>
+    <tr><td>GET</td><td>/paper-trades/stats?days=30</td><td>Aggregate accuracy stats for last N days.</td></tr>
+    <tr><td>GET</td><td>/paper-trades/walk-forward?months=6</td><td>Per-month accuracy — the robustness test.</td></tr>
+    <tr><td>GET</td><td>/paper-trades/config</td><td>Active backtest symbols, min_conf, trades saved today.</td></tr>
+    <tr><td>GET</td><td>/paper-trades/best-pick-stats?days=30</td><td>Best-performing symbol stats.</td></tr>
+    <tr><td>DELETE</td><td>/paper-trades/&lt;id&gt;</td><td>Delete one paper trade.</td></tr>
+    <tr><td>POST</td><td>/paper-trades/settle</td><td>Manually trigger EOD settlement (admin only).</td></tr>
+    <tr><td>POST</td><td>/paper-trades/dry-test</td><td>Create + settle 4 synthetic test trades (admin only).</td></tr>
+  </table>
+
+  <h3 class="sub-title">Admin &amp; User Management</h3>
+  <table>
+    <tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr>
+    <tr><td>GET</td><td>/admin/users</td><td>List all users (admin only).</td></tr>
+    <tr><td>POST</td><td>/admin/users/create</td><td>Create user. Body: username, password, role.</td></tr>
+    <tr><td>POST</td><td>/admin/users/&lt;u&gt;/activate</td><td>Re-enable a user account.</td></tr>
+    <tr><td>POST</td><td>/admin/users/&lt;u&gt;/deactivate</td><td>Disable account + revoke all sessions.</td></tr>
+    <tr><td>POST</td><td>/admin/clear-token</td><td>Wipe today's Upstox token so re-login is allowed.</td></tr>
+    <tr><td>POST</td><td>/admin/verify</td><td>Verify ADMIN_PIN and return session token.</td></tr>
+    <tr><td>POST</td><td>/db/init</td><td>Create missing DB tables (idempotent).</td></tr>
+    <tr><td>GET</td><td>/check-ikeys</td><td>Probe all instrument keys — find stale/broken ones.</td></tr>
+    <tr><td>POST</td><td>/force-scan</td><td>Run full scan right now, bypassing time window.</td></tr>
+  </table>
+
+  <h3 class="sub-title">Email Alerts</h3>
+  <table>
+    <tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr>
+    <tr><td>GET</td><td>/test-email</td><td>Config check only — returns configured status and EMAIL_TO. Never sends.</td></tr>
+    <tr><td>POST</td><td>/test-email?kind=green_ready</td><td>Send a test email. Kinds: green_ready, conf_crossed, reversal, token_expiry, login_reminder, eod_settlement.</td></tr>
   </table>
 
   <h3 class="sub-title">Quick Reference Card</h3>
   <div class="code">&#8212;&#8212; Every morning &#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;
-  Open on phone: https://nse-proxy-mojx.onrender.com/set-token-form
-  Paste Upstox token &#8594; tap Set token &#8594; done
+  08:30 IST &#8594; tap Telegram/email reminder link
+  Open /auth/login on phone &#8594; Upstox OTP &#8594; done
 
 &#8212;&#8212; One-time setup &#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;
-  GET  /get-chat-id          find your Telegram chat ID
-  GET  /test-alert           confirm Telegram works
-  GET  /dry-scan?mock=1      test full alert pipeline (no token needed)
+  GET  /get-chat-id              find your Telegram chat ID
+  GET  /test-alert               confirm Telegram works
+  POST /test-email?kind=green_ready  confirm email works
+  GET  /dry-scan?mock=1          test full alert pipeline (no token needed)
 
 &#8212;&#8212; Debug during trading &#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;&#8212;
-  GET  /ping                 is Render awake?
-  GET  /alert-status         which signals fired today?
-  GET  /macro-status         crude / gold / FII / news data
-  GET  /dry-scan?sym=INFY    live test one stock right now</div>
+  GET  /ping                     is Render awake?
+  GET  /alert-status             which signals fired today?
+  GET  /macro-status             crude / gold / FII / news data
+  GET  /dry-scan?sym=INFY        live test one stock right now
+  GET  /paper-trades/config      what stocks are being paper-traded?
+  GET  /check-ikeys              are all instrument keys valid?</div>
 </div>
 
-<footer>NSE Intraday Scanner &#183; Upstox API &#183; Claude AI &#183; Render.com &#183; GitHub Pages &#183; Telegram Bot API</footer>
+<!-- 17. BACKTEST TAB -->
+<div class="section" id="backtest">
+  <h2 class="sec-title">17. Backtest Tab</h2>
+  <p>The Backtest tab shows auto-saved paper trades from the background scanner and their EOD-settled outcomes. No manual input required — the system records and closes trades automatically.</p>
+
+  <h3 class="sub-title" id="bt-how">How Paper Trades Are Saved</h3>
+  <p>Every time the background scanner fires a green or amber alert, it automatically saves a paper trade to PostgreSQL if the stock's confidence meets the threshold (<span class="inline-code">BACKTEST_MIN_CONF</span>, default 55%). The saved fields are: symbol, sector, signal, confidence, signal price, entry, target, stop loss, R:R, RSI, and reason.</p>
+  <table>
+    <tr><th>Env var</th><th>Default</th><th>Effect</th></tr>
+    <tr><td>BACKTEST_SYMBOLS</td><td>12 default stocks across 8 sectors</td><td>Comma-separated list to override which stocks get paper-traded</td></tr>
+    <tr><td>BACKTEST_MIN_CONF</td><td>55</td><td>Minimum confidence % for a paper trade to be saved</td></tr>
+  </table>
+  <div class="callout callout-info"><strong>&#128202; One paper trade per stock per day</strong>The scanner deduplicates — once a paper trade is saved for a symbol on a given date, no further saves happen for that symbol that day.</div>
+
+  <h3 class="sub-title" id="bt-settle">EOD Settlement</h3>
+  <p>At 15:35 IST every weekday an APScheduler job replays intraday 1-minute candles from the signal time forward to find the first candle where price hits the target or stop loss.</p>
+  <table>
+    <tr><th>Outcome</th><th>Condition</th></tr>
+    <tr><td><span class="badge badge-green">Won</span></td><td>A candle's high (BUY) or low (SELL) touches the target before SL is hit</td></tr>
+    <tr><td><span class="badge badge-red">Lost</span></td><td>A candle's low (BUY) or high (SELL) touches the stop loss first</td></tr>
+    <tr><td><span class="badge badge-amber">Partial Win</span></td><td>Neither level hit by session end — exit at intraday best price, positive P&amp;L</td></tr>
+    <tr><td><span class="badge badge-gray">Partial Loss</span></td><td>Neither level hit by session end — exit at intraday best price, negative P&amp;L</td></tr>
+  </table>
+  <p>When both levels are touched in the same candle, the stop loss is assumed to have been hit first (conservative). An EOD email digest is sent after settlement listing all trades and outcomes.</p>
+
+  <h3 class="sub-title" id="bt-walkforward">Walk-Forward Validation</h3>
+  <p>GET <span class="inline-code">/paper-trades/walk-forward?months=6</span> returns a per-month breakdown of settled paper trades: trade count, win rate, avg P&amp;L, and total P&amp;L for each calendar month. Consistent win rate across months indicates the strategy is robust rather than lucky.</p>
+
+  <h3 class="sub-title">Backtest API</h3>
+  <table>
+    <tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr>
+    <tr><td>GET</td><td>/paper-trades</td><td>List paper trades. Params: from_date, to_date, sym, outcome, limit.</td></tr>
+    <tr><td>GET</td><td>/paper-trades/stats?days=30</td><td>Aggregate stats for the last N days.</td></tr>
+    <tr><td>GET</td><td>/paper-trades/walk-forward?months=6</td><td>Per-month accuracy breakdown.</td></tr>
+    <tr><td>GET</td><td>/paper-trades/config</td><td>Active backtest symbols, min_conf, trades saved today.</td></tr>
+    <tr><td>GET</td><td>/paper-trades/count</td><td>Count of your paper trades.</td></tr>
+    <tr><td>DELETE</td><td>/paper-trades/&lt;id&gt;</td><td>Delete one paper trade.</td></tr>
+    <tr><td>POST</td><td>/paper-trades/settle</td><td>Manually trigger EOD settlement (admin only).</td></tr>
+    <tr><td>POST</td><td>/paper-trades/dry-test</td><td>Create and immediately settle 4 synthetic trades covering all outcome types (admin only).</td></tr>
+  </table>
+</div>
+
+<!-- 18. ADMIN PANEL -->
+<div class="section" id="admin">
+  <h2 class="sec-title">18. Admin Panel</h2>
+  <p>The Admin tab is only visible to users with the <span class="inline-code">admin</span> role. It exposes cloud controls without requiring SSH or a Render dashboard login.</p>
+
+  <h3 class="sub-title" id="admin-users">User Management</h3>
+  <table>
+    <tr><th>Action</th><th>Endpoint</th><th>Notes</th></tr>
+    <tr><td>List users</td><td>GET /admin/users</td><td>Shows username, role, active status, last login</td></tr>
+    <tr><td>Create user</td><td>POST /admin/users/create</td><td>Body: username, password (≥8 chars), role (admin/viewer)</td></tr>
+    <tr><td>Deactivate user</td><td>POST /admin/users/&lt;u&gt;/deactivate</td><td>Revokes all active sessions immediately</td></tr>
+    <tr><td>Activate user</td><td>POST /admin/users/&lt;u&gt;/activate</td><td>Re-enables login</td></tr>
+  </table>
+
+  <h3 class="sub-title" id="admin-tools">Debug &amp; Test Tools</h3>
+  <table>
+    <tr><th>Tool</th><th>Endpoint</th><th>Purpose</th></tr>
+    <tr><td>Force scan</td><td>POST /force-scan</td><td>Runs a full scan cycle right now, bypassing the 9:15&#8211;10:30 time window. Returns which alerts fired and which paper trades were saved.</td></tr>
+    <tr><td>Dry scan</td><td>GET /dry-scan?sym=INFY</td><td>One-shot live or mock scan that sends a real Telegram alert. Useful outside market hours.</td></tr>
+    <tr><td>Paper trade dry test</td><td>POST /paper-trades/dry-test</td><td>Creates 4 synthetic paper trades (BUY won, BUY lost, SELL won, BUY partial) and settles them immediately. Verifies the full pipeline without real market data.</td></tr>
+    <tr><td>Check instrument keys</td><td>GET /check-ikeys</td><td>Probes every stock's LTP endpoint to find stale or invalid Upstox instrument keys. Lists bad symbols so you can fix them in signals.py.</td></tr>
+    <tr><td>Clear token</td><td>POST /admin/clear-token</td><td>Wipes today's Upstox token from the DB so a fresh OAuth login can proceed without the "already logged in" guard blocking it.</td></tr>
+    <tr><td>DB init</td><td>POST /db/init</td><td>Creates any missing PostgreSQL tables. Safe to run multiple times (IF NOT EXISTS). Use after adding a new table to db.py.</td></tr>
+    <tr><td>Trigger login reminder</td><td>POST /auth/trigger-auto-login</td><td>Fires the 08:30 IST Telegram + email reminder immediately. Use to test that auto_login.py is configured correctly.</td></tr>
+    <tr><td>Test email</td><td>POST /test-email?kind=green_ready</td><td>Sends a test email of the specified type. Kinds: green_ready, conf_crossed, reversal, token_expiry, login_reminder, eod_settlement.</td></tr>
+    <tr><td>Test Telegram</td><td>GET /test-alert</td><td>Sends a real Telegram message immediately to verify bot token and chat ID.</td></tr>
+  </table>
+
+  <h3 class="sub-title">Admin Environment Variables</h3>
+  <table>
+    <tr><th>Key</th><th>Purpose</th><th>Required</th></tr>
+    <tr><td>ADMIN_PIN</td><td>PIN required to unlock the Admin tab in the browser UI</td><td>Yes (for admin tab)</td></tr>
+    <tr><td>DATABASE_URL</td><td>PostgreSQL connection string (Neon format with sslmode=require)</td><td>Yes</td></tr>
+    <tr><td>RESEND_API_KEY</td><td>Resend API key for email alerts</td><td>No (enables email)</td></tr>
+    <tr><td>EMAIL_TO</td><td>Recipient address for all email alerts</td><td>No (enables email)</td></tr>
+    <tr><td>BACKTEST_SYMBOLS</td><td>Comma-separated symbols for paper trading (blank = 12 defaults)</td><td>No</td></tr>
+    <tr><td>BACKTEST_MIN_CONF</td><td>Minimum confidence for auto paper trade save (default 55)</td><td>No</td></tr>
+    <tr><td>OPENAI_API_KEY</td><td>OpenAI key for AI setup quality review in stock detail panel</td><td>No</td></tr>
+  </table>
+</div>
+
+<footer>NSE Intraday Scanner &#183; Upstox API &#183; Claude AI &#183; Render.com &#183; GitHub Pages &#183; Telegram Bot API &#183; Resend Email</footer>
 </div>
 </body>
 </html>

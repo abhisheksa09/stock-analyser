@@ -46,6 +46,26 @@ var _appSessionToken = localStorage.getItem('nse_app_token') || '';
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>NSE Scanner — Build Journey</title>
+<script>
+// Auto-increment version from data-bump attributes on each .iteration div.
+// Call after DOM ready. Assign result to any element with id="app-version".
+// Bump types: major → x+1.0.0 | minor → x.y+1.0 | patch → x.y.z+1
+function computeAppVersion() {
+  const bumps = document.querySelectorAll('.iteration[data-bump]');
+  let maj = 0, min = 0, pat = 0;
+  bumps.forEach(el => {
+    const b = el.dataset.bump;
+    if (b === 'major') { maj++; min = 0; pat = 0; }
+    else if (b === 'minor') { min++; pat = 0; }
+    else { pat++; }
+  });
+  return 'v' + maj + '.' + min + '.' + pat;
+}
+document.addEventListener('DOMContentLoaded', function () {
+  const el = document.getElementById('app-version');
+  if (el) el.textContent = computeAppVersion();
+});
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
@@ -157,25 +177,26 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
   <div class="subtitle">From a local Python script to a cloud-hosted macro-aware trading assistant</div>
   <div class="meta-chips">
     <span class="chip chip-green">17 iterations</span>
-    <span class="chip chip-blue">5 Python files</span>
-    <span class="chip chip-amber">18 API endpoints</span>
-    <span class="chip">Mar 2026</span>
+    <span class="chip chip-blue">9 Python files</span>
+    <span class="chip chip-amber">50+ API endpoints</span>
+    <span class="chip">2026</span>
+    <span class="chip" style="background:#1a1a1a;color:#a8ff78;border-color:#444;font-family:monospace;" id="app-version">v…</span>
   </div>
 </div>
 
 <div class="stats-grid">
   <div class="stat-card"><div class="stat-n">17</div><div class="stat-l">Build iterations</div></div>
-  <div class="stat-card"><div class="stat-n">5</div><div class="stat-l">Python files</div></div>
-  <div class="stat-card"><div class="stat-n">18</div><div class="stat-l">API endpoints</div></div>
+  <div class="stat-card"><div class="stat-n">9</div><div class="stat-l">Python files</div></div>
+  <div class="stat-card"><div class="stat-n">50+</div><div class="stat-l">API endpoints</div></div>
   <div class="stat-card"><div class="stat-n">4</div><div class="stat-l">Macro layers</div></div>
-  <div class="stat-card"><div class="stat-n">6</div><div class="stat-l">Market filters</div></div>
-  <div class="stat-card"><div class="stat-n">10</div><div class="stat-l">External APIs</div></div>
+  <div class="stat-card"><div class="stat-n">4</div><div class="stat-l">UI tabs</div></div>
+  <div class="stat-card"><div class="stat-n">3</div><div class="stat-l">User roles</div></div>
 </div>
 
 <div class="timeline">
 
   <!-- V1 -->
-  <div class="iteration">
+  <div class="iteration" data-bump="patch">
     <div class="iter-header">
       <span class="iter-badge badge-local">v1 &#8212; Local</span>
       <div>
@@ -215,7 +236,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
   </div>
 
   <!-- V2 -->
-  <div class="iteration">
+  <div class="iteration" data-bump="minor">
     <div class="iter-header">
       <span class="iter-badge badge-local">v2 &#8212; Local</span>
       <div>
@@ -253,7 +274,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
   </div>
 
   <!-- V3 -->
-  <div class="iteration">
+  <div class="iteration" data-bump="minor">
     <div class="iter-header">
       <span class="iter-badge badge-signals">v3 &#8212; Signals</span>
       <div>
@@ -291,7 +312,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
   </div>
 
   <!-- V4 -->
-  <div class="iteration">
+  <div class="iteration" data-bump="minor">
     <div class="iter-header">
       <span class="iter-badge badge-signals">v4 &#8212; Signals</span>
       <div>
@@ -327,7 +348,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
   </div>
 
   <!-- V5 -->
-  <div class="iteration">
+  <div class="iteration" data-bump="major">
     <div class="iter-header">
       <span class="iter-badge badge-cloud">v5 &#8212; Cloud</span>
       <div>
@@ -368,7 +389,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
   </div>
 
   <!-- V6 -->
-  <div class="iteration">
+  <div class="iteration" data-bump="minor">
     <div class="iter-header">
       <span class="iter-badge badge-alerts">v6 &#8212; Alerts</span>
       <div>
@@ -411,7 +432,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
   </div>
 
   <!-- V7 -->
-  <div class="iteration">
+  <div class="iteration" data-bump="minor">
     <div class="iter-header">
       <span class="iter-badge badge-signals">v7 &#8212; Signals</span>
       <div>
@@ -450,7 +471,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
   </div>
 
   <!-- V8 -->
-  <div class="iteration">
+  <div class="iteration" data-bump="minor">
     <div class="iter-header">
       <span class="iter-badge badge-macro">v8 &#8212; Macro</span>
       <div>
@@ -490,7 +511,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
   </div>
 
   <!-- V9 -->
-  <div class="iteration">
+  <div class="iteration" data-bump="patch">
     <div class="iter-header">
       <span class="iter-badge badge-ux">v9 &#8212; UX</span>
       <div>
@@ -527,7 +548,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
   </div>
 
   <!-- V10 -->
-  <div class="iteration">
+  <div class="iteration" data-bump="minor">
     <div class="iter-header">
       <span class="iter-badge badge-alerts">v10 &#8212; Alerts</span>
       <div>
@@ -558,7 +579,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
   </div>
 
   <!-- V11 -->
-  <div class="iteration">
+  <div class="iteration" data-bump="minor">
     <div class="iter-header">
       <span class="iter-badge badge-oauth">v11 &#8212; OAuth</span>
       <div>
@@ -595,7 +616,7 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
   </div>
 
   <!-- V12 -->
-  <div class="iteration">
+  <div class="iteration" data-bump="patch">
     <div class="iter-header">
       <span class="iter-badge badge-ux">v12 &#8212; UX</span>
       <div>
@@ -627,51 +648,288 @@ footer{text-align:center;padding:32px 0;color:#aaa;font-size:12px;
     </div>
   </div>
 
+  <!-- V13 -->
+  <div class="iteration" data-bump="major">
+    <div class="iter-header">
+      <span class="iter-badge badge-cloud">v13 &#8212; Auth</span>
+      <div>
+        <div class="iter-title">User Authentication, Sessions &amp; PostgreSQL</div>
+        <div class="iter-date">April 2026, Session 3</div>
+      </div>
+    </div>
+    <div class="iter-body">
+      <div class="what-changed">
+        <h4>What was added</h4>
+        <ul class="change-list">
+          <li class="change-add">login.html &amp; password-reset.html — dedicated auth UI replacing the inline token card</li>
+          <li class="change-add">Username/password login with bcrypt hashing (12 rounds)</li>
+          <li class="change-add">32-byte random session tokens stored in PostgreSQL (Neon) — 30-day TTL</li>
+          <li class="change-add">Role-based access: <em>admin</em> (full access) and <em>viewer</em> (read-only)</li>
+          <li class="change-add">POST /app/login, POST /app/logout, GET /app/me, POST /app/change-password</li>
+          <li class="change-add">db.py — full database layer: users, app_sessions, token_store, session_state, trade_history, alert_log tables</li>
+          <li class="change-add">All scanner state (locked signals, macro cache) persisted in PostgreSQL — survives Render restarts</li>
+          <li class="change-add">History tab: trades now saved to PostgreSQL instead of just localStorage</li>
+          <li class="change-add">GET /history/trades, POST /history/trades, PATCH /history/trades/&lt;id&gt;, DELETE /history/trades/&lt;id&gt;</li>
+          <li class="change-add">GET /history/stats — server-side accuracy computation</li>
+          <li class="change-add">Auth guard on every page: redirects unauthenticated users to login.html</li>
+          <li class="change-add">X-Session-Token header support for all protected endpoints</li>
+        </ul>
+      </div>
+      <div class="files-changed">
+        <h4>Files</h4>
+        <div class="file-chips">
+          <span class="file-chip new">db.py</span>
+          <span class="file-chip new">login.html</span>
+          <span class="file-chip new">password-reset.html</span>
+          <span class="file-chip updated">app.py</span>
+          <span class="file-chip updated">scanner.html</span>
+          <span class="file-chip updated">readme.html</span>
+          <span class="file-chip updated">changelog.html</span>
+        </div>
+      </div>
+      <div class="why-box">
+        <strong>Why</strong>
+        The scanner was open to anyone who knew the Render URL — no auth meant any visitor
+        could see your trades, Telegram config, and admin controls. Moving to real user accounts
+        also enables per-user trade history so multiple traders can share one backend.
+      </div>
+    </div>
+  </div>
+
+  <!-- V14 -->
+  <div class="iteration" data-bump="minor">
+    <div class="iter-header">
+      <span class="iter-badge badge-signals">v14 &#8212; Backtest</span>
+      <div>
+        <div class="iter-title">Paper Trading &amp; Automated EOD Settlement</div>
+        <div class="iter-date">April 2026, Session 3</div>
+      </div>
+    </div>
+    <div class="iter-body">
+      <div class="what-changed">
+        <h4>What was added</h4>
+        <ul class="change-list">
+          <li class="change-add">Backtest tab in scanner.html — dedicated view for paper trade performance</li>
+          <li class="change-add">Auto-save paper trades when scanner alerts fire with confidence ≥ BACKTEST_MIN_CONF (default 55%)</li>
+          <li class="change-add">APScheduler EOD settlement job at 15:35 IST — replays intraday 1-min candles from signal time forward</li>
+          <li class="change-add">Outcome engine: first candle to touch target or SL determines outcome (won/lost/partial_win/partial_loss)</li>
+          <li class="change-add">Walk-forward validation: GET /paper-trades/walk-forward — per-month accuracy breakdown</li>
+          <li class="change-add">GET /paper-trades, GET /paper-trades/stats, GET /paper-trades/config</li>
+          <li class="change-add">GET /paper-trades/best-pick-stats, GET /paper-trades/count</li>
+          <li class="change-add">POST /paper-trades/settle (admin) — manual EOD trigger</li>
+          <li class="change-add">POST /paper-trades/dry-test (admin) — 4 synthetic trades covering all outcome types</li>
+          <li class="change-add">BACKTEST_SYMBOLS, BACKTEST_MIN_CONF env vars — configure without code change</li>
+          <li class="change-add">paper_trades table with day_high, day_low columns for intraday range context</li>
+          <li class="change-add">MARUTI excluded from paper trade picks (too high-priced for ₹1 L capital)</li>
+        </ul>
+      </div>
+      <div class="files-changed">
+        <h4>Files</h4>
+        <div class="file-chips">
+          <span class="file-chip updated">app.py</span>
+          <span class="file-chip updated">db.py</span>
+          <span class="file-chip updated">scanner.py</span>
+          <span class="file-chip updated">scanner.html</span>
+        </div>
+      </div>
+      <div class="why-box">
+        <strong>Why</strong>
+        Knowing a signal fired is one thing. Knowing it would have made money is another.
+        Automated settlement removes human bias from outcome recording — the candle replay
+        is objective and reproducible.
+      </div>
+    </div>
+  </div>
+
+  <!-- V15 -->
+  <div class="iteration" data-bump="minor">
+    <div class="iter-header">
+      <span class="iter-badge badge-alerts">v15 &#8212; Email</span>
+      <div>
+        <div class="iter-title">Email Alerts via Resend API</div>
+        <div class="iter-date">April 2026, Session 3</div>
+      </div>
+    </div>
+    <div class="iter-body">
+      <div class="what-changed">
+        <h4>What was added</h4>
+        <ul class="change-list">
+          <li class="change-add">email_alerts.py — Resend API integration for HTML email notifications</li>
+          <li class="change-add">6 email event types: green_ready, conf_crossed, reversal, token_expiry, login_reminder, eod_settlement</li>
+          <li class="change-add">EOD settlement email digest: lists every settled paper trade with outcome and P&amp;L</li>
+          <li class="change-add">Token expiry email when Upstox returns 401 during scan — includes tap-to-login link</li>
+          <li class="change-add">Morning login reminder email at 08:30 IST alongside Telegram message</li>
+          <li class="change-add">GET /test-email — check config status (never sends on GET)</li>
+          <li class="change-add">POST /test-email?kind=&lt;type&gt; — send any email template immediately</li>
+          <li class="change-add">RESEND_API_KEY, EMAIL_TO env vars</li>
+          <li class="change-add">Graceful fallback: all email sends are optional — failures are logged but do not break scanner</li>
+        </ul>
+      </div>
+      <div class="files-changed">
+        <h4>Files</h4>
+        <div class="file-chips">
+          <span class="file-chip new">email_alerts.py</span>
+          <span class="file-chip updated">app.py</span>
+          <span class="file-chip updated">requirements.txt</span>
+        </div>
+      </div>
+      <div class="why-box">
+        <strong>Why</strong>
+        Telegram is great for intraday alerts but delivers no rich formatting.
+        Email gives a proper daily digest: a formatted table of all paper trades with
+        entry, exit, outcome, and P&amp;L that reads well on desktop after market close.
+      </div>
+    </div>
+  </div>
+
+  <!-- V16 -->
+  <div class="iteration" data-bump="minor">
+    <div class="iter-header">
+      <span class="iter-badge badge-ux">v16 &#8212; Admin</span>
+      <div>
+        <div class="iter-title">Admin Panel — User Management &amp; Cloud Controls</div>
+        <div class="iter-date">April 2026, Session 4</div>
+      </div>
+    </div>
+    <div class="iter-body">
+      <div class="what-changed">
+        <h4>What was added</h4>
+        <ul class="change-list">
+          <li class="change-add">Admin tab in scanner.html — protected by PIN + admin role</li>
+          <li class="change-add">User management: GET /admin/users, POST /admin/users/create, POST /admin/users/&lt;u&gt;/activate, /deactivate</li>
+          <li class="change-add">Token controls: POST /admin/clear-token — safely wipe today's Upstox token so a fresh OAuth can run</li>
+          <li class="change-add">POST /force-scan — runs a full scan cycle immediately, bypassing time window (admin only)</li>
+          <li class="change-add">POST /paper-trades/dry-test — 4-case paper trade pipeline test (admin only)</li>
+          <li class="change-add">POST /db/init — create any missing tables without downtime (admin only)</li>
+          <li class="change-add">GET /check-ikeys — probe all instrument keys against Upstox LTP to find stale keys</li>
+          <li class="change-add">GET /auth/auto-login-status, POST /auth/trigger-auto-login — manual trigger of morning reminder</li>
+          <li class="change-add">GET /db/status — shows DB connection state, table row counts</li>
+          <li class="change-add">POST /admin/verify, POST /admin/check — PIN-based admin session management</li>
+          <li class="change-add">ADMIN_PIN env var — separate PIN for admin panel access</li>
+          <li class="change-add">Dual-timezone log formatter: every log line shows both IST and CET/CEST time</li>
+        </ul>
+      </div>
+      <div class="files-changed">
+        <h4>Files</h4>
+        <div class="file-chips">
+          <span class="file-chip updated">app.py</span>
+          <span class="file-chip updated">db.py</span>
+          <span class="file-chip updated">scanner.html</span>
+        </div>
+      </div>
+      <div class="why-box">
+        <strong>Why</strong>
+        Managing users, debugging instrument keys, and triggering scans all required
+        direct server access or code changes. The admin panel exposes these as
+        in-browser operations without needing to SSH or redeploy.
+      </div>
+    </div>
+  </div>
+
+  <!-- V17 -->
+  <div class="iteration" data-bump="patch">
+    <div class="iter-header">
+      <span class="iter-badge badge-alerts">v17 &#8212; Auto-Login</span>
+      <div>
+        <div class="iter-title">Morning Auto-Login Reminder (Telegram + Email at 08:30 IST)</div>
+        <div class="iter-date">May 2026, Session 4</div>
+      </div>
+    </div>
+    <div class="iter-body">
+      <div class="what-changed">
+        <h4>What was added</h4>
+        <ul class="change-list">
+          <li class="change-add">auto_login.py — scheduled job module for the 08:30 IST morning reminder</li>
+          <li class="change-add">APScheduler cron job: weekdays only, sends Telegram message with one-tap /auth/login link</li>
+          <li class="change-add">Email login reminder fires simultaneously via email_alerts.format_login_reminder()</li>
+          <li class="change-add">GET /auth/auto-login-status — shows last reminder attempt, status, and next scheduled run</li>
+          <li class="change-add">POST /auth/trigger-auto-login — admin can fire the reminder immediately for testing</li>
+          <li class="change-add">Token expiry detection in scanner: if Upstox returns 401, scanner sets token_expired_alerted flag and fires email</li>
+          <li class="change-add">Guard on /auth/login: if a valid token already exists, shows "already logged in" page instead of starting a new OAuth (prevents token revocation)</li>
+          <li class="change-remove">Removed requirement to open set-token-form manually every morning — reminder now pushes the link to you</li>
+        </ul>
+      </div>
+      <div class="files-changed">
+        <h4>Files</h4>
+        <div class="file-chips">
+          <span class="file-chip new">auto_login.py</span>
+          <span class="file-chip updated">app.py</span>
+          <span class="file-chip updated">scanner.py</span>
+        </div>
+      </div>
+      <div class="why-box">
+        <strong>Why</strong>
+        Forgetting to login before 9:15 IST means the scanner runs the entire morning
+        without a token — all alerts silently fail. A push reminder at 08:30 eliminates
+        that failure mode. The /auth/login guard prevents the equally painful mistake of
+        logging in twice and revoking your own working token.
+      </div>
+    </div>
+  </div>
+
   <!-- CURRENT STATE -->
   <div class="iteration">
     <div class="iter-header">
       <span class="iter-badge badge-cloud">Current State</span>
       <div>
         <div class="iter-title">Full System — What Exists Today</div>
-        <div class="iter-date">March 2026</div>
+        <div class="iter-date">May 2026</div>
       </div>
     </div>
     <div class="iter-body">
       <div class="what-changed">
         <h4>Complete feature set</h4>
         <ul class="change-list">
+          <li class="change-add"><strong>Auth:</strong> Username/password login, bcrypt, 30-day sessions in PostgreSQL, admin/viewer roles</li>
           <li class="change-add"><strong>Signal engine:</strong> ORB + VWAP + RSI + ATR, 30 Nifty stocks, 6-factor confidence scoring</li>
           <li class="change-add"><strong>Market filters:</strong> Nifty &#177;0.5% hard block, sector headwind/tailwind, gap filter, day trend</li>
           <li class="change-add"><strong>Macro layers:</strong> Economic calendar, Yahoo Finance proxies, NSE FII/DII, Claude Haiku news sentiment</li>
           <li class="change-add"><strong>Readiness:</strong> 6-gate checklist with hover tooltips, Green/Amber/Red verdicts</li>
-          <li class="change-add"><strong>Session tracking:</strong> Signal lock, reversal detection, history dots, midnight reset</li>
+          <li class="change-add"><strong>Session tracking:</strong> Signal lock, reversal detection, history dots, midnight reset (persisted to DB)</li>
           <li class="change-add"><strong>Telegram alerts:</strong> Native Bot API, 3 triggers, once per stock per session</li>
-          <li class="change-add"><strong>Mobile OAuth:</strong> One-tap login, no laptop required</li>
-          <li class="change-add"><strong>AI features:</strong> Claude Sonnet trade plans per stock, market summary</li>
-          <li class="change-add"><strong>History:</strong> localStorage, date groups, accuracy stats, CSV export/import</li>
-          <li class="change-add"><strong>Debug tools:</strong> /dry-scan, /macro-status, /alert-status, /auth/status</li>
+          <li class="change-add"><strong>Email alerts:</strong> Resend API — EOD digest, token expiry warning, login reminder, all 3 alert types</li>
+          <li class="change-add"><strong>Mobile OAuth:</strong> One-tap login, 08:30 IST Telegram+Email reminder, guard against double-login</li>
+          <li class="change-add"><strong>AI features:</strong> Claude Sonnet trade plans, OpenAI setup quality review, Claude Haiku news sentiment</li>
+          <li class="change-add"><strong>History tab:</strong> PostgreSQL-backed, per-user, date groups, accuracy stats, outcome editing</li>
+          <li class="change-add"><strong>Backtest tab:</strong> Auto paper trades, intraday candle EOD settlement, walk-forward stats</li>
+          <li class="change-add"><strong>Admin tab:</strong> User management, DB controls, force scan, dry test, instrument key checker</li>
+          <li class="change-add"><strong>Debug tools:</strong> /dry-scan, /macro-status, /alert-status, /auth/status, /check-ikeys, /db/status</li>
         </ul>
       </div>
       <div class="files-changed">
         <h4>All files</h4>
         <div class="file-chips">
           <span class="file-chip">scanner.html</span>
+          <span class="file-chip">login.html</span>
+          <span class="file-chip">password-reset.html</span>
+          <span class="file-chip">readme.html</span>
+          <span class="file-chip">changelog.html</span>
           <span class="file-chip">app.py</span>
           <span class="file-chip">scanner.py</span>
           <span class="file-chip">signals.py</span>
           <span class="file-chip">macro.py</span>
+          <span class="file-chip">db.py</span>
+          <span class="file-chip">email_alerts.py</span>
+          <span class="file-chip">auto_login.py</span>
+          <span class="file-chip">ai_insights.py</span>
           <span class="file-chip">requirements.txt</span>
-          <span class="file-chip">GetUpstoxToken.ps1</span>
         </div>
       </div>
 
       <h4 style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;
                  color:#888;margin:16px 0 10px;">Morning routine (today)</h4>
-      <div class="code">1. Open https://nse-proxy-mojx.onrender.com/auth/login
-2. Login with Upstox (phone OTP)
-3. Open https://abhisheksa09.github.io/stock-analyser/scanner.html
-4. Status dot turns green automatically
-5. Alerts fire 9:15-10:30 IST via Telegram</div>
+      <div class="code">08:30 IST — Telegram/Email reminder arrives with tap-to-login link
+  |
+  +-- Tap link → /auth/login on phone → Upstox OTP → done
+  |   (Guard prevents double-login from revoking working token)
+  |
+09:15 IST — Scanner starts automatically
+  |
+  +-- Every 5 min: scan → alert if green/amber → paper trade auto-saved
+  |
+15:35 IST — EOD settlement job runs
+  |
+  +-- Replays intraday candles → outcome recorded → email digest sent</div>
     </div>
   </div>
 
