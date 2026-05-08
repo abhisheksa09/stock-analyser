@@ -2855,7 +2855,7 @@ function renderBtTable() {
         '<td class="cb-col"><input type="checkbox" class="row-cb bt-row-cb" data-id="' + t.id + '" ' + (isSel ? 'checked' : '') + ' onclick="toggleBtRowSel(this)"></td>' +
         '<td style="white-space:nowrap;"><div style="font-weight:600;font-size:12px;">' + fmtDate(date) + '</div>' +
           '<div style="color:#888;font-size:11px;">' + (t.signal_time || '') + ' IST</div></td>' +
-        '<td><div class="sym">' + (t.sym || '') + (isBest ? ' <span style="font-size:10px;background:#EF9F27;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600;">★ Pick</span>' : '') + '</div><div class="sec">' + (t.sec || '') + '</div></td>' +
+        '<td><div class="sym">' + (t.sym || '') + '</div>' + (isBest ? '<div style="margin:2px 0 1px;"><span style="font-size:10px;background:#EF9F27;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600;white-space:nowrap;display:inline-block;">★ Pick</span></div>' : '') + '<div class="sec">' + (t.sec || '') + '</div></td>' +
         '<td><span class="sig ' + sigCls + '"><span class="dot"></span>' + t.sig + '</span></td>' +
         '<td><span class="conf-n ' + confMt.cls + '">' + (t.conf || 0) + '%</span></td>' +
         '<td class="r">₹' + fc(t.entry) + '</td>' +
