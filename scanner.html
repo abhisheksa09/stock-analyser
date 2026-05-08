@@ -712,12 +712,13 @@ th[data-tip]{cursor:default;}
         Best single pick per day
         <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px;">1 trade/day · full ₹1L · ranked by confidence × R:R</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;">
         <div class="hstat-card"><div class="hstat-l">Simulated Trades</div><div class="hstat-n" id="bpSimTotal">—</div></div>
         <div class="hstat-card"><div class="hstat-l">Trade Days</div><div class="hstat-n" id="bpTotal">—</div></div>
         <div class="hstat-card"><div class="hstat-l">Win Rate</div><div class="hstat-n" id="bpWinRate">—</div></div>
-        <div class="hstat-card"><div class="hstat-l">Avg P&amp;L %</div><div class="hstat-n" id="bpAvgPnl">—</div></div>
-        <div class="hstat-card"><div class="hstat-l">Avg P&amp;L ₹</div><div class="hstat-n" id="bpAvgPnlInr">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">Loss Rate</div><div class="hstat-n" id="bpLossRate">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">Trades Won</div><div class="hstat-n" id="bpWon">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">Trades Lost</div><div class="hstat-n" id="bpLost">—</div></div>
       </div>
     </div>
 
@@ -2738,20 +2739,20 @@ function renderBestPickStats(stats, simTotal) {
     e.textContent = v;
     if(cls !== undefined) e.className = 'hstat-n ' + (cls || '');
   }
-  var total   = stats.total || 0;
-  var winRate = stats.win_rate != null ? stats.win_rate : null;
-  var avgPnl  = stats.avg_pnl_pct != null ? stats.avg_pnl_pct : null;
-  var capital = btCapital();
+  var total    = stats.total || 0;
+  var won      = stats.won != null ? stats.won : null;
+  var lost     = (total && won != null) ? total - won : null;
+  var winRate  = stats.win_rate != null ? stats.win_rate : null;
+  var lossRate = (winRate != null) ? Math.round((100 - winRate) * 10) / 10 : null;
 
   el('bpSimTotal', simTotal != null ? simTotal : '—');
   el('bpTotal', total || '—');
   el('bpWinRate', winRate != null ? winRate + '%' : '—',
      winRate != null ? (winRate >= 55 ? 'n-green' : winRate >= 40 ? '' : 'n-red') : '');
-  el('bpAvgPnl', avgPnl != null ? (avgPnl >= 0 ? '+' : '') + avgPnl + '%' : '—',
-     avgPnl != null ? (avgPnl > 0 ? 'n-green' : 'n-red') : '');
-  var avgInr = avgPnl != null ? Math.round(avgPnl / 100 * capital) : null;
-  el('bpAvgPnlInr', avgInr != null ? (avgInr >= 0 ? '+' : '') + '₹' + avgInr.toLocaleString('en-IN') : '—',
-     avgInr != null ? (avgInr > 0 ? 'n-green' : 'n-red') : '');
+  el('bpLossRate', lossRate != null ? lossRate + '%' : '—',
+     lossRate != null ? (lossRate <= 45 ? 'n-green' : lossRate <= 60 ? '' : 'n-red') : '');
+  el('bpWon', won != null ? won : '—', won != null ? 'n-green' : '');
+  el('bpLost', lost != null ? lost : '—', lost != null && lost > 0 ? 'n-red' : '');
 }
 
 function toggleBtDateGroup(date, gid) {
