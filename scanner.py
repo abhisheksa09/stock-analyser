@@ -20,9 +20,13 @@ Environment variables (set in Render dashboard):
   BACKTEST_SYMBOLS      — comma-separated symbols for auto paper trades
                           (default: 12 hardcoded diverse Nifty50 stocks)
   BACKTEST_MIN_CONF     — min confidence to auto-save a paper trade (default: 55)
+  PAPER_TRADE_EXCLUDE   — comma-separated symbols to never auto-save as paper trades
+                          (default: MARUTI — too high-priced for ₹1L capital)
   ALERT_START_IST       — HH:MM  (default: 09:15)
   ALERT_STOP_IST        — HH:MM  (default: 10:30)
   SCAN_INTERVAL_MINS    — integer (default: 5)
+  SCAN_TIMEOUT_MINS     — max minutes a single scan may run before skipping remaining
+                          stocks (default: 4)
 """
 
 import os
@@ -68,6 +72,11 @@ def _get_backtest_symbols() -> set:
         return {s.strip().upper() for s in raw.split(",") if s.strip()}
     return set(_DEFAULT_BACKTEST_SYMBOLS)
 
+def _get_paper_trade_excluded() -> set:
+    """Symbols that should never be auto-saved as paper trades (e.g. too high-priced for capital)."""
+    raw = os.environ.get("PAPER_TRADE_EXCLUDE", "MARUTI").strip()
+    return {s.strip().upper() for s in raw.split(",") if s.strip()}
+
 def _get_backtest_min_conf() -> int:
     try:
         return int(os.environ.get("BACKTEST_MIN_CONF", "70"))
@@ -91,7 +100,7 @@ class SessionState:
 
     def _reset(self):
         self.date                = datetime.now(IST).strftime("%Y-%m-%d")
-        self.locked_sig          = {}
+        self.locked_sig          = self._load_locked_sig_from_db()
         self.prev_conf           = {}
         self.prev_sig            = {}
         self.alerted             = set()
@@ -109,6 +118,15 @@ class SessionState:
             return {t["sym"] for t in trades if t.get("sym")}
         except Exception:
             return set()
+
+    def _load_locked_sig_from_db(self) -> dict:
+        """Load today's locked signals from DB to survive restarts without re-alerting."""
+        try:
+            today = datetime.now(IST).strftime("%Y-%m-%d")
+            state = _db_module.get_session_state(today)
+            return dict(state.get("locked_signals", {})) if state else {}
+        except Exception:
+            return {}
 
     def check_date(self):
         today = datetime.now(IST).strftime("%Y-%m-%d")
@@ -364,6 +382,16 @@ def run_scan(force: bool = False):
     log.info("Scanning %d symbols at %02d:%02d IST  (backtest: %d symbols, min_conf=%d%%)",
              len(all_syms), mins // 60, mins % 60, len(bt_syms), bt_min_conf)
 
+    # Scan-level deadline — skip remaining stocks if scan runs too long
+    try:
+        _scan_timeout_mins = int(os.environ.get("SCAN_TIMEOUT_MINS", "4"))
+    except ValueError:
+        _scan_timeout_mins = 4
+    scan_deadline = datetime.now(IST) + timedelta(minutes=_scan_timeout_mins)
+
+    # Symbols excluded from paper trade auto-save (e.g. too high-priced for ₹1L capital)
+    pt_excluded = _get_paper_trade_excluded()
+
     # Refresh macro context every 30 min (expensive: news API + Claude call)
     macro_stale = (
         STATE.macro_fetched_at is None or
@@ -386,6 +414,12 @@ def run_scan(force: bool = False):
         nifty_ctx = None
 
     for stock in all_syms:
+        if datetime.now(IST) > scan_deadline:
+            remaining = [s["sym"] for s in all_syms[all_syms.index(stock):]]
+            log.warning("Scan timeout (%d min) reached — skipping %d symbols: %s",
+                        _scan_timeout_mins, len(remaining), remaining)
+            break
+
         sym        = stock["sym"]
         in_bt      = sym in bt_syms
         in_watch   = not watch or sym in watch
@@ -393,13 +427,21 @@ def run_scan(force: bool = False):
         time.sleep(0.4)   # avoid Upstox rate-limiting across 30 rapid calls
 
         try:
-            # Retry once on empty-data errors (transient rate-limit vs bad ikey)
-            for _attempt in range(2):
+            # Retry up to 3 times: backoff on 429, once on empty LTP
+            for _attempt in range(3):
                 try:
                     ltp   = get_ltp(stock["ikey"], token)
                     intra = get_intraday(stock["ikey"], token)
                     daily = get_daily(stock["ikey"], token)
                     break
+                except urllib.error.HTTPError as _he:
+                    if _he.code == 429 and _attempt < 2:
+                        _wait = 2 ** (_attempt + 1)  # 2s, 4s
+                        log.warning("Rate-limited on %s (attempt %d) — backing off %ds",
+                                    sym, _attempt + 1, _wait)
+                        time.sleep(_wait)
+                    else:
+                        raise
                 except ValueError as _ve:
                     if _attempt == 0 and "Empty LTP" in str(_ve):
                         log.debug("Retry %s after empty LTP (attempt 1)", sym)
@@ -476,7 +518,11 @@ def run_scan(force: bool = False):
                 prior = STATE.bt_first_green.get(sym)
                 if prior and prior["sig"] == s["sig"]:
                     # Second consecutive green scan, same direction — fire the trade
-                    _save_paper_trade(s)
+                    if sym in pt_excluded:
+                        log.info("Paper trade skipped (excluded symbol): %s", sym)
+                        STATE.bt_saved.add(sym)  # mark as handled so we don't keep checking
+                    else:
+                        _save_paper_trade(s)
                     STATE.bt_saved.add(sym)
                     del STATE.bt_first_green[sym]
                 else:
@@ -506,9 +552,11 @@ def run_scan(force: bool = False):
                     STATE.mark_alerted(sym, "green_ready")
                     sent += 1
                     # Also ensure paper trade saved for non-backtest alert symbols
-                    if sym not in STATE.bt_saved:
+                    if sym not in STATE.bt_saved and sym not in pt_excluded:
                         _save_paper_trade(s)
                         STATE.bt_saved.add(sym)
+                    elif sym in pt_excluded:
+                        log.info("Paper trade skipped for alert symbol (excluded): %s", sym)
                 _email.send_email(*_email.format_green_ready(s))
                 time.sleep(1)
 
@@ -548,5 +596,15 @@ def run_scan(force: bool = False):
     bt_summary = {sym: _bt_label(sym) for sym in bt_syms}
     log.info("Backtest conf snapshot: %s",
              "  ".join(f"{s}={v}" for s, v in sorted(bt_summary.items())))
+    # Persist session state to DB so locked_sig survives a server restart
+    try:
+        _db_module.save_session_state({
+            "locked_signals":  STATE.locked_sig,
+            "alerted":         list(STATE.alerted),
+            "prev_confidence": STATE.prev_conf,
+        }, date_=STATE.date)
+    except Exception as _se:
+        log.warning("Failed to persist session state to DB: %s", _se)
+
     log.info("Scan done — %d alerts sent, %d paper trades saved today",
              sent, len(STATE.bt_saved))

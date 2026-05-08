@@ -13,6 +13,7 @@ New endpoints for alert system:
 """
 
 import os
+import uuid
 import json
 import logging
 import urllib.request
@@ -228,6 +229,9 @@ async function submit(){{
 # ── Alert status ──────────────────────────────────────────────────────────────
 @app.route("/alert-status")
 def alert_status():
+    sess, err = _require_session(request)
+    if err:
+        return err
     return jsonify({
         "session_date":      scanner.STATE.date,
         "token_set":         bool(get_effective_token()),
@@ -245,6 +249,9 @@ def alert_status():
 @app.route("/macro-status")
 def macro_status():
     """Shows current macro context — economic calendar, proxies, FII/DII, news sentiment."""
+    sess, err = _require_session(request)
+    if err:
+        return err
     ctx = scanner.STATE.macro_ctx
     if not ctx:
         return jsonify({
@@ -953,7 +960,10 @@ def send_login_reminder_job():
 
 @app.route("/auth/auto-login-status")
 def auto_login_status():
-    """Return current reminder state (no auth required)."""
+    """Return current reminder state."""
+    sess, err = _require_session(request)
+    if err:
+        return err
     return jsonify({
         "configured": _auto_login.is_configured(),
         "status":     _last_auto_login["status"],
@@ -1270,7 +1280,7 @@ def save_trade():
     username = sess["username"]
 
     trade = {
-        "id":        data.get("id") or f"{int(now.timestamp())}_{data.get('sym','')}_{username[:4]}",
+        "id":        data.get("id") or str(uuid.uuid4()),
         "username":  username,
         "ist_date":  str(data.get("ist_date") or now.date()),
         "ist_time":  data.get("ist_time") or now.strftime("%H:%M"),
@@ -1933,6 +1943,15 @@ def _eod_settlement_job():
     settled, skipped, errors = _settle_paper_trades_for_date()
     if errors:
         log.warning("EOD settlement errors: %s", errors)
+    # Alert via Telegram if any trades were skipped so they don't go unnoticed
+    if skipped > 0 or errors:
+        err_lines = "\n".join(f"• {e}" for e in errors) if errors else "• (no detail)"
+        scanner.send_telegram(
+            f"⚠️ <b>EOD Settlement — {skipped} trade(s) unsettled</b>\n\n"
+            f"{err_lines}\n\n"
+            f"Settled: {settled}  |  Skipped: {skipped}\n"
+            f"⏰ {now_ist.strftime('%H:%M IST')}"
+        )
     # Email digest with today's settled trades
     try:
         today = now_ist.strftime("%Y-%m-%d")

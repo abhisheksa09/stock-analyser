@@ -4,7 +4,7 @@ import requests
 
 def get_ai_setup_insight(setup: dict, macro_ctx: dict | None = None) -> dict | None:
     api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-    model   = os.environ.get("OPENAI_MODEL", "").strip() or "gpt-4.1-mini"
+    model   = os.environ.get("OPENAI_MODEL", "").strip() or "gpt-4o-mini"
 
     if not api_key:
         return None
