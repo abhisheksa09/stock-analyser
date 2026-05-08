@@ -715,6 +715,20 @@ th[data-tip]{cursor:default;}
       <div class="hstat-card"><div class="hstat-l">Avg P&amp;L ₹</div><div class="hstat-n" id="btAvgPnlInr">—</div></div>
     </div>
 
+    <!-- Best Single Pick stats -->
+    <div class="card" style="margin-bottom:14px;">
+      <div class="acc-title" style="margin-bottom:8px;">
+        Best single pick per day
+        <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px;">1 trade/day · full ₹1L · ranked by confidence × R:R</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+        <div class="hstat-card"><div class="hstat-l">Trade Days</div><div class="hstat-n" id="bpTotal">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">Win Rate</div><div class="hstat-n" id="bpWinRate">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">Avg P&amp;L %</div><div class="hstat-n" id="bpAvgPnl">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">Avg P&amp;L ₹</div><div class="hstat-n" id="bpAvgPnlInr">—</div></div>
+      </div>
+    </div>
+
     <!-- Accuracy bars by signal / confidence -->
     <div class="card" style="margin-bottom:14px;">
       <div class="acc-title">Accuracy breakdown</div>
@@ -2625,17 +2639,20 @@ async function loadPaperTrades() {
 
   try {
     var tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
-    var [trRes, stRes] = await Promise.all([
+    var [trRes, stRes, bpRes] = await Promise.all([
       fetch(BACKEND + '/paper-trades' + qs, { headers: appHeaders(), credentials: 'include' }),
-      fetch(BACKEND + '/paper-trades/stats?days=60', { headers: appHeaders(), credentials: 'include' })
+      fetch(BACKEND + '/paper-trades/stats?days=60', { headers: appHeaders(), credentials: 'include' }),
+      fetch(BACKEND + '/paper-trades/best-pick-stats?days=60', { headers: appHeaders(), credentials: 'include' })
     ]);
 
     var trData = await trRes.json();
     var stData = stRes.ok ? await stRes.json() : { stats: {} };
+    var bpData = bpRes.ok ? await bpRes.json() : { stats: {} };
 
     _btTrades = trData.trades || [];
     _btSelectedIds.clear();
     renderBtStats(stData.stats || {});
+    renderBestPickStats(bpData.stats || {});
     renderBtTable();
 
     // Update tab badge with total trade count
@@ -2722,6 +2739,28 @@ function renderBtStats(stats) {
   }).join('');
 }
 
+function renderBestPickStats(stats) {
+  function el(id, v, cls) {
+    var e = document.getElementById(id);
+    if(!e) return;
+    e.textContent = v;
+    if(cls !== undefined) e.className = 'hstat-n ' + (cls || '');
+  }
+  var total   = stats.total || 0;
+  var winRate = stats.win_rate != null ? stats.win_rate : null;
+  var avgPnl  = stats.avg_pnl_pct != null ? stats.avg_pnl_pct : null;
+  var capital = btCapital();
+
+  el('bpTotal', total || '—');
+  el('bpWinRate', winRate != null ? winRate + '%' : '—',
+     winRate != null ? (winRate >= 55 ? 'n-green' : winRate >= 40 ? '' : 'n-red') : '');
+  el('bpAvgPnl', avgPnl != null ? (avgPnl >= 0 ? '+' : '') + avgPnl + '%' : '—',
+     avgPnl != null ? (avgPnl > 0 ? 'n-green' : 'n-red') : '');
+  var avgInr = avgPnl != null ? Math.round(avgPnl / 100 * capital) : null;
+  el('bpAvgPnlInr', avgInr != null ? (avgInr >= 0 ? '+' : '') + '₹' + avgInr.toLocaleString('en-IN') : '—',
+     avgInr != null ? (avgInr > 0 ? 'n-green' : 'n-red') : '');
+}
+
 function toggleBtDateGroup(date, gid) {
   if (!window._btOpenGroups) window._btOpenGroups = new Set();
   var isOpen = window._btOpenGroups.has(date);
@@ -2776,18 +2815,29 @@ function renderBtTable() {
     var open   = dayRows.filter(function(t) { return t.outcome === 'open'; });
     var pnls   = dayRows.filter(function(t) { return t.pnl_pts != null; }).map(function(t) { return t.pnl_pts; });
     var totalPnL = pnls.length ? +pnls.reduce(function(a,b){return a+b;},0).toFixed(2) : null;
+    var totalInr = dayRows.reduce(function(sum, t) {
+      if (t.pnl_pts == null || !(t.entry > 0)) return sum;
+      return sum + Math.round(t.pnl_pts * Math.floor(btCapital() / t.entry));
+    }, 0);
+    var hasInr = dayRows.some(function(t) { return t.pnl_pts != null && t.entry > 0; });
 
     var meta = '<span class="dg-badge dg-count">' + dayRows.length + ' trade' + (dayRows.length !== 1 ? 's' : '') + '</span>';
     if (wins.length)   meta += '<span class="dg-badge dg-hit">'     + wins.length   + ' win'  + (wins.length   !== 1 ? 's' : '') + '</span>';
     if (losses.length) meta += '<span class="dg-badge dg-loss">'    + losses.length + ' loss' + (losses.length !== 1 ? 'es' : '') + '</span>';
     if (open.length)   meta += '<span class="dg-badge dg-pending">' + open.length   + ' open' + '</span>';
     if (totalPnL !== null) meta += '<span class="dg-pnl ' + (totalPnL >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '">' + (totalPnL >= 0 ? '+' : '') + fc(totalPnL) + ' pts</span>';
+    if (hasInr) meta += '<span class="dg-pnl ' + (totalInr >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '" style="margin-left:4px;">' + (totalInr >= 0 ? '+' : '') + '₹' + Math.abs(totalInr).toLocaleString('en-IN') + '</span>';
 
     var hdr = document.createElement('tr');
     hdr.className = 'date-group-hdr';
     hdr.onclick = (function(d, g) { return function() { toggleBtDateGroup(d, g); }; })(date, gid);
     hdr.innerHTML = '<td colspan="15" style="padding:0;"><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;flex-wrap:wrap;gap:6px;"><div class="dg-title"><span class="dg-arrow' + (isOpen ? ' open' : '') + '" id="btarr_' + gid + '">&#9658;</span><span>' + fmtDate(date) + '</span></div><div class="dg-meta">' + meta + '</div></div></td>';
     tb.appendChild(hdr);
+
+    // Best pick for the day = highest conf × R:R score
+    var bestPick = dayRows.reduce(function(best, t) {
+      return ((t.conf || 0) * (parseFloat(t.rr) || 0)) > ((best.conf || 0) * (parseFloat(best.rr) || 0)) ? t : best;
+    }, dayRows[0]);
 
     dayRows.forEach(function(t) {
       var sigCls  = t.sig === 'BUY' ? 'buy' : 'sell';
@@ -2802,15 +2852,17 @@ function renderBtTable() {
       var closePx = t.close_price != null ? '₹' + fc(t.close_price) : '—';
       var confMt  = confMeta(t.conf || 0);
       var isSel   = _btSelectedIds.has(t.id);
+      var isBest  = (t === bestPick);
 
       var tr = document.createElement('tr');
       tr.className = (isSel ? 'row-sel ' : '') + 'data-row' + (isOpen ? '' : ' hidden');
+      if (isBest) tr.style.cssText = 'border-left:3px solid #EF9F27;background:rgba(239,159,39,0.07);';
       tr.dataset.btgroup = gid;
       tr.innerHTML =
         '<td class="cb-col"><input type="checkbox" class="row-cb bt-row-cb" data-id="' + t.id + '" ' + (isSel ? 'checked' : '') + ' onclick="toggleBtRowSel(this)"></td>' +
         '<td style="white-space:nowrap;"><div style="font-weight:600;font-size:12px;">' + fmtDate(date) + '</div>' +
           '<div style="color:#888;font-size:11px;">' + (t.signal_time || '') + ' IST</div></td>' +
-        '<td><div class="sym">' + (t.sym || '') + '</div><div class="sec">' + (t.sec || '') + '</div></td>' +
+        '<td><div class="sym">' + (t.sym || '') + (isBest ? ' <span style="font-size:10px;background:#EF9F27;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600;">★ Pick</span>' : '') + '</div><div class="sec">' + (t.sec || '') + '</div></td>' +
         '<td><span class="sig ' + sigCls + '"><span class="dot"></span>' + t.sig + '</span></td>' +
         '<td><span class="conf-n ' + confMt.cls + '">' + (t.conf || 0) + '%</span></td>' +
         '<td class="r">₹' + fc(t.entry) + '</td>' +

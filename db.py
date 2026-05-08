@@ -915,3 +915,60 @@ def get_paper_trade_stats(days: int = 30, username: str = None) -> dict:
         "by_conf":     buckets,
         "days":        days,
     }
+
+
+def get_best_pick_stats(days: int = 30, username: str = None) -> dict:
+    """
+    Per-day best pick: selects the single trade with highest conf*rr score
+    for each trading day, then returns aggregate stats across those picks.
+    Models a strategy where you place exactly one ₹1L trade per day.
+    """
+    conn = db()
+    if not conn:
+        return {}
+    try:
+        sql = """
+            WITH ranked AS (
+                SELECT outcome, conf, rr, pnl_pts, pnl_pct, target_hit, sl_hit,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY trade_date
+                           ORDER BY (conf * COALESCE(rr, 0)) DESC
+                       ) AS rn
+                FROM paper_trades
+                WHERE trade_date >= CURRENT_DATE - %s
+                  AND outcome <> 'open'
+                  {user_filter}
+            )
+            SELECT outcome, conf, rr, pnl_pts, pnl_pct, target_hit, sl_hit
+            FROM ranked
+            WHERE rn = 1
+        """
+        params = [days]
+        if username:
+            sql = sql.format(user_filter="AND (created_by IS NULL OR created_by = %s)")
+            params.append(username)
+        else:
+            sql = sql.format(user_filter="")
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        log.warning("get_best_pick_stats: %s", e)
+        return {}
+
+    if not rows:
+        return {"total": 0}
+
+    won     = [r for r in rows if r["outcome"] in ("won", "partial_win")]
+    tgt_hit = [r for r in rows if r.get("target_hit")]
+    pnl_pct = [float(r["pnl_pct"]) for r in rows if r.get("pnl_pct") is not None]
+
+    return {
+        "total":           len(rows),
+        "won":             len(won),
+        "win_rate":        round(len(won) / len(rows) * 100, 1),
+        "target_hit_rate": round(len(tgt_hit) / len(rows) * 100, 1) if rows else 0,
+        "avg_pnl_pct":     round(sum(pnl_pct) / len(pnl_pct), 2) if pnl_pct else 0,
+        "total_pnl_pct":   round(sum(pnl_pct), 2) if pnl_pct else 0,
+        "days":            days,
+    }

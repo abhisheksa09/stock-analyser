@@ -1654,6 +1654,18 @@ def get_paper_trade_stats():
     return jsonify({"stats": stats})
 
 
+@app.route("/paper-trades/best-pick-stats", methods=["GET"])
+def get_best_pick_stats():
+    sess, err = _require_session(request)
+    if err:
+        return err
+    if not _has_db():
+        return jsonify({"stats": {}})
+    days = int(request.args.get("days", 30))
+    stats = _db_module.get_best_pick_stats(days=days, username=sess["username"])
+    return jsonify({"stats": stats})
+
+
 @app.route("/paper-trades/settle", methods=["POST"])
 def trigger_paper_trade_settlement():
     """Manually trigger EOD settlement for today's open paper trades (admin only)."""

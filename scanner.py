@@ -55,7 +55,6 @@ _DEFAULT_BACKTEST_SYMBOLS = [
     "INFY",        # IT
     "RELIANCE",    # Energy / Conglomerate
     "TATAMOTORS",  # Auto
-    "MARUTI",      # Auto
     "HINDUNILVR",  # FMCG
     "SUNPHARMA",   # Pharma
     "LT",          # Infrastructure
@@ -97,6 +96,7 @@ class SessionState:
         self.prev_sig            = {}
         self.alerted             = set()
         self.bt_saved            = self._load_bt_saved_from_db()
+        self.bt_first_green      = {}  # sym -> scan mins of first consecutive green hit
         self.token_expired_alerted = False
         self.needs_token_refresh = True   # signal run_scan to reload token from DB
         log.info("Session state reset for %s (bt_saved from DB: %s)", self.date, sorted(self.bt_saved))
@@ -468,14 +468,35 @@ def run_scan(force: bool = False):
             STATE.locked_sig[sym] = s["sig"]
 
         # ── Auto paper trade for backtest symbols ──────────────────────────
-        # Saves at the FIRST scan where conf >= bt_min_conf, regardless of
-        # Telegram alerts. Captures both amber and green setups for comparison.
-        if (in_bt
-                and s["sig"] != "WATCH"
-                and s["conf"] >= bt_min_conf
-                and sym not in STATE.bt_saved):
-            _save_paper_trade(s)
-            STATE.bt_saved.add(sym)
+        # Requires 2 consecutive green scans before saving — mirrors the
+        # real trading habit of confirming a signal holds across multiple scans.
+        # Also naturally filters out first-30-min fakeouts (green needs time >= 9:45).
+        if in_bt and sym not in STATE.bt_saved and s.get("_time_prime"):
+            if verdict == "green":
+                prior = STATE.bt_first_green.get(sym)
+                if prior and prior["sig"] == s["sig"]:
+                    # Second consecutive green scan, same direction — fire the trade
+                    _save_paper_trade(s)
+                    STATE.bt_saved.add(sym)
+                    del STATE.bt_first_green[sym]
+                else:
+                    # First green scan, or direction reversed — (re)start the clock
+                    if prior:
+                        log.info("Paper trade green reset (reversal %s→%s): %s",
+                                 prior["sig"], s["sig"], sym)
+                    else:
+                        log.info("Paper trade pending 2nd green confirm: %s %s conf=%d%%",
+                                 s["sig"], sym, s["conf"])
+                    STATE.bt_first_green[sym] = {"sig": s["sig"], "mins": mins}
+            else:
+                # Signal weakened or time window closed — reset consecutive counter
+                if sym in STATE.bt_first_green:
+                    log.info("Paper trade green reset (signal dropped): %s", sym)
+                    del STATE.bt_first_green[sym]
+        elif in_bt and not s.get("_time_prime") and sym in STATE.bt_first_green:
+            # Past 11:00 AM — discard any pending first-green confirmations
+            log.info("Paper trade green reset (past 11:00 AM window): %s", sym)
+            del STATE.bt_first_green[sym]
 
         # ── Telegram alerts (only for alert-watch symbols) ─────────────────
         if in_watch:
