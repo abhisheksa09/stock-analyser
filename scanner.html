@@ -706,22 +706,14 @@ th[data-tip]{cursor:default;}
       <span style="font-size:11px;color:#999;">per trade · qty = ⌊capital ÷ entry⌋</span>
     </div>
 
-    <!-- Stats summary cards -->
-    <div class="hist-stats" id="btStatsRow" style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;">
-      <div class="hstat-card"><div class="hstat-l">Simulated Trades</div><div class="hstat-n" id="btTotal">—</div></div>
-      <div class="hstat-card"><div class="hstat-l">Win Rate</div><div class="hstat-n" id="btWinRate">—</div></div>
-      <div class="hstat-card"><div class="hstat-l">Target Hit</div><div class="hstat-n" id="btTgtRate">—</div></div>
-      <div class="hstat-card"><div class="hstat-l">Avg P&amp;L %</div><div class="hstat-n" id="btAvgPnl">—</div></div>
-      <div class="hstat-card"><div class="hstat-l">Avg P&amp;L ₹</div><div class="hstat-n" id="btAvgPnlInr">—</div></div>
-    </div>
-
     <!-- Best Single Pick stats -->
     <div class="card" style="margin-bottom:14px;">
       <div class="acc-title" style="margin-bottom:8px;">
         Best single pick per day
         <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px;">1 trade/day · full ₹1L · ranked by confidence × R:R</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+        <div class="hstat-card"><div class="hstat-l">Simulated Trades</div><div class="hstat-n" id="bpSimTotal">—</div></div>
         <div class="hstat-card"><div class="hstat-l">Trade Days</div><div class="hstat-n" id="bpTotal">—</div></div>
         <div class="hstat-card"><div class="hstat-l">Win Rate</div><div class="hstat-n" id="bpWinRate">—</div></div>
         <div class="hstat-card"><div class="hstat-l">Avg P&amp;L %</div><div class="hstat-n" id="bpAvgPnl">—</div></div>
@@ -2652,7 +2644,7 @@ async function loadPaperTrades() {
     _btTrades = trData.trades || [];
     _btSelectedIds.clear();
     renderBtStats(stData.stats || {});
-    renderBestPickStats(bpData.stats || {});
+    renderBestPickStats(bpData.stats || {}, (stData.stats || {}).total);
     renderBtTable();
 
     // Update tab badge with total trade count
@@ -2739,7 +2731,7 @@ function renderBtStats(stats) {
   }).join('');
 }
 
-function renderBestPickStats(stats) {
+function renderBestPickStats(stats, simTotal) {
   function el(id, v, cls) {
     var e = document.getElementById(id);
     if(!e) return;
@@ -2751,6 +2743,7 @@ function renderBestPickStats(stats) {
   var avgPnl  = stats.avg_pnl_pct != null ? stats.avg_pnl_pct : null;
   var capital = btCapital();
 
+  el('bpSimTotal', simTotal != null ? simTotal : '—');
   el('bpTotal', total || '—');
   el('bpWinRate', winRate != null ? winRate + '%' : '—',
      winRate != null ? (winRate >= 55 ? 'n-green' : winRate >= 40 ? '' : 'n-red') : '');
