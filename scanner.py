@@ -523,6 +523,7 @@ def run_scan(force: bool = False):
                         STATE.bt_saved.add(sym)  # mark as handled so we don't keep checking
                     else:
                         _save_paper_trade(s)
+                        _check_real_trade_overlap(s)
                     STATE.bt_saved.add(sym)
                     del STATE.bt_first_green[sym]
                 else:
@@ -554,6 +555,7 @@ def run_scan(force: bool = False):
                     # Also ensure paper trade saved for non-backtest alert symbols
                     if sym not in STATE.bt_saved and sym not in pt_excluded:
                         _save_paper_trade(s)
+                        _check_real_trade_overlap(s)
                         STATE.bt_saved.add(sym)
                     elif sym in pt_excluded:
                         log.info("Paper trade skipped for alert symbol (excluded): %s", sym)
@@ -608,3 +610,158 @@ def run_scan(force: bool = False):
 
     log.info("Scan done — %d alerts sent, %d paper trades saved today",
              sent, len(STATE.bt_saved))
+
+
+# ─── Real-trade overlap check ─────────────────────────────────────────────────
+
+def _check_real_trade_overlap(s: dict):
+    """
+    After a paper trade fires, check if the same stock+direction appeared in
+    last night's evening picks. If so, fire a Real Trade Candidate alert.
+    """
+    try:
+        from datetime import date, timedelta
+        yesterday = (datetime.now(IST).date() - timedelta(days=1)).isoformat()
+        picks = _db_module.get_evening_picks(yesterday)
+        match = next((p for p in picks if p["sym"] == s["sym"] and p["sig"] == s["sig"]), None)
+        if not match:
+            return
+        log.info("Real Trade Candidate: %s %s (evening pick conf=%d%%, morning conf=%d%%)",
+                 s["sig"], s["sym"], match["conf"], s["conf"])
+        tg_msg = _format_real_trade_alert(s, match)
+        send_telegram(tg_msg)
+        _email.send_email(*_email.format_real_trade_candidate(s, match))
+    except Exception as e:
+        log.warning("_check_real_trade_overlap failed for %s: %s", s.get("sym"), e)
+
+
+def _format_real_trade_alert(s: dict, evening_pick: dict) -> str:
+    """Telegram HTML message for a Real Trade Candidate."""
+    ist_time = datetime.now(IST).strftime("%H:%M IST")
+    sig_emoji = "🟢" if s["sig"] == "BUY" else "🔴"
+    gain  = round(abs(s["tg"] - s["en"]), 2)
+    risk  = round(abs(s["sl"] - s["en"]), 2)
+    return (
+        f"⚡ <b>REAL TRADE CANDIDATE</b> {sig_emoji}\n"
+        f"\n"
+        f"<b>{s['sym']}</b>  <code>{s['sec']}</code>\n"
+        f"Signal  : <b>{s['sig']}</b>\n"
+        f"Conf    : <b>{s['conf']}%</b>  (evening: {evening_pick['conf']}%)\n"
+        f"\n"
+        f"Entry   : <code>Rs {s['en']}</code>\n"
+        f"Target  : <code>Rs {s['tg']}</code>  (+Rs {gain})\n"
+        f"Stop SL : <code>Rs {s['sl']}</code>  (-Rs {risk})\n"
+        f"R:R     : <b>{s['rr']}:1</b>\n"
+        f"\n"
+        f"LTP     : Rs {s['ltp']} ({s['chg']:+.2f}%)\n"
+        f"Setup   : {s['reason']}\n"
+        f"\n"
+        f"✅ Confirmed in both evening watchlist and morning scan\n"
+        f"👉 Place limit order near Rs {s['en']} | Set SL at Rs {s['sl']}\n"
+        f"\n"
+        f"⏰ {ist_time}"
+    )
+
+
+# ─── Evening scan ─────────────────────────────────────────────────────────────
+
+def run_evening_scan(force: bool = False):
+    """
+    Runs at 15:40 IST after market close. Scans all 50 stocks, picks the top 5
+    by confidence, saves them as tonight's watchlist, and sends Telegram + email.
+    These picks are used the next morning to identify Real Trade Candidates.
+    """
+    now_ist = datetime.now(IST)
+    if not force and now_ist.weekday() >= 5:
+        log.info("Weekend — skipping evening scan")
+        return
+
+    token = get_token()
+    if not token:
+        db_tok = _db_module.get_token()
+        if db_tok:
+            set_token(db_tok)
+            token = db_tok
+    if not token:
+        log.info("No Upstox token — skipping evening scan")
+        return
+
+    log.info("Evening scan started — scanning %d stocks", len(STOCKS))
+    today = now_ist.strftime("%Y-%m-%d")
+    picks = []
+
+    for stock in STOCKS:
+        sym = stock["sym"]
+        time.sleep(0.4)
+        try:
+            ltp   = get_ltp(stock["ikey"], token)
+            intra = get_intraday(stock["ikey"], token)
+            daily = get_daily(stock["ikey"], token)
+            s = build_setup(sym, stock["sec"], intra, daily, ltp)
+            if s["sig"] != "WATCH" and s["conf"] >= READY_GREEN_MIN:
+                picks.append(s)
+                log.debug("Evening pick candidate: %s %s conf=%d%%", s["sig"], sym, s["conf"])
+        except Exception as e:
+            log.warning("Evening scan fetch error %s: %s", sym, e)
+            continue
+
+    # Sort by confidence descending, take top 5
+    picks.sort(key=lambda x: x["conf"], reverse=True)
+    top_picks = picks[:5]
+
+    if not top_picks:
+        log.info("Evening scan: no picks met the confidence threshold today")
+        send_telegram(
+            f"📋 <b>Evening Watchlist — {now_ist.strftime('%d %b %Y')}</b>\n\n"
+            f"No stocks met the signal threshold today.\n"
+            f"⏰ {now_ist.strftime('%H:%M IST')}"
+        )
+        return
+
+    # Save to DB
+    for pick in top_picks:
+        pick_id = f"ep_{now_ist.strftime('%Y%m%d')}_{pick['sym']}"
+        _db_module.save_evening_pick({
+            "id":        pick_id,
+            "pick_date": today,
+            "sym":       pick["sym"],
+            "sec":       pick.get("sec", ""),
+            "sig":       pick["sig"],
+            "conf":      int(pick["conf"]),
+            "entry":     float(pick["en"]),
+            "target":    float(pick["tg"]),
+            "stop_loss": float(pick["sl"]),
+            "rr":        float(pick["rr"]) if pick.get("rr") else None,
+            "rsi":       float(pick["rsi"]) if pick.get("rsi") else None,
+            "reason":    pick.get("reason", ""),
+        })
+
+    log.info("Evening scan saved %d picks: %s", len(top_picks),
+             [f"{p['sig']} {p['sym']} {p['conf']}%" for p in top_picks])
+
+    # Send Telegram
+    send_telegram(_format_evening_watchlist(top_picks, now_ist))
+
+    # Send email
+    _email.send_email(*_email.format_evening_picks(top_picks))
+
+
+def _format_evening_watchlist(picks: list, now_ist) -> str:
+    """Telegram HTML message for tonight's evening watchlist."""
+    lines = [
+        f"📋 <b>Evening Watchlist — {now_ist.strftime('%d %b %Y')}</b>\n",
+        f"Tomorrow's morning scan will confirm these picks.\n",
+        f"If any appear in the 9:45 AM scan → Real Trade Candidate alert fires.\n",
+    ]
+    for i, p in enumerate(picks, 1):
+        sig_emoji = "🟢" if p["sig"] == "BUY" else "🔴"
+        gain = round(abs(p["tg"] - p["en"]), 2)
+        risk = round(abs(p["sl"] - p["en"]), 2)
+        lines.append(
+            f"\n{i}. {sig_emoji} <b>{p['sym']}</b>  <code>{p['sec']}</code>\n"
+            f"   {p['sig']}  |  Conf: <b>{p['conf']}%</b>\n"
+            f"   Entry: Rs {p['en']}  |  Target: Rs {p['tg']} (+Rs {gain})\n"
+            f"   SL: Rs {p['sl']} (-Rs {risk})  |  R:R: {p['rr']}:1"
+        )
+    lines.append(f"\n\n⏰ {now_ist.strftime('%H:%M IST')}")
+    return "".join(lines)

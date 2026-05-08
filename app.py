@@ -2001,6 +2001,17 @@ def start_scheduler():
     )
     log.info("EOD paper-trade settlement job scheduled at 15:35 IST daily")
 
+    # Evening scan — runs at 15:40 IST after market close to pick tomorrow's watchlist
+    sched.add_job(
+        scanner.run_evening_scan,
+        trigger="cron",
+        hour=15, minute=40,
+        id="evening_scan",
+        max_instances=1,
+        misfire_grace_time=300,
+    )
+    log.info("Evening watchlist scan scheduled at 15:40 IST daily")
+
     # Morning login reminder — every day at 08:30 IST
     # Requires TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID (already used by the scanner)
     if _auto_login.is_configured():

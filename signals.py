@@ -67,6 +67,25 @@ STOCKS = [
     {"sym": "ASIANPAINT", "ikey": "NSE_EQ|INE021A01026", "sec": "Consumer"},
     {"sym": "ULTRACEMCO", "ikey": "NSE_EQ|INE481G01011", "sec": "Cement"},
     {"sym": "BAJAJAUTO",  "ikey": "NSE_EQ|INE917I01010", "sec": "Auto"},
+    # ── Added to complete Nifty 50 ────────────────────────────────────────────
+    {"sym": "ADANIENT",   "ikey": "NSE_EQ|INE423A01024", "sec": "Infra"},
+    {"sym": "ADANIPORTS", "ikey": "NSE_EQ|INE742F01042", "sec": "Infra"},
+    {"sym": "APOLLOHOSP", "ikey": "NSE_EQ|INE437A01024", "sec": "Healthcare"},
+    {"sym": "BAJAJFINSV", "ikey": "NSE_EQ|INE918I01026", "sec": "NBFC"},
+    {"sym": "BPCL",       "ikey": "NSE_EQ|INE029A01011", "sec": "Energy"},
+    {"sym": "BRITANNIA",  "ikey": "NSE_EQ|INE216A01030", "sec": "FMCG"},
+    {"sym": "EICHERMOT",  "ikey": "NSE_EQ|INE066A01021", "sec": "Auto"},
+    {"sym": "GRASIM",     "ikey": "NSE_EQ|INE047A01021", "sec": "Cement"},
+    {"sym": "HEROMOTOCO", "ikey": "NSE_EQ|INE158A01026", "sec": "Auto"},
+    {"sym": "HINDALCO",   "ikey": "NSE_EQ|INE038A01020", "sec": "Metals"},
+    {"sym": "JSWSTEEL",   "ikey": "NSE_EQ|INE019A01038", "sec": "Metals"},
+    {"sym": "M&M",        "ikey": "NSE_EQ|INE101A01026", "sec": "Auto"},
+    {"sym": "NESTLEIND",  "ikey": "NSE_EQ|INE239A01024", "sec": "FMCG"},
+    {"sym": "POWERGRID",  "ikey": "NSE_EQ|INE752E01010", "sec": "Utilities"},
+    {"sym": "SHRIRAMFIN", "ikey": "NSE_EQ|INE721A01013", "sec": "NBFC"},
+    {"sym": "TATACONSUM", "ikey": "NSE_EQ|INE192A01025", "sec": "FMCG"},
+    {"sym": "TRENT",      "ikey": "NSE_EQ|INE849A01020", "sec": "Consumer"},
+    {"sym": "ZOMATO",     "ikey": "NSE_EQ|INE758T01015", "sec": "Consumer"},
 ]
 
 # ─── Index instrument keys (for market/sector context) ───────────────────────

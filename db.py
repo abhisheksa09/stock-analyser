@@ -178,6 +178,23 @@ CREATE TABLE IF NOT EXISTS paper_trades (
     created_by   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_paper_trades_date ON paper_trades(trade_date);
+
+CREATE TABLE IF NOT EXISTS evening_picks (
+    id           TEXT        PRIMARY KEY,
+    pick_date    DATE        NOT NULL,
+    sym          TEXT        NOT NULL,
+    sec          TEXT        NOT NULL DEFAULT '',
+    sig          TEXT        NOT NULL,
+    conf         INTEGER     NOT NULL,
+    entry        NUMERIC     NOT NULL,
+    target       NUMERIC     NOT NULL,
+    stop_loss    NUMERIC     NOT NULL,
+    rr           NUMERIC,
+    rsi          NUMERIC,
+    reason       TEXT        NOT NULL DEFAULT '',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_evening_picks_date ON evening_picks(pick_date);
 """
 
 _MIGRATIONS = [
@@ -783,6 +800,54 @@ def settle_paper_trade(trade_id: str, close_price: float,
     except Exception as e:
         log.warning("settle_paper_trade: %s", e)
         return False
+
+# ── Evening picks ─────────────────────────────────────────────────────────────
+
+def save_evening_pick(pick: dict) -> bool:
+    """Insert one evening pick. Ignores duplicates (same id)."""
+    conn = db()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO evening_picks
+                    (id, pick_date, sym, sec, sig, conf, entry, target, stop_loss, rr, rsi, reason)
+                VALUES
+                    (%(id)s, %(pick_date)s, %(sym)s, %(sec)s, %(sig)s, %(conf)s,
+                     %(entry)s, %(target)s, %(stop_loss)s, %(rr)s, %(rsi)s, %(reason)s)
+                ON CONFLICT (id) DO NOTHING
+            """, pick)
+        return True
+    except Exception as e:
+        log.warning("save_evening_pick: %s", e)
+        return False
+
+def get_evening_picks(date_: str) -> list:
+    """Return all evening picks for a given date (YYYY-MM-DD string)."""
+    conn = db()
+    if not conn:
+        return []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM evening_picks WHERE pick_date = %s ORDER BY conf DESC",
+                (date_,)
+            )
+            rows = cur.fetchall()
+        result = []
+        for r in rows:
+            row = dict(r)
+            for k, v in row.items():
+                if hasattr(v, "isoformat"):
+                    row[k] = v.isoformat()
+                elif hasattr(v, "__float__"):
+                    row[k] = float(v)
+            result.append(row)
+        return result
+    except Exception as e:
+        log.warning("get_evening_picks: %s", e)
+        return []
 
 def get_walk_forward_stats(months: int = 6, username: str = None) -> list:
     """

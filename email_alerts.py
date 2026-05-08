@@ -101,12 +101,14 @@ def send_email(subject: str, html_body: str, to_override: str = None) -> tuple:
 # ── HTML building blocks ──────────────────────────────────────────────────────
 
 _HEADER_COLORS = {
-    "green_ready":    "#16a34a",
-    "conf_crossed":   "#0369a1",
-    "reversal":       "#c2410c",
-    "token_expiry":   "#b91c1c",
-    "login_reminder": "#374151",
-    "eod_settlement": "#1e3a5f",
+    "green_ready":          "#16a34a",
+    "conf_crossed":         "#0369a1",
+    "reversal":             "#c2410c",
+    "token_expiry":         "#b91c1c",
+    "login_reminder":       "#374151",
+    "eod_settlement":       "#1e3a5f",
+    "evening_picks":        "#7c3aed",
+    "real_trade_candidate": "#b45309",
 }
 
 
@@ -486,4 +488,94 @@ def format_eod_settlement(trades: list, settled: int, skipped: int, errors: list
         "EOD Settlement",
         f"{date_str} · {settled} trades settled",
         body, "eod_settlement",
+    )
+
+
+def format_evening_picks(picks: list) -> tuple:
+    """Returns (subject, html_body) for the evening watchlist email."""
+    date_str = datetime.now(IST).strftime("%d %b %Y")
+    rows = []
+    for i, p in enumerate(picks, 1):
+        gain = round(abs(p["tg"] - p["en"]), 2)
+        risk = round(abs(p["sl"] - p["en"]), 2)
+        rows.append(
+            f'<tr style="border-bottom:1px solid #e5e7eb;">'
+            f'<td style="padding:10px 8px;font-weight:700;font-size:14px;">{i}. {p["sym"]}</td>'
+            f'<td style="padding:10px 8px;">{_sig_badge(p["sig"])}</td>'
+            f'<td style="padding:10px 8px;color:#374151;font-size:13px;">{p["sec"]}</td>'
+            f'<td style="padding:10px 8px;font-weight:700;">{p["conf"]}%</td>'
+            f'<td style="padding:10px 8px;font-size:13px;">Rs&nbsp;{p["en"]}</td>'
+            f'<td style="padding:10px 8px;font-size:13px;color:#16a34a;">Rs&nbsp;{p["tg"]}&nbsp;(+{gain})</td>'
+            f'<td style="padding:10px 8px;font-size:13px;color:#dc2626;">Rs&nbsp;{p["sl"]}&nbsp;(-{risk})</td>'
+            f'<td style="padding:10px 8px;font-size:13px;">{p["rr"]}:1</td>'
+            f'</tr>'
+        )
+    table_html = (
+        '<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">'
+        '<tr style="background:#f3f4f6;">'
+        '<th style="padding:8px;text-align:left;font-size:12px;color:#6b7280;">#&nbsp;Stock</th>'
+        '<th style="padding:8px;text-align:left;font-size:12px;color:#6b7280;">Signal</th>'
+        '<th style="padding:8px;text-align:left;font-size:12px;color:#6b7280;">Sector</th>'
+        '<th style="padding:8px;text-align:left;font-size:12px;color:#6b7280;">Conf</th>'
+        '<th style="padding:8px;text-align:left;font-size:12px;color:#6b7280;">Entry</th>'
+        '<th style="padding:8px;text-align:left;font-size:12px;color:#6b7280;">Target</th>'
+        '<th style="padding:8px;text-align:left;font-size:12px;color:#6b7280;">Stop&nbsp;Loss</th>'
+        '<th style="padding:8px;text-align:left;font-size:12px;color:#6b7280;">R:R</th>'
+        '</tr>'
+        + "".join(rows)
+        + '</table>'
+    )
+    note = (
+        '<p style="margin:16px 0 0;font-size:13px;color:#6b7280;">'
+        '&#9432; If any of these stocks appear in tomorrow\'s 9:45&nbsp;AM scan, '
+        'a <b>Real Trade Candidate</b> alert will fire automatically.</p>'
+    )
+    body = (
+        f'<p style="margin:0 0 16px;font-size:14px;color:#374151;">'
+        f'Top {len(picks)} stock{"s" if len(picks) != 1 else ""} with strong signals at market close. '
+        f'Watch these tomorrow morning.</p>'
+        + table_html + note
+    )
+    subject = f"NSE Scanner: Evening Watchlist — {len(picks)} picks for {date_str}"
+    return subject, _wrap(
+        "Evening Watchlist",
+        f"{date_str} · {len(picks)} strong picks for tomorrow",
+        body, "evening_picks",
+    )
+
+
+def format_real_trade_candidate(s: dict, evening_pick: dict) -> tuple:
+    """Returns (subject, html_body) for a Real Trade Candidate alert."""
+    date_str = datetime.now(IST).strftime("%d %b %Y")
+    gain = round(abs(s["tg"] - s["en"]), 2)
+    risk = round(abs(s["sl"] - s["en"]), 2)
+    body = (
+        '<div style="background:#fef3c7;border-left:4px solid #d97706;'
+        'padding:12px 16px;margin-bottom:16px;border-radius:4px;">'
+        '<p style="margin:0;font-size:13px;font-weight:700;color:#92400e;">'
+        '&#9889; Confirmed in both last night\'s evening watchlist and this morning\'s scan</p>'
+        '</div>'
+        f'<p style="margin:0 0 16px;font-size:15px;font-weight:700;">'
+        f'{s["sym"]} &nbsp;'
+        f'<span style="color:#6b7280;font-size:13px;font-weight:400;">{s["sec"]}</span>'
+        f'&nbsp; {_sig_badge(s["sig"])}</p>'
+        + _table(
+            _row("Morning Confidence", f'<b>{s["conf"]}%</b>'),
+            _row("Evening Confidence", f'{evening_pick["conf"]}%'),
+            _row("Entry",      f'Rs&nbsp;{s["en"]}'),
+            _row("Target",     f'Rs&nbsp;{s["tg"]} &nbsp;<span style="color:#16a34a">+Rs&nbsp;{gain}</span>'),
+            _row("Stop Loss",  f'Rs&nbsp;{s["sl"]} &nbsp;<span style="color:#dc2626">-Rs&nbsp;{risk}</span>'),
+            _row("R:R",        f'{s["rr"]}:1'),
+            _row("LTP",        f'Rs&nbsp;{s["ltp"]} ({s["chg"]:+.2f}%)'),
+            _row("Setup",      s.get("reason", "")),
+        )
+        + '<p style="margin:16px 0 0;font-size:13px;color:#374151;">'
+          '<b>Action:</b> Place a limit order near Rs&nbsp;' + str(s["en"]) +
+          '. Set stop-loss at Rs&nbsp;' + str(s["sl"]) + ' immediately after entry.</p>'
+    )
+    subject = f'⚡ REAL TRADE: {s["sig"]} {s["sym"]} confirmed — {s["conf"]}% conf | NSE Scanner'
+    return subject, _wrap(
+        "Real Trade Candidate",
+        f'{s["sym"]} · {s["sig"]} · confirmed morning + evening',
+        body, "real_trade_candidate",
     )
