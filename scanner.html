@@ -1166,6 +1166,48 @@ th[data-tip]{cursor:default;}
     </div><!-- /adminContent -->
 
   </div>
+
+  <!-- =========== LONG TERM =========== -->
+  <div class="tab-pane" id="tab-longterm">
+
+    <!-- Header card -->
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div class="card-title" style="margin:0 0 2px;">Long-Term Picks</div>
+          <div style="font-size:12px;color:#888;">Fundamental + technical scoring &middot; 6–12 month horizon &middot; Updated weekly (Sunday midnight IST)</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <select id="ltSegmentFilter" onchange="loadLongTermPicks()"
+            style="font-size:12px;padding:5px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;">
+            <option value="">All Segments</option>
+            <option value="large">Large Cap</option>
+            <option value="mid">Mid Cap</option>
+            <option value="small">Small Cap</option>
+          </select>
+          <select id="ltDateFilter" onchange="loadLongTermPicks()"
+            style="font-size:12px;padding:5px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;">
+            <option value="">Latest scan</option>
+          </select>
+          <button onclick="triggerLtScan()" id="ltRunBtn"
+            style="font-size:12px;padding:5px 14px;border:1px solid #27500A;border-radius:6px;
+                   background:#27500A;color:#fff;cursor:pointer;font-weight:600;">
+            &#9654; Run Scan
+          </button>
+        </div>
+      </div>
+      <!-- Summary pills -->
+      <div id="ltSummaryRow" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
+    </div>
+
+    <!-- Status / loading -->
+    <div id="ltStatus" style="font-size:13px;color:#888;padding:4px 0 10px;display:none;"></div>
+
+    <!-- Segment sections rendered here -->
+    <div id="ltContent"></div>
+
+  </div>
+
 </div>
 
 <script>
@@ -3112,48 +3154,6 @@ function evtBadgeHTML(sym){const evts=getStockEvents(sym);if(!evts.length)return
   document.addEventListener('scroll',hide,true);
 })();
 </script>
-
-<!-- =========== LONG TERM TAB PANE =========== -->
-<div class="tab-pane" id="tab-longterm">
-
-  <!-- Header card -->
-  <div class="card" style="margin-bottom:14px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-      <div>
-        <div class="card-title" style="margin:0 0 2px;">Long-Term Picks</div>
-        <div style="font-size:12px;color:#888;">Fundamental + technical scoring &middot; 6–12 month horizon &middot; Updated weekly (Sunday midnight IST)</div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <select id="ltSegmentFilter" onchange="loadLongTermPicks()"
-          style="font-size:12px;padding:5px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;">
-          <option value="">All Segments</option>
-          <option value="large">Large Cap</option>
-          <option value="mid">Mid Cap</option>
-          <option value="small">Small Cap</option>
-        </select>
-        <select id="ltDateFilter" onchange="loadLongTermPicks()"
-          style="font-size:12px;padding:5px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;cursor:pointer;">
-          <option value="">Latest scan</option>
-        </select>
-        <button onclick="triggerLtScan()" id="ltRunBtn"
-          style="font-size:12px;padding:5px 14px;border:1px solid #27500A;border-radius:6px;
-                 background:#27500A;color:#fff;cursor:pointer;font-weight:600;">
-          &#9654; Run Scan
-        </button>
-      </div>
-    </div>
-
-    <!-- Summary pills -->
-    <div id="ltSummaryRow" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
-  </div>
-
-  <!-- Status / loading -->
-  <div id="ltStatus" style="font-size:13px;color:#888;padding:4px 0 10px;display:none;"></div>
-
-  <!-- Segment sections rendered here -->
-  <div id="ltContent"></div>
-
-</div>
 
 <script>
 // ── Long-Term Picks ───────────────────────────────────────────────────────────
