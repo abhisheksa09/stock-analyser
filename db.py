@@ -240,6 +240,7 @@ def get_token(date_=None):
             return row["token"] if row else None
     except Exception as e:
         log.warning("get_token: %s", e)
+        _invalidate_conn()  # force reconnect on next call — SSL errors leave connection unusable
         return None
 
 def set_token(token: str, set_by: str = "admin", date_=None):
