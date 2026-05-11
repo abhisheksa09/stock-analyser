@@ -82,7 +82,7 @@ STOCKS = [
     {"sym": "M&M",        "ikey": "NSE_EQ|INE101A01026", "sec": "Auto"},
     {"sym": "NESTLEIND",  "ikey": "NSE_EQ|INE239A01024", "sec": "FMCG"},
     {"sym": "POWERGRID",  "ikey": "NSE_EQ|INE752E01010", "sec": "Utilities"},
-    {"sym": "SHRIRAMFIN", "ikey": "NSE_EQ|INE721A01013", "sec": "NBFC"},
+    {"sym": "SHRIRAMFIN", "ikey": "NSE_EQ|INE721A01047", "sec": "NBFC"},
     {"sym": "TATACONSUM", "ikey": "NSE_EQ|INE192A01025", "sec": "FMCG"},
     {"sym": "TRENT",      "ikey": "NSE_EQ|INE849A01020", "sec": "Consumer"},
     {"sym": "ZOMATO",     "ikey": "NSE_EQ|INE758T01015", "sec": "Consumer"},

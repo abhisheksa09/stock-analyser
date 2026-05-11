@@ -686,6 +686,7 @@ def run_evening_scan(force: bool = False):
     picks = []
     fetch_errors = 0
 
+    near_misses = []   # non-WATCH stocks that didn't reach threshold — for diagnostics
     for stock in STOCKS:
         sym = stock["sym"]
         time.sleep(0.4)
@@ -704,9 +705,11 @@ def run_evening_scan(force: bool = False):
             intra = get_intraday(stock["ikey"], token)
             daily = get_daily(stock["ikey"], token)
             s = build_setup(sym, stock["sec"], intra, daily, ltp)
+            log.info("Evening scan: %-14s  sig=%-5s  conf=%d%%", sym, s["sig"], s["conf"])
             if s["sig"] != "WATCH" and s["conf"] >= READY_GREEN_MIN:
                 picks.append(s)
-                log.debug("Evening pick candidate: %s %s conf=%d%%", s["sig"], sym, s["conf"])
+            elif s["sig"] != "WATCH":
+                near_misses.append(s)   # directional but below threshold
         except Exception as e:
             fetch_errors += 1
             log.warning("Evening scan fetch error %s: %s", sym, e)
@@ -720,10 +723,22 @@ def run_evening_scan(force: bool = False):
     top_picks = picks[:5]
 
     if not top_picks:
-        log.info("Evening scan: no picks met the confidence threshold today")
+        near_misses.sort(key=lambda x: x["conf"], reverse=True)
+        top_near = near_misses[:3]
+        if top_near:
+            miss_lines = "".join(
+                f"\n  • {m['sym']} {m['sig']} {m['conf']}%"
+                for m in top_near
+            )
+            near_miss_str = f"\n\nClosest misses (below {READY_GREEN_MIN}% threshold):{miss_lines}"
+        else:
+            near_miss_str = "\n\nAll 48 stocks closed with no directional signal (WATCH)."
+        log.info("Evening scan: no picks met threshold (READY_GREEN_MIN=%d%%). "
+                 "Check per-stock lines above for individual conf scores.", READY_GREEN_MIN)
         send_telegram(
             f"📋 <b>Evening Watchlist — {now_ist.strftime('%d %b %Y')}</b>\n\n"
-            f"No stocks met the signal threshold today.\n"
+            f"No stocks met the signal threshold today (min {READY_GREEN_MIN}% conf)."
+            f"{near_miss_str}\n\n"
             f"⏰ {now_ist.strftime('%H:%M IST')}"
         )
         return
