@@ -157,7 +157,7 @@ def _nse_get(url: str) -> dict | None:
     cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
     try:
         req = urllib.request.Request(url, headers={**NSE_HEADERS, "Cookie": cookie_str})
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with urllib.request.urlopen(req, timeout=4) as r:
             return json.loads(r.read())
     except Exception as e:
         log.debug("NSE API %s failed: %s", url, e)
@@ -240,6 +240,15 @@ def _fetch_yf(symbol: str) -> dict | None:
         log.error("yfinance not installed — run: pip install yfinance")
         return None
 
+    # Suppress all warnings inside yfinance/pandas calls — Pandas4Warning about
+    # Timestamp.utcnow is raised by pandas internals and not actionable from here.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return _fetch_yf_inner(symbol, yf)
+
+
+def _fetch_yf_inner(symbol: str, yf) -> dict | None:
+    """Inner implementation — called inside warnings.catch_warnings() block."""
     ticker = yf.Ticker(f"{symbol}.NS")
     try:
         info = ticker.info or {}
@@ -603,7 +612,7 @@ def run_lt_scan(segment: str = None) -> dict:
 
         # Step 1: Fetch yfinance data for all stocks in segment
         stock_data = []
-        for sym in stocks:
+        for i, sym in enumerate(stocks, 1):
             try:
                 d = _fetch_yf(sym)
                 if d:
@@ -611,24 +620,26 @@ def run_lt_scan(segment: str = None) -> dict:
                 time.sleep(0.3)  # be gentle to yfinance
             except Exception as e:
                 log.debug("fetch_yf %s: %s", sym, e)
+            if i % 10 == 0:
+                log.info("LT scan %s: fetched %d/%d stocks (%d ok)", seg, i, len(stocks), len(stock_data))
 
         # Step 2: Compute sector medians from this segment's data
         sector_medians = _compute_sector_medians(stock_data)
 
-        # Step 3: Enrich with Screener.in + NSE events + news
+        # Step 3: Enrich with NSE events
+        # Note: Screener.in is skipped — Cloudflare blocks server/cloud IPs reliably.
+        # Promoter holding falls back to None (scored as neutral 50 pts).
         enriched = []
-        for d in stock_data:
+        for i, d in enumerate(stock_data, 1):
             sym = d["symbol"]
-            try:
-                d["promoter_holding"] = _get_promoter_holding(sym)
-                time.sleep(0.2)
-            except Exception:
-                d["promoter_holding"] = None
+            d["promoter_holding"] = None  # Screener.in not reachable from Render
             try:
                 d["events"] = _get_corporate_events(sym)
             except Exception:
                 d["events"] = {}
             enriched.append(d)
+            if i % 10 == 0:
+                log.info("LT scan %s: enriched %d/%d stocks", seg, i, len(stock_data))
 
         # Step 4: Score + compute targets
         picks = []
