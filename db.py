@@ -76,7 +76,8 @@ CREATE TABLE IF NOT EXISTS token_store (
     token       TEXT        NOT NULL,
     set_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     set_by      TEXT        NOT NULL DEFAULT 'admin',
-    ist_date    DATE        NOT NULL UNIQUE
+    ist_date    DATE        NOT NULL UNIQUE,
+    is_invalid  BOOLEAN     NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS session_state (
@@ -200,6 +201,7 @@ CREATE INDEX IF NOT EXISTS idx_evening_picks_date ON evening_picks(pick_date);
 _MIGRATIONS = [
     "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS day_high NUMERIC",
     "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS day_low  NUMERIC",
+    "ALTER TABLE token_store  ADD COLUMN IF NOT EXISTS is_invalid BOOLEAN NOT NULL DEFAULT FALSE",
 ]
 
 def init_db():
@@ -248,10 +250,10 @@ def set_token(token: str, set_by: str = "admin", date_=None):
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO token_store (token, set_by, ist_date)
-                VALUES (%s, %s, %s)
+                INSERT INTO token_store (token, set_by, ist_date, is_invalid)
+                VALUES (%s, %s, %s, FALSE)
                 ON CONFLICT (ist_date) DO UPDATE
-                  SET token=%s, set_by=%s, set_at=NOW()
+                  SET token=%s, set_by=%s, set_at=NOW(), is_invalid=FALSE
             """, (token, set_by, date_, token, set_by))
         return True
     except Exception as e:
@@ -270,6 +272,43 @@ def delete_token(date_=None):
         return True
     except Exception as e:
         log.warning("delete_token: %s", e)
+        return False
+
+def mark_token_invalid(date_=None):
+    """Flag today's token as rejected by Upstox (persists across restarts)."""
+    conn = db()
+    if not conn:
+        return False
+    if date_ is None:
+        date_ = today_ist()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE token_store SET is_invalid=TRUE WHERE ist_date=%s",
+                (date_,),
+            )
+        return True
+    except Exception as e:
+        log.warning("mark_token_invalid: %s", e)
+        return False
+
+def is_token_invalid(date_=None):
+    """Return True if today's token has been flagged as invalid in DB."""
+    conn = db()
+    if not conn:
+        return False
+    if date_ is None:
+        date_ = today_ist()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT is_invalid FROM token_store WHERE ist_date=%s",
+                (date_,),
+            )
+            row = cur.fetchone()
+            return bool(row["is_invalid"]) if row else False
+    except Exception as e:
+        log.warning("is_token_invalid: %s", e)
         return False
 
 # ── Session state ─────────────────────────────────────────────────────────────

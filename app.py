@@ -673,10 +673,12 @@ def auth_login():
     # Guard: if a valid token is already stored for today, refuse to start a
     # new OAuth flow. Starting a second OAuth session revokes the first token
     # (Upstox UDAPI100050), which breaks the scanner mid-morning.
-    # Exception: if token_expired_alerted is True the existing token is known to
-    # be dead (caused a 401), so a fresh OAuth flow is safe and necessary.
+    # Exception: if the token is known dead (in-memory flag OR DB is_invalid flag),
+    # it caused a 401, so a fresh OAuth flow is safe and necessary.
+    # DB flag survives server restarts; in-memory flag covers the current session.
     existing = get_effective_token()
-    if existing and not scanner.STATE.token_expired_alerted:
+    token_known_dead = scanner.STATE.token_expired_alerted or _db_module.is_token_invalid()
+    if existing and not token_known_dead:
         ist_time = datetime.now(IST).strftime("%H:%M IST")
         return _auth_page(
             success=True,
