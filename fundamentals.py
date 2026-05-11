@@ -10,10 +10,16 @@ import os
 import json
 import logging
 import time
+import warnings
 import urllib.request
 import urllib.error
 import urllib.parse
 from datetime import datetime, timezone, timedelta, date
+
+# yfinance triggers Pandas4Warning about Timestamp.utcnow inside its own scrapers.
+# Suppress it here since it's not actionable from our code.
+warnings.filterwarnings("ignore", message="Timestamp.utcnow", category=FutureWarning)
+warnings.filterwarnings("ignore", message="Timestamp.utcnow")
 
 log = logging.getLogger("fundamentals")
 
