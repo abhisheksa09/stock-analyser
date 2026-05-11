@@ -1964,6 +1964,72 @@ def _eod_settlement_job():
 
 
 
+import fundamentals as _lt
+
+# ── Long-term picks routes ────────────────────────────────────────────────────
+
+@app.route("/api/long-term-picks")
+def lt_picks():
+    sess, err = _require_session(request)
+    if err:
+        return err
+    segment   = request.args.get("segment")   # large | mid | small | None (all)
+    scan_date = request.args.get("scan_date")  # YYYY-MM-DD or None (latest)
+    if segment and segment not in ("large", "mid", "small"):
+        return jsonify({"error": "segment must be large, mid, or small"}), 400
+    picks = _db_module.get_lt_picks(segment=segment, scan_date=scan_date)
+    dates = _db_module.get_lt_scan_dates()
+    return jsonify({
+        "status":    "ok",
+        "segment":   segment or "all",
+        "scan_date": scan_date or (dates[0] if dates else None),
+        "picks":     picks,
+        "scan_dates": dates,
+    })
+
+
+@app.route("/api/long-term-picks/run", methods=["POST"])
+def lt_picks_run():
+    sess, err = _require_session(request)
+    if err:
+        return err
+    if sess.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
+    data    = request.get_json(silent=True) or {}
+    segment = data.get("segment")   # optional — run one segment or all
+    try:
+        import threading
+        def _run():
+            try:
+                result = _lt.run_lt_scan(segment)
+                log.info("Manual LT scan done: %s", result.get("summary"))
+            except Exception as e:
+                log.error("Manual LT scan error: %s", e)
+        threading.Thread(target=_run, daemon=True).start()
+        return jsonify({"status": "ok", "message": "Long-term scan started in background"})
+    except Exception as e:
+        log.error("lt_picks_run: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+
+def _lt_scan_job():
+    """APScheduler job — runs Sunday at 20:00 IST."""
+    log.info("Weekly LT scan job triggered")
+    try:
+        result = _lt.run_lt_scan()
+        log.info("Weekly LT scan done: %s", result.get("summary"))
+        # Send weekly email digest
+        picks = result.get("picks", [])
+        if picks:
+            try:
+                import email_alerts as _ea
+                _email.send_email(*_ea.format_weekly_lt_picks(picks))
+            except Exception as e:
+                log.warning("LT weekly email failed: %s", e)
+    except Exception as e:
+        log.error("_lt_scan_job failed: %s", e)
+
+
 @app.route("/ai/setup-insight", methods=["POST"])
 def ai_setup_insight():
     sess, err = _require_session(request)
@@ -2030,6 +2096,18 @@ def start_scheduler():
     else:
         _last_auto_login["next_run"] = "not scheduled — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing"
         log.warning("Login reminder not scheduled — Telegram not configured")
+
+    # Weekly long-term scan — Sunday at 00:00 IST
+    sched.add_job(
+        _lt_scan_job,
+        trigger="cron",
+        day_of_week="sun",
+        hour=0, minute=0,
+        id="lt_weekly_scan",
+        max_instances=1,
+        misfire_grace_time=3600,
+    )
+    log.info("Weekly LT scan job scheduled for Sunday 00:00 IST")
 
     sched.start()
     log.info("Scheduler started — scanning every %d min", interval)

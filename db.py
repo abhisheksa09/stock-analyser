@@ -219,6 +219,7 @@ def init_db():
             """)
             for migration in _MIGRATIONS:
                 cur.execute(migration)
+        init_lt_picks_table()
         log.info("DB schema initialised")
         return {"status": "ok"}
     except Exception as e:
@@ -679,7 +680,7 @@ def db_status():
         counts = {}
         with conn.cursor() as cur:
             for tbl in ["token_store","session_state","trade_history",
-                        "alert_log","users","app_sessions","paper_trades"]:
+                        "alert_log","users","app_sessions","paper_trades","long_term_picks"]:
                 try:
                     cur.execute(f"SELECT COUNT(*) AS n FROM {tbl}")
                     counts[tbl] = cur.fetchone()["n"]
@@ -1076,3 +1077,165 @@ def get_best_pick_stats(days: int = 30, username: str = None) -> dict:
         "total_pnl_pct":   round(sum(pnl_pct), 2) if pnl_pct else 0,
         "days":            days,
     }
+
+
+# ── Long-term picks ───────────────────────────────────────────────────────────
+LT_PICKS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS long_term_picks (
+    id              SERIAL      PRIMARY KEY,
+    scan_date       DATE        NOT NULL,
+    symbol          TEXT        NOT NULL,
+    segment         TEXT        NOT NULL,          -- large | mid | small
+    score           NUMERIC     NOT NULL,
+    signal          TEXT        NOT NULL,          -- STRONG_BUY | WATCH
+    cmp             NUMERIC,
+    pe              NUMERIC,
+    roe             NUMERIC,
+    eps_growth      NUMERIC,
+    rev_growth      NUMERIC,
+    debt_equity     NUMERIC,
+    promoter_pct    NUMERIC,
+    sector          TEXT,
+    above_200dma    BOOLEAN,
+    rel_strength_6m NUMERIC,
+    target_low      NUMERIC,
+    target_high     NUMERIC,
+    upside_low      NUMERIC,
+    upside_high     NUMERIC,
+    analyst_target  NUMERIC,
+    results_due     TEXT,
+    dividend_yield  NUMERIC,
+    dividend_consistent BOOLEAN NOT NULL DEFAULT FALSE,
+    event_risk      BOOLEAN     NOT NULL DEFAULT FALSE,
+    factors         JSONB,
+    sentiment       NUMERIC,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (scan_date, symbol, segment)
+);
+CREATE INDEX IF NOT EXISTS idx_lt_picks_date    ON long_term_picks(scan_date);
+CREATE INDEX IF NOT EXISTS idx_lt_picks_segment ON long_term_picks(segment);
+"""
+
+def init_lt_picks_table():
+    """Create long_term_picks table. Safe to call multiple times."""
+    conn = db()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute(LT_PICKS_SCHEMA)
+        log.info("long_term_picks table ready")
+        return True
+    except Exception as e:
+        log.error("init_lt_picks_table: %s", e)
+        return False
+
+def save_lt_pick(pick: dict) -> bool:
+    """Upsert one long-term pick. Keyed on (scan_date, symbol, segment)."""
+    conn = db()
+    if not conn:
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO long_term_picks
+                    (scan_date, symbol, segment, score, signal, cmp, pe, roe,
+                     eps_growth, rev_growth, debt_equity, promoter_pct, sector,
+                     above_200dma, rel_strength_6m, target_low, target_high,
+                     upside_low, upside_high, analyst_target, results_due,
+                     dividend_yield, dividend_consistent, event_risk,
+                     factors, sentiment)
+                VALUES
+                    (%(scan_date)s, %(symbol)s, %(segment)s, %(score)s, %(signal)s,
+                     %(cmp)s, %(pe)s, %(roe)s, %(eps_growth)s, %(rev_growth)s,
+                     %(debt_equity)s, %(promoter_pct)s, %(sector)s,
+                     %(above_200dma)s, %(rel_strength_6m)s,
+                     %(target_low)s, %(target_high)s,
+                     %(upside_low)s, %(upside_high)s, %(analyst_target)s,
+                     %(results_due)s, %(dividend_yield)s,
+                     %(dividend_consistent)s, %(event_risk)s,
+                     %(factors)s, %(sentiment)s)
+                ON CONFLICT (scan_date, symbol, segment) DO UPDATE SET
+                    score=EXCLUDED.score, signal=EXCLUDED.signal,
+                    cmp=EXCLUDED.cmp, pe=EXCLUDED.pe, roe=EXCLUDED.roe,
+                    eps_growth=EXCLUDED.eps_growth, rev_growth=EXCLUDED.rev_growth,
+                    debt_equity=EXCLUDED.debt_equity, promoter_pct=EXCLUDED.promoter_pct,
+                    above_200dma=EXCLUDED.above_200dma,
+                    rel_strength_6m=EXCLUDED.rel_strength_6m,
+                    target_low=EXCLUDED.target_low, target_high=EXCLUDED.target_high,
+                    upside_low=EXCLUDED.upside_low, upside_high=EXCLUDED.upside_high,
+                    analyst_target=EXCLUDED.analyst_target,
+                    results_due=EXCLUDED.results_due,
+                    dividend_yield=EXCLUDED.dividend_yield,
+                    dividend_consistent=EXCLUDED.dividend_consistent,
+                    event_risk=EXCLUDED.event_risk,
+                    factors=EXCLUDED.factors, sentiment=EXCLUDED.sentiment,
+                    created_at=NOW()
+            """, {**pick, "factors": json.dumps(pick.get("factors", {}))})
+        return True
+    except Exception as e:
+        log.warning("save_lt_pick %s: %s", pick.get("symbol"), e)
+        return False
+
+def get_lt_picks(segment: str = None, scan_date: str = None, limit: int = 50) -> list:
+    """
+    Fetch long-term picks. If scan_date is None, returns the most recent scan's picks.
+    """
+    conn = db()
+    if not conn:
+        return []
+    try:
+        # Resolve latest scan date if not specified
+        if not scan_date:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT MAX(scan_date) AS d FROM long_term_picks"
+                    + (" WHERE segment=%s" if segment else ""),
+                    (segment,) if segment else (),
+                )
+                row = cur.fetchone()
+                if not row or not row["d"]:
+                    return []
+                scan_date = row["d"].isoformat() if hasattr(row["d"], "isoformat") else row["d"]
+
+        where, params = ["scan_date=%s"], [scan_date]
+        if segment:
+            where.append("segment=%s"); params.append(segment)
+        sql = (
+            "SELECT * FROM long_term_picks WHERE " + " AND ".join(where)
+            + " ORDER BY score DESC LIMIT %s"
+        )
+        params.append(limit)
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+
+        result = []
+        for r in rows:
+            row = dict(r)
+            for k, v in row.items():
+                if hasattr(v, "isoformat"):
+                    row[k] = v.isoformat()
+                elif hasattr(v, "__float__"):
+                    row[k] = float(v)
+            result.append(row)
+        return result
+    except Exception as e:
+        log.warning("get_lt_picks: %s", e)
+        return []
+
+def get_lt_scan_dates() -> list:
+    """Return list of distinct scan_dates available, newest first."""
+    conn = db()
+    if not conn:
+        return []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT scan_date FROM long_term_picks ORDER BY scan_date DESC LIMIT 12"
+            )
+            return [r["scan_date"].isoformat() if hasattr(r["scan_date"], "isoformat")
+                    else r["scan_date"] for r in cur.fetchall()]
+    except Exception as e:
+        log.warning("get_lt_scan_dates: %s", e)
+        return []

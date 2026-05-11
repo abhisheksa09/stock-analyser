@@ -109,6 +109,7 @@ _HEADER_COLORS = {
     "eod_settlement":       "#1e3a5f",
     "evening_picks":        "#7c3aed",
     "real_trade_candidate": "#b45309",
+    "weekly_lt_picks":      "#0f4c81",
 }
 
 
@@ -578,4 +579,121 @@ def format_real_trade_candidate(s: dict, evening_pick: dict) -> tuple:
         "Real Trade Candidate",
         f'{s["sym"]} · {s["sig"]} · confirmed morning + evening',
         body, "real_trade_candidate",
+    )
+
+
+def format_weekly_lt_picks(picks: list) -> tuple:
+    """Returns (subject, html_body) for the weekly long-term picks digest email."""
+    date_str = datetime.now(IST).strftime("%d %b %Y")
+    seg_labels = {"large": "Large Cap", "mid": "Mid Cap", "small": "Small Cap"}
+    seg_colors = {"large": "#0f4c81", "mid": "#0369a1", "small": "#0284c7"}
+
+    # Group by segment, strong buys first
+    from collections import defaultdict
+    by_seg = defaultdict(list)
+    for p in picks:
+        by_seg[p.get("segment", "large")].append(p)
+
+    sections_html = ""
+    total_strong = sum(1 for p in picks if p.get("signal") == "STRONG_BUY")
+
+    for seg in ("large", "mid", "small"):
+        seg_picks = sorted(by_seg.get(seg, []), key=lambda x: x.get("score", 0), reverse=True)
+        if not seg_picks:
+            continue
+        color = seg_colors.get(seg, "#374151")
+        label = seg_labels.get(seg, seg.title())
+        rows_html = ""
+        for p in seg_picks:
+            score      = p.get("score", 0)
+            signal     = p.get("signal", "WATCH")
+            tgt_low    = p.get("target_low")
+            tgt_high   = p.get("target_high")
+            up_low     = p.get("upside_low")
+            up_high    = p.get("upside_high")
+            ev_risk    = p.get("event_risk", False)
+            div_ok     = p.get("dividend_consistent", False)
+            eps_g      = p.get("eps_growth")
+            pe         = p.get("pe")
+
+            sig_color  = "#15803d" if signal == "STRONG_BUY" else "#b45309"
+            sig_label  = "STRONG BUY" if signal == "STRONG_BUY" else "WATCH"
+
+            target_str = "&mdash;"
+            if tgt_low and tgt_high:
+                target_str = f"Rs&nbsp;{tgt_low:,.0f} &ndash; {tgt_high:,.0f}"
+            elif tgt_high:
+                target_str = f"Rs&nbsp;{tgt_high:,.0f}"
+
+            upside_str = "&mdash;"
+            if up_low is not None and up_high is not None:
+                upside_str = f"{up_low:+.0f}% &ndash; {up_high:+.0f}%"
+            elif up_high is not None:
+                upside_str = f"{up_high:+.0f}%"
+
+            tags = []
+            if ev_risk:
+                tags.append('<span style="color:#c2410c;font-size:10px;">&#9888; Results soon</span>')
+            if div_ok:
+                tags.append('<span style="color:#15803d;font-size:10px;">&#128176; Dividend</span>')
+            tags_html = " &nbsp;".join(tags) if tags else ""
+
+            rows_html += (
+                '<tr style="border-bottom:1px solid #e5e7eb;">'
+                f'<td style="padding:8px 6px;font-weight:700;font-size:13px;">{p.get("symbol","")}</td>'
+                f'<td style="padding:8px 6px;font-size:12px;color:#6b7280;">{p.get("sector","")[:18]}</td>'
+                f'<td style="padding:8px 6px;text-align:center;">'
+                f'<span style="background:{sig_color}18;color:{sig_color};padding:2px 8px;'
+                f'border-radius:10px;font-size:11px;font-weight:700;">{sig_label}</span></td>'
+                f'<td style="padding:8px 6px;text-align:center;font-weight:700;font-size:13px;">{score:.0f}</td>'
+                f'<td style="padding:8px 6px;font-size:12px;">Rs&nbsp;{p.get("cmp") or "&mdash;"}</td>'
+                f'<td style="padding:8px 6px;font-size:12px;">{target_str}</td>'
+                f'<td style="padding:8px 6px;font-size:12px;color:#15803d;font-weight:600;">{upside_str}</td>'
+                f'<td style="padding:8px 6px;font-size:11px;">'
+                f'{"P/E " + str(round(pe,1)) if pe else "&mdash;"}'
+                + (f' &nbsp;|&nbsp; EPS {eps_g:+.0f}%' if eps_g is not None else "")
+                + (f'<br>{tags_html}' if tags_html else "")
+                + '</td>'
+                '</tr>'
+            )
+
+        sections_html += (
+            f'<h3 style="margin:20px 0 8px;font-size:12px;font-weight:700;'
+            f'color:{color};text-transform:uppercase;letter-spacing:0.5px;">'
+            f'{label} — {len(seg_picks)} pick{"s" if len(seg_picks) != 1 else ""}</h3>'
+            '<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">'
+            '<tr style="background:#f3f4f6;">'
+            '<th style="padding:6px;text-align:left;font-size:11px;color:#6b7280;">Stock</th>'
+            '<th style="padding:6px;text-align:left;font-size:11px;color:#6b7280;">Sector</th>'
+            '<th style="padding:6px;text-align:center;font-size:11px;color:#6b7280;">Signal</th>'
+            '<th style="padding:6px;text-align:center;font-size:11px;color:#6b7280;">Score</th>'
+            '<th style="padding:6px;text-align:left;font-size:11px;color:#6b7280;">CMP</th>'
+            '<th style="padding:6px;text-align:left;font-size:11px;color:#6b7280;">Target Range</th>'
+            '<th style="padding:6px;text-align:left;font-size:11px;color:#6b7280;">Upside</th>'
+            '<th style="padding:6px;text-align:left;font-size:11px;color:#6b7280;">Metrics</th>'
+            '</tr>'
+            + rows_html
+            + '</table>'
+        )
+
+    disclaimer = (
+        '<p style="margin:20px 0 0;font-size:11px;color:#9ca3af;">'
+        'These picks are generated algorithmically using fundamental + technical data. '
+        'This is not investment advice. Always do your own research before investing.</p>'
+    )
+
+    body = (
+        f'<p style="margin:0 0 4px;font-size:14px;color:#374151;">'
+        f'Weekly long-term scan complete — <b>{len(picks)} picks</b> across all segments.</p>'
+        f'<p style="margin:0 0 16px;font-size:13px;color:#6b7280;">'
+        f'{total_strong} Strong Buy &nbsp;|&nbsp; {len(picks) - total_strong} Watch &nbsp;|&nbsp; '
+        f'Horizon: 6–12 months</p>'
+        + sections_html
+        + disclaimer
+    )
+    subject = f"NSE Scanner: Weekly Long-Term Picks — {len(picks)} stocks | {date_str}"
+    return subject, _wrap(
+        "Weekly Long-Term Picks",
+        f"{date_str} · {len(picks)} picks across Large / Mid / Small cap",
+        body, "weekly_lt_picks",
     )
