@@ -16,10 +16,11 @@ import urllib.error
 import urllib.parse
 from datetime import datetime, timezone, timedelta, date
 
-# yfinance triggers Pandas4Warning about Timestamp.utcnow inside its own scrapers.
-# Suppress it here since it's not actionable from our code.
-warnings.filterwarnings("ignore", message="Timestamp.utcnow", category=FutureWarning)
-warnings.filterwarnings("ignore", message="Timestamp.utcnow")
+# yfinance/pandas trigger deprecation warnings about Timestamp.utcnow internally.
+# Suppress the entire yfinance + pandas_datareader warning namespace.
+warnings.filterwarnings("ignore", module=r"yfinance\..*")
+warnings.filterwarnings("ignore", module=r"pandas\..*", message=".*utcnow.*")
+warnings.filterwarnings("ignore", message=".*utcnow.*")
 
 log = logging.getLogger("fundamentals")
 
@@ -522,18 +523,79 @@ def _classify_sentiment_claude(headlines: str, symbol: str) -> float:
     except Exception:
         return 1.0
 
+# ── Dedicated DB connection for LT scan (avoids sharing with intraday thread) ─
+def _lt_save_pick(pick: dict, conn) -> bool:
+    """Save one pick using an already-open dedicated connection."""
+    try:
+        import json as _json
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO long_term_picks
+                    (scan_date, symbol, segment, score, signal, cmp, pe, roe,
+                     eps_growth, rev_growth, debt_equity, promoter_pct, sector,
+                     above_200dma, rel_strength_6m, target_low, target_high,
+                     upside_low, upside_high, analyst_target, results_due,
+                     dividend_yield, dividend_consistent, event_risk,
+                     factors, sentiment)
+                VALUES
+                    (%(scan_date)s, %(symbol)s, %(segment)s, %(score)s, %(signal)s,
+                     %(cmp)s, %(pe)s, %(roe)s, %(eps_growth)s, %(rev_growth)s,
+                     %(debt_equity)s, %(promoter_pct)s, %(sector)s,
+                     %(above_200dma)s, %(rel_strength_6m)s,
+                     %(target_low)s, %(target_high)s,
+                     %(upside_low)s, %(upside_high)s, %(analyst_target)s,
+                     %(results_due)s, %(dividend_yield)s,
+                     %(dividend_consistent)s, %(event_risk)s,
+                     %(factors)s, %(sentiment)s)
+                ON CONFLICT (scan_date, symbol, segment) DO UPDATE SET
+                    score=EXCLUDED.score, signal=EXCLUDED.signal,
+                    cmp=EXCLUDED.cmp, target_low=EXCLUDED.target_low,
+                    target_high=EXCLUDED.target_high,
+                    upside_low=EXCLUDED.upside_low, upside_high=EXCLUDED.upside_high,
+                    factors=EXCLUDED.factors, sentiment=EXCLUDED.sentiment,
+                    created_at=NOW()
+            """, {**pick, "factors": _json.dumps(pick.get("factors", {}))})
+        return True
+    except Exception as e:
+        log.warning("_lt_save_pick %s: %s", pick.get("symbol"), e)
+        return False
+
+def _open_lt_db_conn():
+    """Open a fresh, dedicated psycopg connection for the LT scan thread."""
+    import psycopg
+    from psycopg.rows import dict_row
+    url = os.environ.get("DATABASE_URL", "")
+    if not url:
+        return None
+    if "sslmode" not in url:
+        url = url + ("&" if "?" in url else "?") + "sslmode=require"
+    try:
+        return psycopg.connect(
+            url,
+            row_factory=dict_row,
+            autocommit=True,
+            prepare_threshold=None,
+        )
+    except Exception as e:
+        log.error("LT DB connect failed: %s", e)
+        return None
+
 # ── Main scan function ────────────────────────────────────────────────────────
 def run_lt_scan(segment: str = None) -> dict:
     """
     Run the full long-term scan for one or all segments.
-    Saves results to DB via db.save_lt_picks().
+    Saves results to DB via a dedicated connection (not shared with intraday thread).
     Returns summary dict.
     """
-    import db as _db
     segments = [segment] if segment else ["large", "mid", "small"]
     universe = {"large": LARGE_CAP, "mid": MIDCAP, "small": SMALLCAP}
     all_picks = []
     summary   = {}
+
+    # Open a dedicated DB connection for this scan run — never shares with intraday thread
+    lt_conn = _open_lt_db_conn()
+    if not lt_conn:
+        log.warning("LT scan: no DB connection — picks will not be saved")
 
     for seg in segments:
         log.info("LT scan: starting %s cap (%d stocks)", seg, len(universe[seg]))
@@ -618,14 +680,18 @@ def run_lt_scan(segment: str = None) -> dict:
 
         log.info("LT scan %s: %d stocks scored, %d picks (≥55)", seg, len(picks), len(top_picks))
 
-        # Save to DB
-        for p in top_picks:
-            try:
-                _db.save_lt_pick(p)
-            except Exception as e:
-                log.warning("save_lt_pick %s: %s", p["symbol"], e)
+        # Save to DB via dedicated connection
+        if lt_conn:
+            for p in top_picks:
+                _lt_save_pick(p, lt_conn)
 
         all_picks.extend(top_picks)
         summary[seg] = {"scanned": len(picks), "picks": len(top_picks)}
+
+    if lt_conn:
+        try:
+            lt_conn.close()
+        except Exception:
+            pass
 
     return {"summary": summary, "picks": all_picks, "run_at": datetime.now(IST).isoformat()}
