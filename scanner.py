@@ -106,6 +106,7 @@ class SessionState:
         self.alerted             = set()
         self.bt_saved            = self._load_bt_saved_from_db()
         self.bt_first_green      = {}  # sym -> scan mins of first consecutive green hit
+        self.bt_last_verdict     = {}  # sym -> last verdict string for diagnostics
         self.token_expired_alerted = False
         self.needs_token_refresh = True   # signal run_scan to reload token from DB
         log.info("Session state reset for %s (bt_saved from DB: %s)", self.date, sorted(self.bt_saved))
@@ -505,6 +506,8 @@ def run_scan(force: bool = False):
         verdict, _ = is_ready(s, mins)
         prev_conf  = STATE.prev_conf.get(sym)
         locked     = STATE.locked_sig.get(sym)
+        if in_bt:
+            STATE.bt_last_verdict[sym] = verdict
 
         # Lock first signal of session
         if sym not in STATE.locked_sig and s["sig"] != "WATCH":
@@ -546,9 +549,8 @@ def run_scan(force: bool = False):
             log.info("Paper trade green reset (past 11:00 AM window): %s", sym)
             del STATE.bt_first_green[sym]
 
-        # ── Telegram alerts (only for alert-watch symbols) ─────────────────
+        # ── Telegram + email alerts: only when stock is ready to trade ────────
         if in_watch:
-            # Trigger 1: Green Ready
             if verdict == "green" and not STATE.already_alerted(sym, "green_ready"):
                 if send_telegram(format_alert("green_ready", s)):
                     STATE.mark_alerted(sym, "green_ready")
@@ -563,29 +565,6 @@ def run_scan(force: bool = False):
                 _email.send_email(*_email.format_green_ready(s))
                 time.sleep(1)
 
-            # Trigger 2: Confidence crossed green threshold
-            if (prev_conf is not None
-                    and prev_conf < READY_GREEN_MIN
-                    and s["conf"] >= READY_GREEN_MIN
-                    and s["sig"] != "WATCH"
-                    and not STATE.already_alerted(sym, "conf_crossed")):
-                if send_telegram(format_alert("conf_crossed", s, extra=str(prev_conf))):
-                    STATE.mark_alerted(sym, "conf_crossed")
-                    sent += 1
-                _email.send_email(*_email.format_conf_crossed(s, prev_conf, READY_GREEN_MIN))
-                time.sleep(1)
-
-            # Trigger 3: Reversal
-            if (locked
-                    and locked != s["sig"]
-                    and s["sig"] != "WATCH"
-                    and not STATE.already_alerted(sym, "reversal")):
-                if send_telegram(format_alert("reversal", s, extra=locked)):
-                    STATE.mark_alerted(sym, "reversal")
-                    sent += 1
-                _email.send_email(*_email.format_reversal(s, locked))
-                time.sleep(1)
-
         STATE.prev_conf[sym] = s["conf"]
         STATE.prev_sig[sym]  = s["sig"]
 
@@ -593,9 +572,18 @@ def run_scan(force: bool = False):
     def _bt_label(sym):
         if sym not in STATE.prev_conf:
             return "ERR"
-        sig   = STATE.prev_sig.get(sym, "WATCH")
-        saved = "✓saved" if sym in STATE.bt_saved else f"UNSAVED(need {bt_min_conf}%+non-WATCH)"
-        return f"{sig}/{STATE.prev_conf[sym]}%/{saved}"
+        sig     = STATE.prev_sig.get(sym, "WATCH")
+        conf    = STATE.prev_conf[sym]
+        verdict = STATE.bt_last_verdict.get(sym, "?")
+        if sym in STATE.bt_saved:
+            status = "✓saved"
+        elif sym in STATE.bt_first_green:
+            status = "pending-2nd-green"
+        elif verdict != "green":
+            status = f"UNSAVED(verdict={verdict},need-all-6-gates)"
+        else:
+            status = "UNSAVED(outside-9:45-11:00-window)"
+        return f"{sig}/{conf}%/{status}"
     bt_summary = {sym: _bt_label(sym) for sym in bt_syms}
     log.info("Backtest conf snapshot: %s",
              "  ".join(f"{s}={v}" for s, v in sorted(bt_summary.items())))
