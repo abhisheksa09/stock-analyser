@@ -673,8 +673,8 @@ def run_evening_scan(force: bool = False):
     These picks are used the next morning to identify Real Trade Candidates.
     """
     now_ist = datetime.now(IST)
-    if not force and now_ist.weekday() >= 5:
-        log.info("Weekend — skipping evening scan")
+    if not force and now_ist.weekday() == 5:   # 5=Saturday only — Sunday runs for Monday prep
+        log.info("Saturday — skipping evening scan")
         return
 
     token = get_token()
@@ -684,18 +684,35 @@ def run_evening_scan(force: bool = False):
             set_token(db_tok)
             token = db_tok
     if not token:
-        log.info("No Upstox token — skipping evening scan")
+        log.warning("Evening scan: no Upstox token — skipping")
+        send_telegram(
+            f"⚠️ <b>Evening Watchlist — {now_ist.strftime('%d %b %Y')}</b>\n\n"
+            f"Scan skipped — no Upstox token found.\n"
+            f"Please log in to Upstox before market close tomorrow.\n"
+            f"⏰ {now_ist.strftime('%H:%M IST')}"
+        )
         return
 
     log.info("Evening scan started — scanning %d stocks", len(STOCKS))
     today = now_ist.strftime("%Y-%m-%d")
     picks = []
+    fetch_errors = 0
 
     for stock in STOCKS:
         sym = stock["sym"]
         time.sleep(0.4)
         try:
-            ltp   = get_ltp(stock["ikey"], token)
+            # After market close, LTP endpoint may return empty — fall back to daily close
+            try:
+                ltp = get_ltp(stock["ikey"], token)
+            except (ValueError, Exception):
+                daily_tmp = get_daily(stock["ikey"], token)
+                if not daily_tmp:
+                    log.debug("Evening scan: no price data for %s — skipping", sym)
+                    continue
+                ltp = float(daily_tmp[0][4])   # most recent daily close price
+                log.debug("Evening scan: using daily close %.2f for %s (LTP unavailable)", ltp, sym)
+
             intra = get_intraday(stock["ikey"], token)
             daily = get_daily(stock["ikey"], token)
             s = build_setup(sym, stock["sec"], intra, daily, ltp)
@@ -703,8 +720,12 @@ def run_evening_scan(force: bool = False):
                 picks.append(s)
                 log.debug("Evening pick candidate: %s %s conf=%d%%", s["sig"], sym, s["conf"])
         except Exception as e:
+            fetch_errors += 1
             log.warning("Evening scan fetch error %s: %s", sym, e)
             continue
+
+    log.info("Evening scan complete — %d candidates from %d stocks (%d errors)",
+             len(picks), len(STOCKS), fetch_errors)
 
     # Sort by confidence descending, take top 5
     picks.sort(key=lambda x: x["conf"], reverse=True)
