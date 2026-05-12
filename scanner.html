@@ -2172,9 +2172,10 @@ async function runScan(){
   btn.disabled=true;openRow=-1;aiCache={};results=[];
   const errs=[];
 
-  // Fetch market context once before scanning any stocks
-  btn.innerHTML='\u27f3 &nbsp;Fetching market context\u2026';
-  await fetchMarketContext();
+  // Fetch market context \u2014 skip NSE indices when scanning US-only stocks
+  const hasNSE=[...sel.values()].some(s=>s.market!=='US');
+  if(hasNSE){btn.innerHTML='\u27f3 &nbsp;Fetching market context\u2026';await fetchMarketContext();}
+  else{marketCtx=null;}
 
   for(const[sym,s]of sel){
     btn.innerHTML='\u27f3 &nbsp;Fetching '+sym+'\u2026';

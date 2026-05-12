@@ -10,8 +10,18 @@ Candle format (both markets): [timestamp_str, open, high, low, close, volume]
 """
 
 import logging
+import requests
 
 log = logging.getLogger("data_provider")
+
+_YF_SESSION = requests.Session()
+_YF_SESSION.headers.update({
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+})
 
 MARKET_NSE = "NSE"
 MARKET_US  = "US"
@@ -141,7 +151,7 @@ def _yf_intraday(sym):
     """1-min candles for today (chronological, oldest first)."""
     try:
         import yfinance as yf
-        df = yf.Ticker(sym).history(period="1d", interval="1m")
+        df = yf.Ticker(sym, session=_YF_SESSION).history(period="1d", interval="1m")
         if df.empty:
             return []
         result = []
@@ -164,7 +174,7 @@ def _yf_daily(sym):
     """Daily candles for last 60 days, newest-first (matches Upstox format)."""
     try:
         import yfinance as yf
-        df = yf.Ticker(sym).history(period="60d", interval="1d")
+        df = yf.Ticker(sym, session=_YF_SESSION).history(period="60d", interval="1d")
         if df.empty:
             return []
         result = []
@@ -190,7 +200,7 @@ def _yf_index_change(index_name):
         return 0.0
     try:
         import yfinance as yf
-        df = yf.Ticker(ticker).history(period="5d", interval="1d")
+        df = yf.Ticker(ticker, session=_YF_SESSION).history(period="5d", interval="1d")
         if len(df) < 2:
             return 0.0
         prev_close = float(df["Close"].iloc[-2])
