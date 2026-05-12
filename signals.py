@@ -108,6 +108,15 @@ SECTOR_INDEX = {
 
 CONFIRM_CANDLES = 3
 
+# ─── US market re-exports (keep signals.py as the single import for scanner) ──
+# US_STOCKS and US_SECTOR_INDEX live in data_provider.py; import them here so
+# scanner.py only needs to import from signals (consistent with NSE pattern).
+try:
+    from data_provider import US_STOCKS, US_SECTOR_INDEX  # noqa: F401
+except ImportError:
+    US_STOCKS = []
+    US_SECTOR_INDEX = {}
+
 # ─── Upstox API helpers ───────────────────────────────────────────────────────
 
 def _upstox_get(path, token, timeout=15):
@@ -208,6 +217,8 @@ def get_market_context(sec, token):
         "sector_chg":  sector_chg,
         "market_bias": bias(nifty_chg),
         "sector_bias": bias(sector_chg),
+        "index_name":  "Nifty50",
+        "market":      "NSE",
     }
 
 # ─── Indicators ───────────────────────────────────────────────────────────────
@@ -640,15 +651,16 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         sector_chg = market_ctx.get("sector_chg", 0.0) or 0.0
 
         # Market hard block
+        idx_label = market_ctx.get("index_name", "Nifty")
         if sig == "BUY" and nifty_chg <= -MARKET_HARD_BLOCK_PCT:
             sig = "WATCH"
             market_blocked = True
-            ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% — BUY blocked")
+            ctx_warnings.append(f"{idx_label} {nifty_chg:+.1f}% — BUY blocked")
             reason = "Blocked by broad market weakness"
         elif sig == "SELL" and nifty_chg >= MARKET_HARD_BLOCK_PCT:
             sig = "WATCH"
             market_blocked = True
-            ctx_warnings.append(f"Nifty {nifty_chg:+.1f}% — SELL blocked")
+            ctx_warnings.append(f"{idx_label} {nifty_chg:+.1f}% — SELL blocked")
             reason = "Blocked by broad market strength"
 
         if not market_blocked and sig != "WATCH":
@@ -770,12 +782,22 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
     return s
 
 # ─── Readiness check ──────────────────────────────────────────────────────────
-def is_ready(s, ist_mins):
-    """Returns (verdict, gates_pass_count)"""
+def is_ready(s, ist_mins, market="NSE"):
+    """Returns (verdict, gates_pass_count).
+
+    market="US"  → ist_mins is interpreted as ET minutes and windows shift:
+      time_ok    = 570–960  (9:30 AM – 4:00 PM ET)
+      time_prime = 585–660  (9:45 – 11:00 AM ET — ORB momentum window)
+    market="NSE" → original IST windows unchanged.
+    """
     vp = round(s["tVpm"] / (s["aVpm"] or 1) * 100)
 
-    time_ok    = 585 <= ist_mins <= 900
-    time_prime = 585 <= ist_mins <= 660  # 9:45–11:00 AM — ORB momentum window
+    if market == "US":
+        time_ok    = 570 <= ist_mins <= 960   # 9:30 AM – 4:00 PM ET
+        time_prime = 585 <= ist_mins <= 660   # 9:45 – 11:00 AM ET
+    else:
+        time_ok    = 585 <= ist_mins <= 900
+        time_prime = 585 <= ist_mins <= 660  # 9:45–11:00 AM IST — ORB momentum window
     is_actual  = s["sig"] != "WATCH"
     orb_ok     = (
         (s["sig"] == "BUY"  and s["bo"]) or

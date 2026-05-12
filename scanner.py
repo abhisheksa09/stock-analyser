@@ -38,7 +38,8 @@ import urllib.parse
 import urllib.error
 from datetime import datetime, timezone, timedelta
 
-from signals import STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, READY_GREEN_MIN
+from signals import STOCKS, US_STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, READY_GREEN_MIN
+from data_provider import get_intraday_candles, get_daily_candles, get_ltp_price, get_market_context_us
 from macro import get_full_macro_context, apply_all_macro_penalties
 import db as _db_module
 import email_alerts as _email
@@ -140,7 +141,21 @@ class SessionState:
     def mark_alerted(self, sym, kind):
         self.alerted.add(f"{sym}:{kind}")
 
-STATE = SessionState()
+STATE    = SessionState()   # NSE session
+US_STATE = SessionState()   # US session (independent date/lock tracking)
+
+# Eastern Time — US market timezone (UTC-5 EST / UTC-4 EDT)
+try:
+    from zoneinfo import ZoneInfo
+    ET = ZoneInfo("America/New_York")
+except Exception:
+    ET = timezone(timedelta(hours=-4))   # EDT fallback — close enough for ORB window
+
+def et_now_mins():
+    """Current time as minutes since midnight ET (mirrors ist_now_mins for US market)."""
+    n = datetime.now(ET)
+    return n.hour * 60 + n.minute
+
 
 # ─── Token store ──────────────────────────────────────────────────────────────
 
@@ -235,13 +250,15 @@ def format_alert(kind: str, s: dict, extra: str = "") -> str:
 
     if kind == "green_ready":
         sig_emoji = "🟢" if s["sig"] == "BUY" else "🔴"
-        ctx       = s.get("market_ctx", {})
-        warnings  = s.get("ctx_warnings", [])
-        nifty_str = (f"Nifty: {ctx['nifty_chg']:+.1f}%  "
-                     f"Sector: {ctx['sector_chg']:+.1f}%")  if ctx else ""
+        ctx        = s.get("market_ctx", {})
+        warnings   = s.get("ctx_warnings", [])
+        idx_label  = ctx.get("index_name", "Nifty")
+        nifty_str  = (f"{idx_label}: {ctx['nifty_chg']:+.1f}%  "
+                      f"Sector: {ctx['sector_chg']:+.1f}%") if ctx else ""
         warn_str  = ("\n⚠️ " + "  |  ".join(warnings)) if warnings else ""
+        mkt_label = ctx.get("market", "NSE")
         return (
-            f"{sig_emoji} <b>NSE SCANNER — READY TO TRADE</b>\n"
+            f"{sig_emoji} <b>{mkt_label} SCANNER — READY TO TRADE</b>\n"
             f"\n"
             f"<b>{s['sym']}</b>  <code>{s['sec']}</code>\n"
             f"Signal  : <b>{s['sig']}</b>  |  Conf: <b>{s['conf']}%</b>\n"
@@ -304,7 +321,7 @@ def parse_hhmm(s, default):
 
 # ─── Core scan ────────────────────────────────────────────────────────────────
 
-def _save_paper_trade(s: dict):
+def _save_paper_trade(s: dict, market: str = "NSE"):
     """
     Persist a simulated paper trade when a green alert fires.
     This creates the 'order placed' record that will be settled at EOD.
@@ -312,7 +329,7 @@ def _save_paper_trade(s: dict):
     """
     try:
         now = datetime.now(IST)
-        trade_id = f"pt_{now.strftime('%Y%m%d')}_{s['sym']}"
+        trade_id = f"pt_{now.strftime('%Y%m%d')}_{market}_{s['sym']}"
         trade = {
             "id":           trade_id,
             "trade_date":   now.strftime("%Y-%m-%d"),
@@ -328,11 +345,12 @@ def _save_paper_trade(s: dict):
             "rr":           float(s["rr"]) if s.get("rr") else None,
             "rsi":          float(s["rsi"]) if s.get("rsi") else None,
             "reason":       s.get("reason", ""),
+            "market":       market,
         }
         saved = _db_module.save_paper_trade(trade)
         if saved:
-            log.info("Paper trade saved: %s %s @ %.2f (conf %d%%)",
-                     s["sig"], s["sym"], s["en"], s["conf"])
+            log.info("[%s] Paper trade saved: %s %s @ %.2f (conf %d%%)",
+                     market, s["sig"], s["sym"], s["en"], s["conf"])
     except Exception as e:
         log.warning("_save_paper_trade failed for %s: %s", s.get("sym"), e)
 
@@ -526,7 +544,7 @@ def run_scan(force: bool = False):
                         log.info("Paper trade skipped (excluded symbol): %s", sym)
                         STATE.bt_saved.add(sym)  # mark as handled so we don't keep checking
                     else:
-                        _save_paper_trade(s)
+                        _save_paper_trade(s, market="NSE")
                         _check_real_trade_overlap(s)
                     STATE.bt_saved.add(sym)
                     del STATE.bt_first_green[sym]
@@ -557,7 +575,7 @@ def run_scan(force: bool = False):
                     sent += 1
                     # Also ensure paper trade saved for non-backtest alert symbols
                     if sym not in STATE.bt_saved and sym not in pt_excluded:
-                        _save_paper_trade(s)
+                        _save_paper_trade(s, market="NSE")
                         _check_real_trade_overlap(s)
                         STATE.bt_saved.add(sym)
                     elif sym in pt_excluded:
@@ -599,6 +617,142 @@ def run_scan(force: bool = False):
 
     log.info("Scan done — %d alerts sent, %d paper trades saved today",
              sent, len(STATE.bt_saved))
+
+
+# ─── US market scan ───────────────────────────────────────────────────────────
+
+_DEFAULT_US_BACKTEST_SYMBOLS = [
+    "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN",
+    "TSLA", "JPM", "META", "V", "UNH",
+]
+
+
+def run_us_scan(force: bool = False):
+    """
+    US market scan — runs every 5 min during 9:30–11:00 AM ET on US trading days.
+    Uses yfinance for data (no broker token required).
+    Paper trades and alerts follow the same logic as the NSE scan.
+    """
+    US_STATE.check_date()
+
+    now_et = datetime.now(ET)
+    # US markets closed weekends
+    if not force and now_et.weekday() >= 5:
+        log.info("[US] Weekend — skipping scan")
+        return
+
+    mins = et_now_mins()
+    start_et = parse_hhmm(os.environ.get("US_ALERT_START_ET", "09:30"), 570)
+    stop_et  = parse_hhmm(os.environ.get("US_ALERT_STOP_ET",  "11:00"), 660)
+
+    if not force and not (start_et <= mins <= stop_et):
+        log.debug("[US] Outside window (%02d:%02d ET) — skip", mins // 60, mins % 60)
+        return
+
+    raw_bt = os.environ.get("US_BACKTEST_SYMBOLS", "").strip()
+    bt_syms = {s.strip().upper() for s in raw_bt.split(",") if s.strip()} if raw_bt else set(_DEFAULT_US_BACKTEST_SYMBOLS)
+
+    try:
+        bt_min_conf = int(os.environ.get("US_BACKTEST_MIN_CONF", "70"))
+    except ValueError:
+        bt_min_conf = 70
+
+    pt_excluded = {s.strip().upper() for s in os.environ.get("US_PAPER_TRADE_EXCLUDE", "").split(",") if s.strip()}
+
+    watch = [s.strip().upper() for s in os.environ.get("US_SCAN_SYMBOLS", "").split(",") if s.strip()]
+    all_syms = [s for s in US_STOCKS if (not watch or s["sym"] in watch) or s["sym"] in bt_syms]
+
+    log.info("[US] Scanning %d symbols at %02d:%02d ET", len(all_syms), mins // 60, mins % 60)
+
+    # Fetch S&P 500 context once per cycle
+    try:
+        sp500_ctx = get_market_context_us("Technology")
+        log.info("[US] S&P500: %+.1f%%  (bias: %s)", sp500_ctx["nifty_chg"], sp500_ctx["market_bias"])
+    except Exception as e:
+        log.warning("[US] Market context fetch failed: %s", e)
+        sp500_ctx = None
+
+    try:
+        _scan_timeout_mins = int(os.environ.get("SCAN_TIMEOUT_MINS", "4"))
+    except ValueError:
+        _scan_timeout_mins = 4
+    scan_deadline = datetime.now(ET) + timedelta(minutes=_scan_timeout_mins)
+
+    sent = 0
+
+    for stock in all_syms:
+        if datetime.now(ET) > scan_deadline:
+            remaining = [s["sym"] for s in all_syms[all_syms.index(stock):]]
+            log.warning("[US] Scan timeout — skipping %d symbols: %s", len(remaining), remaining)
+            break
+
+        sym   = stock["sym"]
+        in_bt = sym in bt_syms
+        in_watch = not watch or sym in watch
+
+        time.sleep(0.2)   # yfinance rate limit is more lenient than Upstox
+
+        try:
+            intra = get_intraday_candles(sym, "US")
+            daily = get_daily_candles(sym, "US")
+            if not intra or not daily:
+                log.debug("[US] No data for %s — skipping", sym)
+                continue
+            ltp = float(intra[-1][4])
+
+            if sp500_ctx is not None:
+                try:
+                    ctx = get_market_context_us(stock["sec"])
+                    ctx["nifty_chg"]   = sp500_ctx["nifty_chg"]
+                    ctx["market_bias"] = sp500_ctx["market_bias"]
+                except Exception:
+                    ctx = sp500_ctx
+            else:
+                ctx = None
+
+            s = build_setup(sym, stock["sec"], intra, daily, ltp, market_ctx=ctx)
+            # Inject market key for frontend/alerts
+            if ctx:
+                ctx["market"] = "US"
+            s["market"] = "US"
+
+        except Exception as e:
+            log.warning("[US] Fetch/build error %s: %s", sym, e)
+            continue
+
+        verdict, _ = is_ready(s, mins, market="US")
+        US_STATE.bt_last_verdict[sym] = verdict if in_bt else verdict
+
+        if sym not in US_STATE.locked_sig and s["sig"] != "WATCH":
+            US_STATE.locked_sig[sym] = s["sig"]
+
+        # Auto paper trade (same 2-consecutive-green logic as NSE)
+        if in_bt and sym not in US_STATE.bt_saved and s.get("_time_prime"):
+            if verdict == "green":
+                prior = US_STATE.bt_first_green.get(sym)
+                if prior and prior["sig"] == s["sig"]:
+                    if sym not in pt_excluded:
+                        _save_paper_trade(s, market="US")
+                    US_STATE.bt_saved.add(sym)
+                    US_STATE.bt_first_green.pop(sym, None)
+                else:
+                    US_STATE.bt_first_green[sym] = {"sig": s["sig"], "mins": mins}
+            else:
+                US_STATE.bt_first_green.pop(sym, None)
+
+        # Telegram alerts
+        if in_watch and verdict == "green" and not US_STATE.already_alerted(sym, "green_ready"):
+            if send_telegram(format_alert("green_ready", s)):
+                US_STATE.mark_alerted(sym, "green_ready")
+                sent += 1
+                if sym not in US_STATE.bt_saved and sym not in pt_excluded:
+                    _save_paper_trade(s, market="US")
+                    US_STATE.bt_saved.add(sym)
+
+        US_STATE.prev_conf[sym] = s["conf"]
+        US_STATE.prev_sig[sym]  = s["sig"]
+
+    log.info("[US] Scan done — %d alerts sent, %d paper trades saved today", sent, len(US_STATE.bt_saved))
 
 
 # ─── Real-trade overlap check ─────────────────────────────────────────────────

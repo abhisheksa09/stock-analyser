@@ -547,6 +547,15 @@ th[data-tip]{cursor:default;}
       <div id="aiTxt" style="margin-top:6px;"></div>
     </div> -->
 
+    <div id="scanMktPills" style="margin-bottom:6px;">
+      <div class="filter-row">
+        <span class="filter-lbl">Market</span>
+        <span class="fchip on" id="mktScan_all" onclick="setMktFilter('scanner','all')">All</span>
+        <span class="fchip"    id="mktScan_NSE" onclick="setMktFilter('scanner','NSE')">NSE</span>
+        <span class="fchip"    id="mktScan_US"  onclick="setMktFilter('scanner','US')">US</span>
+      </div>
+    </div>
+
     <div class="counters">
       <div class="counter"><div class="counter-n" id="cS">0</div><div class="counter-l">Scanned</div></div>
       <div class="counter"><div class="counter-n" style="color:#27500A;" id="cB">0</div><div class="counter-l">BUY signals</div></div>
@@ -558,6 +567,7 @@ th[data-tip]{cursor:default;}
       <table>
         <thead><tr>
           <th data-tip="Stock symbol and sector. Signal history dots show previous scans. Lock = first signal of session.">Stock</th>
+          <th data-tip="NSE = Indian market. US = US market.">Mkt</th>
           <th data-tip="BUY / SELL = directional signal. WATCH = mixed, no trade. Reversed badge = signal flipped since first scan.">Signal</th>
           <th class="r" data-tip="Last traded price and % change vs yesterday's close.">LTP</th>
           <th class="r" data-tip="Entry: limit order price. Target: profit exit (ATR x2). Stop loss: max loss exit.">Entry / Target / SL</th>
@@ -636,6 +646,12 @@ th[data-tip]{cursor:default;}
             <span style="font-size:12px;color:#888;">to</span>
             <input type="date" id="dateTo" class="date-inp" onchange="renderHist()"/>
             <button class="btn" style="font-size:11px;padding:5px 12px;" onclick="clearDates()">Clear</button>
+          </div>
+          <div class="filter-row">
+            <span class="filter-lbl">Market</span>
+            <span class="fchip on" id="mktHist_all" onclick="setMktFilter('history','all')">All</span>
+            <span class="fchip"    id="mktHist_NSE" onclick="setMktFilter('history','NSE')">NSE</span>
+            <span class="fchip"    id="mktHist_US"  onclick="setMktFilter('history','US')">US</span>
           </div>
           <div class="filter-row">
             <span class="filter-lbl">Sort by</span>
@@ -753,6 +769,9 @@ th[data-tip]{cursor:default;}
           <option value="partial_loss">Partial loss</option>
           <option value="lost">Lost</option>
         </select>
+        <span class="fchip on" id="mktBt_all" onclick="setMktFilter('backtest','all')" style="margin-left:8px;">All mkts</span>
+        <span class="fchip"    id="mktBt_NSE" onclick="setMktFilter('backtest','NSE')">NSE</span>
+        <span class="fchip"    id="mktBt_US"  onclick="setMktFilter('backtest','US')">US</span>
       </div>
       <button class="btn" onclick="loadPaperTrades()" style="font-size:12px;padding:6px 14px;">&#8635; Refresh</button>
     </div>
@@ -1175,7 +1194,7 @@ th[data-tip]{cursor:default;}
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
         <div>
           <div class="card-title" style="margin:0 0 2px;">Long-Term Picks</div>
-          <div style="font-size:12px;color:#888;">Fundamental + technical scoring &middot; 6–12 month horizon &middot; Updated weekly (Sunday midnight IST)</div>
+          <div style="font-size:12px;color:#888;">Fundamental + technical scoring &middot; 6–12 month horizon &middot; Updated weekly (Sunday midnight IST) &middot; <span id="ltLastScanned" style="color:#aaa;">Last scanned: —</span></div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <select id="ltSegmentFilter" onchange="loadLongTermPicks()"
@@ -2227,6 +2246,14 @@ function updateReversalBanner(){
   banner.innerHTML='<strong>\u26a1 Signal reversals:</strong><br>'+lines.join('<br>');banner.style.display='block';
 }
 
+function _applyMktFilterScan(){
+  const mktF = (_mktFilterScanner||'all').toUpperCase();
+  document.querySelectorAll('#scanBody tr[data-market]').forEach(function(tr){
+    const m = (tr.dataset.market||'NSE').toUpperCase();
+    tr.style.display = (mktF==='ALL'||m===mktF) ? '' : 'none';
+  });
+}
+
 // ─── RENDER SCAN TABLE ────────────────────────────────────────────────────────
 function renderScanTable(){
   const tb=document.getElementById('scanBody');tb.innerHTML='';
@@ -2242,10 +2269,15 @@ function renderScanTable(){
     const ap=Math.min((s.atr/s.ltp)*800,100);
     const cm=confMeta(s.conf);
     const _meta=getSignalMeta(s.sym,s.sig);
+    const mkt=(s.market||'NSE').toUpperCase();
+    const mktBg=mkt==='US'?'#E6F1FB':'#EAF3DE';
+    const mktCol=mkt==='US'?'#185FA5':'#27500A';
     const tr=document.createElement('tr');
     tr.className='drow'+(_meta.reversed?' evt-row-flag':'');tr.id='sr'+i;
+    tr.dataset.market=mkt;
     tr.innerHTML=
       '<td><div class="sym">'+s.sym+evtBadgeHTML(s.sym)+'</div><div class="sec">'+s.sec+'</div>'+sigHistoryHTML(s.sym,s.sig)+lockedSigHTML(s.sym,s.sig)+'</td>'+
+      '<td style="text-align:center;"><span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:'+mktBg+';color:'+mktCol+';">'+mkt+'</span></td>'+
       '<td data-tip="BUY: go long, expect price to rise.\nSELL: go short, expect price to fall.\nWATCH: mixed signals, no trade today.\n\nConfirm badge shows candle agreement:\n3/3 = all candles agree (strong)\n2/3 or less = wait for confirmation\n\nReversed badge means signal flipped\nsince first scan today - skip this stock."><span class="sig '+sigC+'"><span class="dot"></span>'+s.sig+'</span>'+confirmBadgeHTML(s)+'</td>'+
       '<td class="r" data-tip="Last traded price.\n% change vs yesterday close.\nGreen = up, Red = down."><div class="ltp">\u20b9'+fc(s.ltp)+'</div><div class="'+(s.chg>=0?'pos':'neg')+'">'+(s.chg>=0?'+':'')+s.chg+'%</div></td>'+
       '<td class="r"><div class="ev">\u2197 \u20b9'+fc(s.en)+'</div><div class="tgt">\u2713 \u20b9'+fc(s.tg)+'</div><div class="slv">\u2717 \u20b9'+fc(s.sl)+'</div></td>'+
@@ -2267,7 +2299,7 @@ function renderScanTable(){
     const cbHtml=s.cBd.map(f=>{const c2=f.sc>=.75?'#639922':f.sc>=.5?'#EF9F27':'#E24B4A';const tick=f.sc>=.75?'\u2713':f.sc>=.5?'~':'\u2717';return '<div class="cb-row"><span class="cb-tick" style="color:'+c2+';">'+tick+'</span><span class="cb-name">'+f.name+'</span><div class="cb-bg"><div class="cb-fill" style="width:'+Math.round(f.sc*100)+'%;background:'+c2+';"></div></div><span class="cb-pct" style="color:'+c2+';">'+Math.round(f.sc*100)+'%</span></div>';}).join('');
     const histBlock=(function(){const hist=signalHistory[s.sym]||[];const _m=getSignalMeta(s.sym,s.sig);if(hist.length<=1&&!_m.reversed)return '';let h='<div style="background:#fafafa;border:1px solid #e0e0e0;border-radius:8px;padding:10px 14px;margin-bottom:10px;"><div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#888;margin-bottom:8px;">Signal history this session</div><div style="display:flex;flex-direction:column;gap:5px;">';hist.forEach((hh,i2)=>{const isCur=i2===hist.length-1,isFirst=i2===0;const col=hh.sig==='BUY'?'#27500A':hh.sig==='SELL'?'#791F1F':'#633806';const bg=hh.sig==='BUY'?'#EAF3DE':hh.sig==='SELL'?'#FCEBEB':'#FAEEDA';h+='<div style="display:flex;align-items:center;gap:8px;font-size:12px;"><span style="background:'+bg+';color:'+col+';padding:2px 8px;border-radius:4px;font-weight:600;min-width:38px;text-align:center;">'+hh.sig+'</span><span style="color:#888;">Scan #'+hh.scanN+' @ '+hh.time+'</span><span style="color:'+col+';font-weight:600;">'+hh.conf+'%</span>'+(isCur?'<span style="font-size:10px;background:#1a1a1a;color:#fff;padding:1px 6px;border-radius:3px;">current</span>':'')+(isFirst&&hist.length>1?'<span style="font-size:10px;background:#DDD08A;color:#5a4a00;padding:1px 6px;border-radius:3px;">\ud83d\udd12 locked</span>':'')+' </div>';});h+='</div>';if(_m.reversed)h+='<div style="margin-top:10px;background:#FCEBEB;border:1px solid #F09595;border-radius:6px;padding:8px 12px;font-size:12px;color:#791F1F;"><strong>\u26a1 Signal reversed since first scan.</strong> Conflicting signals usually mean the stock is ranging. Best to skip it today.</div>';return h+'</div>';})();
     const dp=document.createElement('tr');dp.id='dp'+i;
-    dp.innerHTML='<td colspan="10" style="padding:0;"><div class="dp" id="panel'+i+'">'+
+    dp.innerHTML='<td colspan="11" style="padding:0;"><div class="dp" id="panel'+i+'">'+
       '<div class="cb-box"><div class="cb-hdr"><span class="cb-title">Confidence breakdown \u2014 how '+s.conf+'% was calculated</span><span class="cb-score '+cm2.cls+'">'+s.conf+'%</span></div><div class="cb-rows">'+cbHtml+'</div><div class="cb-note">'+(s.conf<55?'<strong>Warning:</strong> Below 55% \u2014 skip this trade.':'Above 55%. Click Save to History to log this prediction.')+'</div></div>'+
       '<div class="dcards">'+
         '<div class="dcard"><div class="dcard-l">Entry</div><div class="dcard-v" style="color:#185FA5;">\u20b9'+fc(s.en)+'</div><div class="dcard-s" style="color:#888;">Place limit order</div></div>'+
@@ -2287,6 +2319,8 @@ function renderScanTable(){
     '</div></td>';
     tb.appendChild(dp);
   });
+}
+  _applyMktFilterScan();
 }
 function toggleRow(i){if(openRow===i){document.getElementById('panel'+i)?.classList.remove('open');document.getElementById('sr'+i)?.classList.remove('sel');openRow=-1;return;}if(openRow>=0){document.getElementById('panel'+openRow)?.classList.remove('open');document.getElementById('sr'+openRow)?.classList.remove('sel');}document.getElementById('panel'+i)?.classList.add('open');document.getElementById('sr'+i)?.classList.add('sel');openRow=i;}
 
@@ -2531,6 +2565,8 @@ function renderHist(){
   let rows=[...all];
   if(hf.sig!=='all')rows=rows.filter(h=>h.sig===hf.sig);
   if(hf.oc!=='all')rows=rows.filter(h=>h.outcome===hf.oc);
+  const _mktH=(_mktFilterHistory||'all').toUpperCase();
+  if(_mktH!=='ALL')rows=rows.filter(h=>(h.market||'NSE').toUpperCase()===_mktH);
   if(hf.conf==='high')rows=rows.filter(h=>h.conf>=75);
   else if(hf.conf==='med')rows=rows.filter(h=>h.conf>=55&&h.conf<75);
   else if(hf.conf==='low')rows=rows.filter(h=>h.conf<55);
@@ -2656,6 +2692,46 @@ function exportCSV(){const h=loadH();if(!h.length){alert('No history to export.'
 function importCSV(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=function(e){try{const lines=e.target.result.split(/\r?\n/).filter(l=>l.trim());if(lines.length<2){alert('CSV appears empty.');return;}const hdrs=parseCsvRow(lines[0]);const ci={};hdrs.forEach((h,i)=>ci[h.trim()]=i);const fmap={'Date':'date','Time':'time','Stock':'sym','Sector':'sec','Signal':'sig','Confidence(%)':'conf','LTP':'ltp','Pred Entry':'en','Target':'tg','Stop Loss':'sl','R:R':'rr','RSI':'rsi','Setup Reason':'reason','Actual Entry':'aEn','Actual Exit':'aEx','Outcome':'outcome','PnL per Share':'pnl','Notes':'notes'};const numFields=new Set(['conf','ltp','en','tg','sl','rr','rsi','aEn','aEx','pnl']);const existing=loadH();const seen=new Set(existing.map(x=>x.sym+'_'+x.date));let added=0,skipped=0;for(let i=1;i<lines.length;i++){const vals=parseCsvRow(lines[i]);if(!vals.length)continue;const row={id:Date.now()+'_'+i+'_'+Math.random().toString(36).slice(2)};Object.entries(fmap).forEach(function(pair){const csvH=pair[0],field=pair[1];const idx=ci[csvH];const v=(idx!==undefined&&vals[idx]!==undefined)?vals[idx].trim():'';row[field]=numFields.has(field)?(v===''?null:+parseFloat(v).toFixed(2)):(v===''?null:v);});const key=row.sym+'_'+row.date;if(seen.has(key)){skipped++;continue;}seen.add(key);row.outcome=row.outcome||'pending';row.notes=row.notes||'';existing.push(row);added++;}saveH(existing);renderHist();alert('Import complete: '+added+' rows added, '+skipped+' skipped (duplicates).');}catch(err){alert('Import failed: '+err.message);}event.target.value='';};reader.readAsText(file);}
 function parseCsvRow(line){const out=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}else if(ch===','&&!inQ){out.push(cur);cur='';}else cur+=ch;}out.push(cur);return out;}
 
+// ─── MARKET FILTER (shared across Scanner / History / Backtest tabs) ─────────
+var _mktFilterScanner  = 'all';
+var _mktFilterHistory  = 'all';
+var _mktFilterBacktest = 'all';
+
+function setMktFilter(tab, mkt) {
+  if (tab === 'scanner') {
+    _mktFilterScanner = mkt;
+    ['all','NSE','US'].forEach(function(m) {
+      const el = document.getElementById('mktScan_' + m);
+      if (el) el.classList.toggle('on', m === mkt);
+    });
+    _applyMktFilterScan();
+  } else if (tab === 'history') {
+    _mktFilterHistory = mkt;
+    ['all','NSE','US'].forEach(function(m) {
+      const el = document.getElementById('mktHist_' + m);
+      if (el) el.classList.toggle('on', m === mkt);
+    });
+    renderHist();
+  } else if (tab === 'backtest') {
+    _mktFilterBacktest = mkt;
+    ['all','NSE','US'].forEach(function(m) {
+      const el = document.getElementById('mktBt_' + m);
+      if (el) el.classList.toggle('on', m === mkt);
+    });
+    loadPaperTrades();
+  }
+}
+
+function mktPillsHTML(prefix, activeVal) {
+  function cls(m) { return 'fchip' + (m === activeVal ? ' on' : ''); }
+  return '<div class="filter-row" style="margin-bottom:8px;">' +
+    '<span class="filter-lbl">Market</span>' +
+    '<span class="' + cls('all') + '" id="' + prefix + '_all" onclick="setMktFilter(\'' + prefix.split('_')[1] + '\',\'all\')">All</span>' +
+    '<span class="' + cls('NSE') + '" id="' + prefix + '_NSE" onclick="setMktFilter(\'' + prefix.split('_')[1] + '\',\'NSE\')">NSE</span>' +
+    '<span class="' + cls('US')  + '" id="' + prefix + '_US"  onclick="setMktFilter(\'' + prefix.split('_')[1] + '\',\'US\')">US</span>' +
+  '</div>';
+}
+
 // ─── PAPER TRADES / BACKTEST ─────────────────────────────────────────────────
 var _btTrades = [];   // cached raw paper trade rows
 var _btSelectedIds = new Set();
@@ -2673,6 +2749,7 @@ async function loadPaperTrades() {
   if(from) qs += '&from_date=' + encodeURIComponent(from);
   if(to)   qs += '&to_date='   + encodeURIComponent(to);
   if(sig)  qs += '&sig='       + encodeURIComponent(sig);
+  if(_mktFilterBacktest && _mktFilterBacktest !== 'all') qs += '&market=' + encodeURIComponent(_mktFilterBacktest);
 
   try {
     var tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
@@ -2816,10 +2893,13 @@ function renderBtTable() {
   var emptyEl = document.getElementById('btEmpty');
   if(!tb) return;
 
-  var ocFilter = (document.getElementById('btOcFilter') || {}).value || '';
-  var rows = ocFilter
-    ? _btTrades.filter(function(t) { return t.outcome === ocFilter; })
-    : _btTrades;
+  var ocFilter  = (document.getElementById('btOcFilter') || {}).value || '';
+  var mktFilter = (_mktFilterBacktest || 'all').toUpperCase();
+  var rows = _btTrades.filter(function(t) {
+    if(ocFilter && t.outcome !== ocFilter) return false;
+    if(mktFilter !== 'ALL' && (t.market||'NSE').toUpperCase() !== mktFilter) return false;
+    return true;
+  });
 
   if(!rows.length) {
     tb.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:2rem;color:#aaa;">No trades found.</td></tr>';
@@ -3185,6 +3265,8 @@ function loadLongTermPicks(){
     if(d.error){ status.style.display='block'; status.textContent='Error: '+d.error; return; }
     _ltCache = d;
     _populateDateFilter(d.scan_dates || []);
+    var lastScanned = document.getElementById('ltLastScanned');
+    if(lastScanned) lastScanned.textContent = 'Last scanned: ' + (d.scan_dates && d.scan_dates[0] ? d.scan_dates[0] : '—');
     _renderLtSummary(d.picks || []);
     _renderLtPicks(d.picks || []);
   })

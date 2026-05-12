@@ -202,6 +202,11 @@ _MIGRATIONS = [
     "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS day_high NUMERIC",
     "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS day_low  NUMERIC",
     "ALTER TABLE token_store  ADD COLUMN IF NOT EXISTS is_invalid BOOLEAN NOT NULL DEFAULT FALSE",
+    # Multi-market support — existing rows default to NSE
+    "ALTER TABLE paper_trades  ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'NSE'",
+    "ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'NSE'",
+    "ALTER TABLE evening_picks ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'NSE'",
+    "ALTER TABLE alert_log     ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'NSE'",
 ]
 
 def init_db():
@@ -368,7 +373,7 @@ def save_session_state(state: dict, date_=None):
         return False
 
 # ── Trade history ─────────────────────────────────────────────────────────────
-def get_trades(username=None, from_date=None, to_date=None, sym=None, limit=500):
+def get_trades(username=None, from_date=None, to_date=None, sym=None, limit=500, market=None):
     conn = db()
     if not conn:
         return []
@@ -382,6 +387,8 @@ def get_trades(username=None, from_date=None, to_date=None, sym=None, limit=500)
             where.append("ist_date<=%s"); params.append(to_date)
         if sym:
             where.append("sym=%s"); params.append(sym.upper())
+        if market:
+            where.append("market=%s"); params.append(market.upper())
         sql = "SELECT * FROM trade_history"
         if where:
             sql += " WHERE " + " AND ".join(where)
@@ -403,16 +410,17 @@ def upsert_trade(trade: dict):
             cur.execute("""
                 INSERT INTO trade_history
                     (id, username, ist_date, ist_time, sym, sec, sig, conf, ltp, en, tg, sl, rr,
-                     rsi, reason, actual_en, actual_ex, outcome, pnl, notes)
+                     rsi, reason, actual_en, actual_ex, outcome, pnl, notes, market)
                 VALUES
                     (%(id)s,%(username)s,%(ist_date)s,%(ist_time)s,%(sym)s,%(sec)s,%(sig)s,%(conf)s,
                      %(ltp)s,%(en)s,%(tg)s,%(sl)s,%(rr)s,%(rsi)s,%(reason)s,
-                     %(actual_en)s,%(actual_ex)s,%(outcome)s,%(pnl)s,%(notes)s)
+                     %(actual_en)s,%(actual_ex)s,%(outcome)s,%(pnl)s,%(notes)s,
+                     %(market)s)
                 ON CONFLICT (id) DO UPDATE SET
                     actual_en=EXCLUDED.actual_en, actual_ex=EXCLUDED.actual_ex,
                     outcome=EXCLUDED.outcome, pnl=EXCLUDED.pnl, notes=EXCLUDED.notes,
-                    username=EXCLUDED.username
-            """, trade)
+                    username=EXCLUDED.username, market=EXCLUDED.market
+            """, {**trade, "market": trade.get("market", "NSE")})
         return True
     except Exception as e:
         log.warning("upsert_trade: %s", e)
@@ -732,14 +740,14 @@ def save_paper_trade(trade: dict) -> bool:
                 INSERT INTO paper_trades
                     (id, trade_date, signal_time, sym, sec, sig, conf,
                      signal_price, entry, target, stop_loss, rr, rsi, reason,
-                     created_by)
+                     created_by, market)
                 VALUES
                     (%(id)s, %(trade_date)s, %(signal_time)s, %(sym)s, %(sec)s,
                      %(sig)s, %(conf)s, %(signal_price)s, %(entry)s, %(target)s,
                      %(stop_loss)s, %(rr)s, %(rsi)s, %(reason)s,
-                     %(created_by)s)
+                     %(created_by)s, %(market)s)
                 ON CONFLICT (id) DO NOTHING
-            """, {**trade, "created_by": trade.get("created_by")})
+            """, {**trade, "created_by": trade.get("created_by"), "market": trade.get("market", "NSE")})
         return True
     except Exception as e:
         log.warning("save_paper_trade: %s", e)
@@ -765,7 +773,7 @@ def count_paper_trades(username=None) -> int:
         return 0
 
 def get_paper_trades(from_date=None, to_date=None, sym=None,
-                     outcome=None, limit=500, username=None) -> list:
+                     outcome=None, limit=500, username=None, market=None) -> list:
     for attempt in range(2):
         conn = db()
         if not conn:
@@ -783,6 +791,8 @@ def get_paper_trades(from_date=None, to_date=None, sym=None,
             if username:
                 # Show scanner-generated trades (created_by IS NULL) + this user's own trades
                 where.append("(created_by IS NULL OR created_by = %s)"); params.append(username)
+            if market:
+                where.append("market = %s"); params.append(market.upper())
             sql = "SELECT * FROM paper_trades"
             if where:
                 sql += " WHERE " + " AND ".join(where)

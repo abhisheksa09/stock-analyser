@@ -1259,7 +1259,8 @@ def get_trades():
         from_date=request.args.get("from_date"),
         to_date=request.args.get("to_date"),
         sym=request.args.get("sym"),
-        limit=int(request.args.get("limit", 500))
+        limit=int(request.args.get("limit", 500)),
+        market=request.args.get("market") or None,
     )
     return jsonify({"trades": trades, "count": len(trades)})
 
@@ -1302,6 +1303,7 @@ def save_trade():
         "outcome":   data.get("outcome","pending"),
         "pnl":       data.get("pnl"),
         "notes":     data.get("notes",""),
+        "market":    data.get("market", "NSE").upper(),
     }
 
     ok = _db_module.upsert_trade(trade)
@@ -1414,6 +1416,7 @@ def get_paper_trades():
         outcome=request.args.get("outcome"),
         limit=int(request.args.get("limit", 500)),
         username=sess["username"],
+        market=request.args.get("market") or None,
     )
     return jsonify({"trades": trades, "count": len(trades)})
 
@@ -2097,6 +2100,11 @@ def start_scheduler():
         _last_auto_login["next_run"] = "not scheduled — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing"
         log.warning("Login reminder not scheduled — Telegram not configured")
 
+    # US market scan — every N minutes (runs on ET timezone, 9:30–11:00 AM ET weekdays)
+    sched.add_job(scanner.run_us_scan, trigger="interval", minutes=interval,
+                  id="us_scan", max_instances=1, misfire_grace_time=60)
+    log.info("US market scan job registered — every %d min (active 09:30–11:00 ET)", interval)
+
     # Weekly long-term scan — Sunday at 00:00 IST
     sched.add_job(
         _lt_scan_job,
@@ -2110,7 +2118,7 @@ def start_scheduler():
     log.info("Weekly LT scan job scheduled for Sunday 00:00 IST")
 
     sched.start()
-    log.info("Scheduler started — scanning every %d min", interval)
+    log.info("Scheduler started — scanning every %d min (NSE + US)", interval)
     return sched
 
 _db_module.init_db()   # create any missing tables (IF NOT EXISTS — safe on every restart)
