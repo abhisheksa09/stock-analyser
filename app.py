@@ -1108,6 +1108,10 @@ def admin_clear_token():
     ok = _db_module.delete_token()
     if not ok:
         return jsonify({"error": "Failed to clear token"}), 500
+    # Wipe in-memory token and reset expiry flags so /auth/login
+    # does not keep showing "Already logged in" from the cached value.
+    scanner.set_token("")
+    scanner.STATE.token_expired_alerted = False
     return jsonify({"status": "ok"})
 
 @app.route("/admin/verify", methods=["POST", "OPTIONS"])
