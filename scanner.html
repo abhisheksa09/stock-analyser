@@ -1677,7 +1677,15 @@ var _mktFilterBacktest = 'all';
   const mc=document.getElementById('mktChip');
   if(istM>=555&&istM<570){mc.textContent='Pre-open (IST)';mc.className='chip chip-amber';}
   else if(istM>=570&&istM<930){mc.textContent='Market open (IST)';mc.className='chip chip-green';}
-  else{mc.textContent='Market closed (IST)';mc.className='chip chip-amber';}
+  else{
+    // Check US market (NYSE/NASDAQ 9:30–16:00 ET); Intl handles DST automatically
+    try{
+      const etParts=now.toLocaleString('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit',hour12:false}).split(':');
+      const etM=parseInt(etParts[0])*60+parseInt(etParts[1]||0);
+      if(etM>=570&&etM<960){mc.textContent='Market open (US)';mc.className='chip chip-green';}
+      else{mc.textContent='Market closed';mc.className='chip chip-amber';}
+    }catch(e){mc.textContent='Market closed';mc.className='chip chip-amber';}
+  }
   const g=document.getElementById('quickPills');
   ALL_STOCKS.forEach(s=>{const el=document.createElement('span');el.className='qpill';el.id='qp_'+s.sym;el.textContent=s.sym;el.title=s.name;el.dataset.market=s.market;el.onclick=()=>sel.has(s.sym)?removeSel(s.sym):addSel(s);g.appendChild(el);});
   _refreshQuickPills();
@@ -1838,6 +1846,9 @@ function setTokenStatusUI(ok, name){
     dot.className=''; dot.style.background='#E24B4A';
     txt.textContent = '\u2717 Token invalid \u2014 login again';
     txt.style.color = '#A32D2D';
+    // Reset top chip so it no longer shows "Token active"
+    const dc=document.getElementById('dataChip');
+    if(dc){dc.textContent='No data';dc.className='chip';}
 
     // Restore OAuth button to primary style
     if(btn){
@@ -1978,6 +1989,7 @@ async function clearTodayToken(){
     const d=await r.json();
     if(!r.ok){ msg.textContent='✗ '+(d.error||'Failed'); msg.style.color='#A32D2D'; return; }
     msg.textContent='Token cleared — you can now log in again.'; msg.style.color='#27500A';
+    token='';
     setTokenStatusUI(false,'');
   }catch(e){ msg.textContent='✗ '+e.message; msg.style.color='#A32D2D'; }
 }
