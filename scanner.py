@@ -240,10 +240,13 @@ def _pnl_line(s: dict) -> str:
     return f"+Rs{gain}" if s["sig"] == "BUY" else f"-Rs{gain}", f"-Rs{risk}"
 
 def format_alert(kind: str, s: dict, extra: str = "") -> str:
-    ist_time = datetime.now(IST).strftime("%H:%M IST")
-    gain     = round(abs(s["tg"] - s["en"]), 2)
-    risk     = round(abs(s["sl"] - s["en"]), 2)
-    chg_str  = f"{s['chg']:+.2f}%"
+    ist_time  = datetime.now(IST).strftime("%H:%M IST")
+    gain      = round(abs(s["tg"] - s["en"]), 2)
+    risk      = round(abs(s["sl"] - s["en"]), 2)
+    chg_str   = f"{s['chg']:+.2f}%"
+    is_us     = s.get("market") == "US"
+    cur       = "$" if is_us else "Rs"
+    mkt_name  = "US STOCK SCANNER" if is_us else "NSE SCANNER"
 
     if kind == "green_ready":
         sig_emoji = "🟢" if s["sig"] == "BUY" else "🔴"
@@ -253,19 +256,18 @@ def format_alert(kind: str, s: dict, extra: str = "") -> str:
         nifty_str  = (f"{idx_label}: {ctx['nifty_chg']:+.1f}%  "
                       f"Sector: {ctx['sector_chg']:+.1f}%") if ctx else ""
         warn_str  = ("\n⚠️ " + "  |  ".join(warnings)) if warnings else ""
-        mkt_label = ctx.get("market", "NSE")
         return (
-            f"{sig_emoji} <b>{mkt_label} SCANNER — READY TO TRADE</b>\n"
+            f"{sig_emoji} <b>{mkt_name} — READY TO TRADE</b>\n"
             f"\n"
             f"<b>{s['sym']}</b>  <code>{s['sec']}</code>\n"
             f"Signal  : <b>{s['sig']}</b>  |  Conf: <b>{s['conf']}%</b>\n"
             f"\n"
-            f"Entry   : <code>Rs {s['en']}</code>\n"
-            f"Target  : <code>Rs {s['tg']}</code>  (+Rs {gain})\n"
-            f"Stop SL : <code>Rs {s['sl']}</code>  (-Rs {risk})\n"
+            f"Entry   : <code>{cur} {s['en']}</code>\n"
+            f"Target  : <code>{cur} {s['tg']}</code>  (+{cur} {gain})\n"
+            f"Stop SL : <code>{cur} {s['sl']}</code>  (-{cur} {risk})\n"
             f"R:R     : <b>{s['rr']}:1</b>\n"
             f"\n"
-            f"LTP     : Rs {s['ltp']} ({chg_str})\n"
+            f"LTP     : {cur} {s['ltp']} ({chg_str})\n"
             f"Market  : {nifty_str}\n"
             f"Setup   : {s['reason']}\n"
             f"{warn_str}\n"
@@ -275,33 +277,33 @@ def format_alert(kind: str, s: dict, extra: str = "") -> str:
 
     elif kind == "conf_crossed":
         return (
-            f"📈 <b>NSE SCANNER — CONFIDENCE CROSSED {READY_GREEN_MIN}%</b>\n"
+            f"📈 <b>{mkt_name} — CONFIDENCE CROSSED {READY_GREEN_MIN}%</b>\n"
             f"\n"
             f"<b>{s['sym']}</b>  <code>{s['sec']}</code>\n"
             f"Signal  : <b>{s['sig']}</b>\n"
             f"Conf    : <b>{s['conf']}%</b>  (was {extra}%)\n"
             f"\n"
-            f"Entry   : <code>Rs {s['en']}</code>\n"
-            f"SL      : <code>Rs {s['sl']}</code>\n"
-            f"LTP     : Rs {s['ltp']} ({chg_str})\n"
+            f"Entry   : <code>{cur} {s['en']}</code>\n"
+            f"SL      : <code>{cur} {s['sl']}</code>\n"
+            f"LTP     : {cur} {s['ltp']} ({chg_str})\n"
             f"\n"
             f"⏰ {ist_time}"
         )
 
     elif kind == "reversal":
         return (
-            f"⚡ <b>NSE SCANNER — SIGNAL REVERSAL</b>\n"
+            f"⚡ <b>{mkt_name} — SIGNAL REVERSAL</b>\n"
             f"\n"
             f"<b>{s['sym']}</b>  <code>{s['sec']}</code>\n"
             f"Was     : <b>{extra}</b>  →  Now: <b>{s['sig']}</b>\n"
-            f"LTP     : Rs {s['ltp']} ({chg_str})\n"
+            f"LTP     : {cur} {s['ltp']} ({chg_str})\n"
             f"\n"
             f"⚠️ Conflicting signals — <b>skip this trade today</b>\n"
             f"\n"
             f"⏰ {ist_time}"
         )
 
-    return f"NSE Scanner: {s['sym']} {kind} @ {ist_time}"
+    return f"{mkt_name}: {s['sym']} {kind} @ {ist_time}"
 
 # ─── IST helpers ──────────────────────────────────────────────────────────────
 
@@ -789,6 +791,7 @@ def _format_real_trade_alert(s: dict, evening_pick: dict) -> str:
     sig_emoji = "🟢" if s["sig"] == "BUY" else "🔴"
     gain  = round(abs(s["tg"] - s["en"]), 2)
     risk  = round(abs(s["sl"] - s["en"]), 2)
+    cur = "$" if s.get("market") == "US" else "Rs"
     return (
         f"⚡ <b>REAL TRADE CANDIDATE</b> {sig_emoji}\n"
         f"\n"
@@ -796,16 +799,16 @@ def _format_real_trade_alert(s: dict, evening_pick: dict) -> str:
         f"Signal  : <b>{s['sig']}</b>\n"
         f"Conf    : <b>{s['conf']}%</b>  (evening: {evening_pick['conf']}%)\n"
         f"\n"
-        f"Entry   : <code>Rs {s['en']}</code>\n"
-        f"Target  : <code>Rs {s['tg']}</code>  (+Rs {gain})\n"
-        f"Stop SL : <code>Rs {s['sl']}</code>  (-Rs {risk})\n"
+        f"Entry   : <code>{cur} {s['en']}</code>\n"
+        f"Target  : <code>{cur} {s['tg']}</code>  (+{cur} {gain})\n"
+        f"Stop SL : <code>{cur} {s['sl']}</code>  (-{cur} {risk})\n"
         f"R:R     : <b>{s['rr']}:1</b>\n"
         f"\n"
-        f"LTP     : Rs {s['ltp']} ({s['chg']:+.2f}%)\n"
+        f"LTP     : {cur} {s['ltp']} ({s['chg']:+.2f}%)\n"
         f"Setup   : {s['reason']}\n"
         f"\n"
         f"✅ Confirmed in both evening watchlist and morning scan\n"
-        f"👉 Place limit order near Rs {s['en']} | Set SL at Rs {s['sl']}\n"
+        f"👉 Place limit order near {cur} {s['en']} | Set SL at {cur} {s['sl']}\n"
         f"\n"
         f"⏰ {ist_time}"
     )

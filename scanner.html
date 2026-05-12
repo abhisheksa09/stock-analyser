@@ -811,7 +811,7 @@ th[data-tip]{cursor:default;}
             <th class="r htbl-hide-mobile" data-tip="Actual day range: lowest to highest price the stock traded during the session.">Day range</th>
             <th class="r">P&amp;L pts</th>
             <th class="r">P&amp;L %</th>
-            <th class="r">P&amp;L ₹</th>
+            <th class="r">P&amp;L val</th>
             <th>Outcome</th>
             <th class="cb-col"></th>
           </tr>
@@ -3040,10 +3040,12 @@ function renderBtTable() {
       var pnlPts  = t.pnl_pts != null ? (t.pnl_pts >= 0 ? '+' : '') + fc(t.pnl_pts) : '—';
       var pnlPct  = t.pnl_pct != null ? (t.pnl_pct >= 0 ? '+' : '') + t.pnl_pct.toFixed(2) + '%' : '—';
       var pnlCls  = t.pnl_pts != null ? (t.pnl_pts >= 0 ? 'pnl-pos' : 'pnl-neg') : '';
+      var _isUS   = t.market === 'US';
+      var _sym    = _isUS ? '$' : '₹';
       var _qty    = t.entry > 0 ? Math.floor(btCapital() / t.entry) : 0;
       var _inr    = (t.pnl_pts != null && _qty > 0) ? Math.round(t.pnl_pts * _qty) : null;
-      var pnlInr  = _inr != null ? ((_inr >= 0 ? '+' : '') + '₹' + Math.abs(_inr).toLocaleString('en-IN')) : '—';
-      var closePx = t.close_price != null ? '₹' + fc(t.close_price) : '—';
+      var pnlInr  = _inr != null ? ((_inr >= 0 ? '+' : '') + _sym + Math.abs(_inr).toLocaleString('en-IN')) : '—';
+      var closePx = t.close_price != null ? _sym + fc(t.close_price) : '—';
       var confMt  = confMeta(t.conf || 0);
       var isSel   = _btSelectedIds.has(t.id);
       var isBest  = (t === bestPick);
@@ -3059,12 +3061,12 @@ function renderBtTable() {
         '<td><div class="sym">' + (t.sym || '') + '</div>' + (isBest ? '<div style="margin:2px 0 1px;"><span style="font-size:10px;background:#EF9F27;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600;white-space:nowrap;display:inline-block;">★ Pick</span></div>' : '') + '<div class="sec">' + (t.sec || '') + '</div></td>' +
         '<td><span class="sig ' + sigCls + '"><span class="dot"></span>' + t.sig + '</span></td>' +
         '<td><span class="conf-n ' + confMt.cls + '">' + (t.conf || 0) + '%</span></td>' +
-        '<td class="r">₹' + fc(t.entry) + '</td>' +
-        '<td class="r" style="color:#3B6D11;">₹' + fc(t.target) + '</td>' +
-        '<td class="r" style="color:#A32D2D;">₹' + fc(t.stop_loss) + '</td>' +
+        '<td class="r">' + _sym + fc(t.entry) + '</td>' +
+        '<td class="r" style="color:#3B6D11;">' + _sym + fc(t.target) + '</td>' +
+        '<td class="r" style="color:#A32D2D;">' + _sym + fc(t.stop_loss) + '</td>' +
         '<td class="r htbl-hide-mobile">' + (t.rr ? t.rr + ':1' : '—') + '</td>' +
         '<td class="r">' + closePx + '</td>' +
-        '<td class="r htbl-hide-mobile">' + (t.day_low != null && t.day_high != null ? '₹' + fc(t.day_low) + ' – ₹' + fc(t.day_high) : '—') + '</td>' +
+        '<td class="r htbl-hide-mobile">' + (t.day_low != null && t.day_high != null ? _sym + fc(t.day_low) + ' – ' + _sym + fc(t.day_high) : '—') + '</td>' +
         '<td class="r"><span class="' + pnlCls + '">' + pnlPts + '</span></td>' +
         '<td class="r"><span class="' + pnlCls + '">' + pnlPct + '</span></td>' +
         '<td class="r"><span class="' + pnlCls + '">' + pnlInr + '</span></td>' +

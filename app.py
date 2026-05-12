@@ -2107,7 +2107,7 @@ def _us_eod_settlement_job():
     try:
         today_et = now_et.strftime("%Y-%m-%d")
         trades = _db_module.get_paper_trades(from_date=today_et, to_date=today_et, market="US")
-        _email.send_email(*_email.format_eod_settlement(trades, settled, skipped, errors))
+        _email.send_email(*_email.format_eod_settlement(trades, settled, skipped, errors, market="US"))
     except Exception as _ee:
         log.warning("US EOD settlement email failed: %s", _ee)
 

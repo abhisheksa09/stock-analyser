@@ -113,9 +113,11 @@ _HEADER_COLORS = {
 }
 
 
-def _wrap(title: str, subtitle: str, body_html: str, kind: str) -> str:
-    color = _HEADER_COLORS.get(kind, "#374151")
-    ts    = datetime.now(IST).strftime("%d %b %Y, %H:%M IST")
+def _wrap(title: str, subtitle: str, body_html: str, kind: str, market: str = "NSE") -> str:
+    color      = _HEADER_COLORS.get(kind, "#374151")
+    ts         = datetime.now(IST).strftime("%d %b %Y, %H:%M IST")
+    brand_hdr  = "US STOCK SCANNER" if market == "US" else "NSE STOCK SCANNER"
+    brand_ftr  = "US Stock Scanner" if market == "US" else "NSE Scanner"
     return (
         '<!DOCTYPE html><html>'
         '<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'
@@ -126,13 +128,13 @@ def _wrap(title: str, subtitle: str, body_html: str, kind: str) -> str:
         'style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">'
         f'<tr><td style="background:{color};padding:20px 24px;">'
         '<p style="margin:0;color:#ffffff;font-size:11px;letter-spacing:1px;text-transform:uppercase;opacity:0.85;">'
-        'NSE STOCK SCANNER</p>'
+        f'{brand_hdr}</p>'
         f'<h1 style="margin:4px 0 0;color:#ffffff;font-size:20px;font-weight:700;">{title}</h1>'
         f'<p style="margin:4px 0 0;color:#ffffff;font-size:13px;opacity:0.85;">{subtitle}</p>'
         '</td></tr>'
         f'<tr><td style="padding:24px;">{body_html}</td></tr>'
         '<tr><td style="background:#f9fafb;padding:12px 24px;border-top:1px solid #e5e7eb;text-align:center;">'
-        f'<p style="margin:0;color:#6b7280;font-size:11px;">NSE Scanner &middot; {ts} &middot; Automated alert</p>'
+        f'<p style="margin:0;color:#6b7280;font-size:11px;">{brand_ftr} &middot; {ts} &middot; Automated alert</p>'
         '</td></tr>'
         '</table></td></tr></table>'
         '</body></html>'
@@ -177,11 +179,14 @@ def _btn(text: str, url: str, color: str = "#374151") -> str:
 
 def format_green_ready(s: dict) -> tuple:
     """Returns (subject, html_body) for a Green Ready alert."""
-    sig   = s["sig"]
-    gain  = round(abs(s["tg"] - s["en"]), 2)
-    risk  = round(abs(s["sl"] - s["en"]), 2)
-    ctx   = s.get("market_ctx") or {}
-    warns = s.get("ctx_warnings") or []
+    sig    = s["sig"]
+    gain   = round(abs(s["tg"] - s["en"]), 2)
+    risk   = round(abs(s["sl"] - s["en"]), 2)
+    ctx    = s.get("market_ctx") or {}
+    warns  = s.get("ctx_warnings") or []
+    market = s.get("market", "NSE")
+    cur    = "$" if market == "US" else "Rs&nbsp;"
+    scanner_name = "US Stock Scanner" if market == "US" else "NSE Scanner"
 
     nifty_str = (
         f"Nifty {ctx['nifty_chg']:+.1f}% &nbsp;|&nbsp; Sector {ctx['sector_chg']:+.1f}%"
@@ -199,22 +204,25 @@ def format_green_ready(s: dict) -> tuple:
         f'&nbsp; {_sig_badge(sig)}</p>'
         + _table(
             _row("Confidence", f'<b>{s["conf"]}%</b>'),
-            _row("Entry",      f'Rs&nbsp;{s["en"]}'),
-            _row("Target",     f'Rs&nbsp;{s["tg"]} &nbsp;<span style="color:#16a34a">+Rs&nbsp;{gain}</span>'),
-            _row("Stop Loss",  f'Rs&nbsp;{s["sl"]} &nbsp;<span style="color:#dc2626">-Rs&nbsp;{risk}</span>'),
+            _row("Entry",      f'{cur}{s["en"]}'),
+            _row("Target",     f'{cur}{s["tg"]} &nbsp;<span style="color:#16a34a">+{cur}{gain}</span>'),
+            _row("Stop Loss",  f'{cur}{s["sl"]} &nbsp;<span style="color:#dc2626">-{cur}{risk}</span>'),
             _row("R:R",        f'{s["rr"]}:1'),
-            _row("LTP",        f'Rs&nbsp;{s["ltp"]} ({s["chg"]:+.2f}%)'),
+            _row("LTP",        f'{cur}{s["ltp"]} ({s["chg"]:+.2f}%)'),
             _row("Market",     nifty_str),
             _row("Setup",      s.get("reason", "")),
         )
         + warn_html
     )
-    subject = f'{"BUY" if sig == "BUY" else "SELL"} {s["sym"]} — Green Ready ({s["conf"]}% conf) | NSE Scanner'
-    return subject, _wrap("Ready to Trade", f'{s["sym"]} · {sig} signal', body, "green_ready")
+    subject = f'{"BUY" if sig == "BUY" else "SELL"} {s["sym"]} — Green Ready ({s["conf"]}% conf) | {scanner_name}'
+    return subject, _wrap("Ready to Trade", f'{s["sym"]} · {sig} signal', body, "green_ready", market=market)
 
 
 def format_conf_crossed(s: dict, prev_conf: int, threshold: int) -> tuple:
     """Returns (subject, html_body) for a Confidence Crossed alert."""
+    market = s.get("market", "NSE")
+    cur    = "$" if market == "US" else "Rs&nbsp;"
+    scanner_name = "US Stock Scanner" if market == "US" else "NSE Scanner"
     body = (
         f'<p style="margin:0 0 16px;font-size:15px;font-weight:700;">'
         f'{s["sym"]} &nbsp;'
@@ -224,21 +232,24 @@ def format_conf_crossed(s: dict, prev_conf: int, threshold: int) -> tuple:
             _row("Confidence",
                  f'<b>{s["conf"]}%</b> '
                  f'<span style="color:#6b7280;font-size:12px;">(was {prev_conf}%)</span>'),
-            _row("Entry",     f'Rs&nbsp;{s["en"]}'),
-            _row("Stop Loss", f'Rs&nbsp;{s["sl"]}'),
-            _row("LTP",       f'Rs&nbsp;{s["ltp"]} ({s["chg"]:+.2f}%)'),
+            _row("Entry",     f'{cur}{s["en"]}'),
+            _row("Stop Loss", f'{cur}{s["sl"]}'),
+            _row("LTP",       f'{cur}{s["ltp"]} ({s["chg"]:+.2f}%)'),
         )
     )
-    subject = f'{s["sym"]} crossed {threshold}% confidence | NSE Scanner'
+    subject = f'{s["sym"]} crossed {threshold}% confidence | {scanner_name}'
     return subject, _wrap(
         f"Confidence Crossed {threshold}%",
         f'{s["sym"]} · now {s["conf"]}%',
-        body, "conf_crossed",
+        body, "conf_crossed", market=market,
     )
 
 
 def format_reversal(s: dict, locked_sig: str) -> tuple:
     """Returns (subject, html_body) for a Signal Reversal alert."""
+    market = s.get("market", "NSE")
+    cur    = "$" if market == "US" else "Rs&nbsp;"
+    scanner_name = "US Stock Scanner" if market == "US" else "NSE Scanner"
     body = (
         f'<p style="margin:0 0 16px;font-size:15px;font-weight:700;">'
         f'{s["sym"]} &nbsp;'
@@ -246,16 +257,16 @@ def format_reversal(s: dict, locked_sig: str) -> tuple:
         + _table(
             _row("Was",  _sig_badge(locked_sig)),
             _row("Now",  _sig_badge(s["sig"])),
-            _row("LTP",  f'Rs&nbsp;{s["ltp"]} ({s["chg"]:+.2f}%)'),
+            _row("LTP",  f'{cur}{s["ltp"]} ({s["chg"]:+.2f}%)'),
         )
         + '<p style="margin:16px 0 0;color:#c2410c;font-weight:700;font-size:13px;">'
           '&#9888; Conflicting signals — skip this trade today</p>'
     )
-    subject = f'{s["sym"]} signal reversed ({locked_sig} → {s["sig"]}) | NSE Scanner'
+    subject = f'{s["sym"]} signal reversed ({locked_sig} → {s["sig"]}) | {scanner_name}'
     return subject, _wrap(
         "Signal Reversal",
         f'{s["sym"]} · {locked_sig} → {s["sig"]}',
-        body, "reversal",
+        body, "reversal", market=market,
     )
 
 
@@ -401,7 +412,7 @@ def _analysis_row_html(t: dict) -> str:
     )
 
 
-def format_eod_settlement(trades: list, settled: int, skipped: int, errors: list) -> tuple:
+def format_eod_settlement(trades: list, settled: int, skipped: int, errors: list, market: str = "NSE") -> tuple:
     """Returns (subject, html_body) for the EOD paper-trade settlement digest."""
     date_str  = datetime.now(IST).strftime("%d %b %Y")
     won       = [t for t in trades if t.get("outcome") in ("won",  "partial_win")]
@@ -439,13 +450,14 @@ def format_eod_settlement(trades: list, settled: int, skipped: int, errors: list
                 oc, ot = "#6b7280", "Open"
             pnl_str = f"{float(pnl):+.2f}" if pnl is not None else "&mdash;"
             sig_icon = "&#9650;" if t.get("sig") == "BUY" else "&#9660;"
+            t_cur = "$" if t.get("market") == "US" else "Rs&nbsp;"
             rows_html += (
                 '<tr>'
                 f'<td style="padding:8px 6px;font-size:12px;font-weight:600;">{t.get("sym","")}</td>'
                 f'<td style="padding:8px 6px;font-size:12px;">{sig_icon} {t.get("sig","")}</td>'
-                f'<td style="padding:8px 6px;font-size:12px;text-align:right;">Rs&nbsp;{t.get("entry","")}</td>'
+                f'<td style="padding:8px 6px;font-size:12px;text-align:right;">{t_cur}{t.get("entry","")}</td>'
                 f'<td style="padding:8px 6px;font-size:12px;text-align:right;">'
-                f'Rs&nbsp;{t.get("close_price") or "&mdash;"}</td>'
+                f'{t_cur}{t.get("close_price") or "&mdash;"}</td>'
                 f'<td style="padding:8px 6px;font-size:12px;text-align:right;color:{oc};font-weight:600;">{ot}</td>'
                 f'<td style="padding:8px 6px;font-size:12px;text-align:right;'
                 f'color:{"#16a34a" if pnl and float(pnl) >= 0 else "#dc2626"};">{pnl_str}</td>'
@@ -480,15 +492,16 @@ def format_eod_settlement(trades: list, settled: int, skipped: int, errors: list
         + trade_table_html
         + error_html
     )
-    pnl_sign = f"{total_pnl:+.2f}" if pnl_list else "0.00"
+    pnl_sign     = f"{total_pnl:+.2f}" if pnl_list else "0.00"
+    scanner_name = "US Stock Scanner" if market == "US" else "NSE Scanner"
     subject  = (
-        f"NSE Scanner: EOD — {settled} trades settled, "
+        f"{scanner_name}: EOD — {settled} trades settled, "
         f"{win_rate}% win rate, {pnl_sign} pts P&L"
     )
     return subject, _wrap(
         "EOD Settlement",
         f"{date_str} · {settled} trades settled",
-        body, "eod_settlement",
+        body, "eod_settlement", market=market,
     )
 
 
