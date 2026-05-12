@@ -1436,37 +1436,73 @@ const UPSTOX  = 'https://api.upstox.com';
 const SK = 'nse_v2';
 
 const STOCKS = [
-  {sym:'HDFCBANK',  name:'HDFC Bank',              ikey:'NSE_EQ|INE040A01034', sec:'Banking'},
-  {sym:'RELIANCE',  name:'Reliance Industries',     ikey:'NSE_EQ|INE002A01018', sec:'Energy'},
-  {sym:'TCS',       name:'Tata Consultancy',        ikey:'NSE_EQ|INE467B01029', sec:'IT'},
-  {sym:'INFY',      name:'Infosys',                 ikey:'NSE_EQ|INE009A01021', sec:'IT'},
-  {sym:'ICICIBANK', name:'ICICI Bank',              ikey:'NSE_EQ|INE090A01021', sec:'Banking'},
-  {sym:'SBIN',      name:'State Bank of India',     ikey:'NSE_EQ|INE062A01020', sec:'Banking'},
-  {sym:'BHARTIARTL',name:'Bharti Airtel',           ikey:'NSE_EQ|INE397D01024', sec:'Telecom'},
-  {sym:'KOTAKBANK', name:'Kotak Mahindra Bank',     ikey:'NSE_EQ|INE237A01028', sec:'Banking'},
-  {sym:'HINDUNILVR',name:'Hindustan Unilever',      ikey:'NSE_EQ|INE030A01027', sec:'FMCG'},
-  {sym:'BAJFINANCE',name:'Bajaj Finance',           ikey:'NSE_EQ|INE296A01024', sec:'NBFC'},
-  {sym:'LT',        name:'Larsen & Toubro',         ikey:'NSE_EQ|INE018A01030', sec:'Infra'},
-  {sym:'AXISBANK',  name:'Axis Bank',               ikey:'NSE_EQ|INE238A01034', sec:'Banking'},
-  {sym:'MARUTI',    name:'Maruti Suzuki',           ikey:'NSE_EQ|INE585B01010', sec:'Auto'},
-  {sym:'SUNPHARMA', name:'Sun Pharmaceutical',      ikey:'NSE_EQ|INE044A01036', sec:'Pharma'},
-  {sym:'TITAN',     name:'Titan Company',           ikey:'NSE_EQ|INE280A01028', sec:'Consumer'},
-  {sym:'WIPRO',     name:'Wipro',                   ikey:'NSE_EQ|INE075A01022', sec:'IT'},
-  {sym:'HCLTECH',   name:'HCL Technologies',        ikey:'NSE_EQ|INE860A01027', sec:'IT'},
-  {sym:'ITC',       name:'ITC Limited',             ikey:'NSE_EQ|INE154A01025', sec:'FMCG'},
-  {sym:'TATAMOTORS',name:'Tata Motors',             ikey:'NSE_EQ|INE155A01022', sec:'Auto'},
-  {sym:'TATASTEEL', name:'Tata Steel',              ikey:'NSE_EQ|INE081A01020', sec:'Metals'},
-  {sym:'DRREDDY',   name:"Dr. Reddy's Labs",        ikey:'NSE_EQ|INE089A01023', sec:'Pharma'},
-  {sym:'CIPLA',     name:'Cipla',                   ikey:'NSE_EQ|INE059A01026', sec:'Pharma'},
-  {sym:'TECHM',     name:'Tech Mahindra',           ikey:'NSE_EQ|INE669C01036', sec:'IT'},
-  {sym:'INDUSINDBK',name:'IndusInd Bank',           ikey:'NSE_EQ|INE095A01012', sec:'Banking'},
-  {sym:'NTPC',      name:'NTPC Limited',            ikey:'NSE_EQ|INE733E01010', sec:'Utilities'},
-  {sym:'ONGC',      name:'Oil & Natural Gas',       ikey:'NSE_EQ|INE213A01029', sec:'Energy'},
-  {sym:'COALINDIA', name:'Coal India',              ikey:'NSE_EQ|INE522F01014', sec:'Energy'},
-  {sym:'ASIANPAINT',name:'Asian Paints',            ikey:'NSE_EQ|INE021A01026', sec:'Consumer'},
-  {sym:'ULTRACEMCO',name:'UltraTech Cement',        ikey:'NSE_EQ|INE481G01011', sec:'Cement'},
-  {sym:'BAJAJAUTO', name:'Bajaj Auto (BAJAJ-AUTO)', ikey:'NSE_EQ|INE917I01026', sec:'Auto'},
+  {sym:'HDFCBANK',  name:'HDFC Bank',              ikey:'NSE_EQ|INE040A01034', sec:'Banking',  market:'NSE'},
+  {sym:'RELIANCE',  name:'Reliance Industries',     ikey:'NSE_EQ|INE002A01018', sec:'Energy',   market:'NSE'},
+  {sym:'TCS',       name:'Tata Consultancy',        ikey:'NSE_EQ|INE467B01029', sec:'IT',       market:'NSE'},
+  {sym:'INFY',      name:'Infosys',                 ikey:'NSE_EQ|INE009A01021', sec:'IT',       market:'NSE'},
+  {sym:'ICICIBANK', name:'ICICI Bank',              ikey:'NSE_EQ|INE090A01021', sec:'Banking',  market:'NSE'},
+  {sym:'SBIN',      name:'State Bank of India',     ikey:'NSE_EQ|INE062A01020', sec:'Banking',  market:'NSE'},
+  {sym:'BHARTIARTL',name:'Bharti Airtel',           ikey:'NSE_EQ|INE397D01024', sec:'Telecom',  market:'NSE'},
+  {sym:'KOTAKBANK', name:'Kotak Mahindra Bank',     ikey:'NSE_EQ|INE237A01028', sec:'Banking',  market:'NSE'},
+  {sym:'HINDUNILVR',name:'Hindustan Unilever',      ikey:'NSE_EQ|INE030A01027', sec:'FMCG',     market:'NSE'},
+  {sym:'BAJFINANCE',name:'Bajaj Finance',           ikey:'NSE_EQ|INE296A01024', sec:'NBFC',     market:'NSE'},
+  {sym:'LT',        name:'Larsen & Toubro',         ikey:'NSE_EQ|INE018A01030', sec:'Infra',    market:'NSE'},
+  {sym:'AXISBANK',  name:'Axis Bank',               ikey:'NSE_EQ|INE238A01034', sec:'Banking',  market:'NSE'},
+  {sym:'MARUTI',    name:'Maruti Suzuki',           ikey:'NSE_EQ|INE585B01010', sec:'Auto',     market:'NSE'},
+  {sym:'SUNPHARMA', name:'Sun Pharmaceutical',      ikey:'NSE_EQ|INE044A01036', sec:'Pharma',   market:'NSE'},
+  {sym:'TITAN',     name:'Titan Company',           ikey:'NSE_EQ|INE280A01028', sec:'Consumer', market:'NSE'},
+  {sym:'WIPRO',     name:'Wipro',                   ikey:'NSE_EQ|INE075A01022', sec:'IT',       market:'NSE'},
+  {sym:'HCLTECH',   name:'HCL Technologies',        ikey:'NSE_EQ|INE860A01027', sec:'IT',       market:'NSE'},
+  {sym:'ITC',       name:'ITC Limited',             ikey:'NSE_EQ|INE154A01025', sec:'FMCG',     market:'NSE'},
+  {sym:'TATAMOTORS',name:'Tata Motors',             ikey:'NSE_EQ|INE155A01022', sec:'Auto',     market:'NSE'},
+  {sym:'TATASTEEL', name:'Tata Steel',              ikey:'NSE_EQ|INE081A01020', sec:'Metals',   market:'NSE'},
+  {sym:'DRREDDY',   name:"Dr. Reddy's Labs",        ikey:'NSE_EQ|INE089A01023', sec:'Pharma',   market:'NSE'},
+  {sym:'CIPLA',     name:'Cipla',                   ikey:'NSE_EQ|INE059A01026', sec:'Pharma',   market:'NSE'},
+  {sym:'TECHM',     name:'Tech Mahindra',           ikey:'NSE_EQ|INE669C01036', sec:'IT',       market:'NSE'},
+  {sym:'INDUSINDBK',name:'IndusInd Bank',           ikey:'NSE_EQ|INE095A01012', sec:'Banking',  market:'NSE'},
+  {sym:'NTPC',      name:'NTPC Limited',            ikey:'NSE_EQ|INE733E01010', sec:'Utilities',market:'NSE'},
+  {sym:'ONGC',      name:'Oil & Natural Gas',       ikey:'NSE_EQ|INE213A01029', sec:'Energy',   market:'NSE'},
+  {sym:'COALINDIA', name:'Coal India',              ikey:'NSE_EQ|INE522F01014', sec:'Energy',   market:'NSE'},
+  {sym:'ASIANPAINT',name:'Asian Paints',            ikey:'NSE_EQ|INE021A01026', sec:'Consumer', market:'NSE'},
+  {sym:'ULTRACEMCO',name:'UltraTech Cement',        ikey:'NSE_EQ|INE481G01011', sec:'Cement',   market:'NSE'},
+  {sym:'BAJAJAUTO', name:'Bajaj Auto (BAJAJ-AUTO)', ikey:'NSE_EQ|INE917I01026', sec:'Auto',     market:'NSE'},
 ];
+
+const US_STOCKS = [
+  {sym:'AAPL',  name:'Apple',              sec:'Technology', market:'US'},
+  {sym:'MSFT',  name:'Microsoft',          sec:'Technology', market:'US'},
+  {sym:'NVDA',  name:'Nvidia',             sec:'Technology', market:'US'},
+  {sym:'GOOGL', name:'Alphabet',           sec:'Technology', market:'US'},
+  {sym:'META',  name:'Meta Platforms',     sec:'Technology', market:'US'},
+  {sym:'AMD',   name:'Advanced Micro Devices', sec:'Technology', market:'US'},
+  {sym:'NFLX',  name:'Netflix',            sec:'Technology', market:'US'},
+  {sym:'CRM',   name:'Salesforce',         sec:'Technology', market:'US'},
+  {sym:'AMZN',  name:'Amazon',             sec:'Consumer',   market:'US'},
+  {sym:'TSLA',  name:'Tesla',              sec:'Consumer',   market:'US'},
+  {sym:'WMT',   name:'Walmart',            sec:'Consumer',   market:'US'},
+  {sym:'HD',    name:'Home Depot',         sec:'Consumer',   market:'US'},
+  {sym:'MCD',   name:'McDonald\'s',        sec:'Consumer',   market:'US'},
+  {sym:'COST',  name:'Costco',             sec:'Consumer',   market:'US'},
+  {sym:'DIS',   name:'Disney',             sec:'Consumer',   market:'US'},
+  {sym:'JPM',   name:'JPMorgan Chase',     sec:'Financials', market:'US'},
+  {sym:'BAC',   name:'Bank of America',    sec:'Financials', market:'US'},
+  {sym:'GS',    name:'Goldman Sachs',      sec:'Financials', market:'US'},
+  {sym:'V',     name:'Visa',               sec:'Financials', market:'US'},
+  {sym:'MA',    name:'Mastercard',         sec:'Financials', market:'US'},
+  {sym:'JNJ',   name:'Johnson & Johnson',  sec:'Healthcare', market:'US'},
+  {sym:'UNH',   name:'UnitedHealth',       sec:'Healthcare', market:'US'},
+  {sym:'PFE',   name:'Pfizer',             sec:'Healthcare', market:'US'},
+  {sym:'ABBV',  name:'AbbVie',             sec:'Healthcare', market:'US'},
+  {sym:'XOM',   name:'ExxonMobil',         sec:'Energy',     market:'US'},
+  {sym:'CVX',   name:'Chevron',            sec:'Energy',     market:'US'},
+  {sym:'BA',    name:'Boeing',             sec:'Industrial', market:'US'},
+  {sym:'CAT',   name:'Caterpillar',        sec:'Industrial', market:'US'},
+  {sym:'GE',    name:'GE Aerospace',       sec:'Industrial', market:'US'},
+  {sym:'SPY',   name:'S&P 500 ETF',        sec:'ETF',        market:'US'},
+  {sym:'QQQ',   name:'Nasdaq 100 ETF',     sec:'ETF',        market:'US'},
+];
+
+const ALL_STOCKS = STOCKS.concat(US_STOCKS);
 
 
 // ─── CONFIDENCE ENGINE ────────────────────────────────────────────────────────
@@ -1687,17 +1723,23 @@ function renderTags(){
 }
 
 // ─── SEARCH ───────────────────────────────────────────────────────────────────
+function _searchPool(){
+  const f=(_mktFilterScanner||'all').toUpperCase();
+  if(f==='NSE') return STOCKS;
+  if(f==='US')  return US_STOCKS;
+  return ALL_STOCKS;
+}
 function onSearch(){
   const v=document.getElementById('searchInput').value.trim().toUpperCase();
   const dd=document.getElementById('ddBox');ddIdx=-1;
   if(!v){dd.classList.remove('open');return;}
-  const m=STOCKS.filter(s=>s.sym.includes(v)||s.name.toUpperCase().includes(v)).slice(0,8);
+  const m=_searchPool().filter(s=>s.sym.includes(v)||s.name.toUpperCase().includes(v)).slice(0,8);
   if(!m.length){dd.innerHTML='<div class="dd-row" style="color:#aaa;">No match</div>';dd.classList.add('open');return;}
   dd.innerHTML=m.map(s=>'<div class="dd-row" data-sym="'+s.sym+'" onmousedown="pickDD(this.dataset.sym)"><div><span class="dd-sym">'+s.sym+'</span><span class="dd-name"> \u2014 '+s.name+'</span></div><span class="dd-sec">'+s.sec+'</span></div>').join('');
   dd.classList.add('open');
 }
-function pickDD(sym){const s=STOCKS.find(x=>x.sym===sym);if(s)addSel(s);document.getElementById('searchInput').value='';document.getElementById('ddBox').classList.remove('open');}
-function addFromSearch(){const v=document.getElementById('searchInput').value.trim().toUpperCase();if(!v)return;const s=STOCKS.find(x=>x.sym===v||x.name.toUpperCase()===v);if(s){addSel(s);document.getElementById('searchInput').value='';document.getElementById('ddBox').classList.remove('open');}else showErr('"'+v+'" not found.');}
+function pickDD(sym){const s=ALL_STOCKS.find(x=>x.sym===sym);if(s)addSel(s);document.getElementById('searchInput').value='';document.getElementById('ddBox').classList.remove('open');}
+function addFromSearch(){const v=document.getElementById('searchInput').value.trim().toUpperCase();if(!v)return;const s=_searchPool().find(x=>x.sym===v||x.name.toUpperCase()===v);if(s){addSel(s);document.getElementById('searchInput').value='';document.getElementById('ddBox').classList.remove('open');}else showErr('"'+v+'" not found.');}
 function onKey(e){const dd=document.getElementById('ddBox'),items=dd.querySelectorAll('.dd-row');if(e.key==='ArrowDown'){ddIdx=Math.min(ddIdx+1,items.length-1);hlDD(items);}else if(e.key==='ArrowUp'){ddIdx=Math.max(ddIdx-1,0);hlDD(items);}else if(e.key==='Enter'){e.preventDefault();ddIdx>=0&&items[ddIdx]?pickDD(items[ddIdx].dataset.sym):addFromSearch();}else if(e.key==='Escape')dd.classList.remove('open');}
 function hlDD(items){items.forEach((el,i)=>el.classList.toggle('hi',i===ddIdx));if(items[ddIdx])items[ddIdx].scrollIntoView({block:'nearest'});}
 document.addEventListener('click',e=>{if(!e.target.closest('.search-wrap'))document.getElementById('ddBox').classList.remove('open');});
