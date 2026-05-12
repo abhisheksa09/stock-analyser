@@ -432,6 +432,25 @@ def get_chat_id():
         "next_step": "Copy the chat_id value and set it as TELEGRAM_CHAT_ID in Render env vars"
     })
 
+# ── US stock data (yfinance, no token required) ───────────────────────────────
+@app.route("/us-stock-data")
+def us_stock_data():
+    sym = (request.args.get("sym") or "").strip().upper()
+    if not sym:
+        return cors(jsonify({"error": "sym parameter required"})), 400
+    try:
+        from data_provider import get_intraday_candles, get_daily_candles
+        intra = get_intraday_candles(sym, "US")
+        daily = get_daily_candles(sym, "US")
+        ltp   = float(intra[-1][4]) if intra else (float(daily[0][4]) if daily else None)
+        if ltp is None:
+            return cors(jsonify({"error": f"No data returned for {sym}"})), 404
+        return cors(jsonify({"sym": sym, "intra": intra, "daily": daily, "ltp": ltp}))
+    except Exception as e:
+        log.warning("us-stock-data %s: %s", sym, e)
+        return cors(jsonify({"error": str(e)})), 500
+
+
 # ── Dry run test scan ────────────────────────────────────────────────────────
 @app.route("/dry-scan", methods=["GET", "POST"])
 def dry_scan():

@@ -551,8 +551,8 @@ th[data-tip]{cursor:default;}
     <div id="scanMktPills" style="margin-bottom:6px;">
       <div class="filter-row">
         <span class="filter-lbl">Market</span>
-        <span class="fchip on" id="mktScan_all" onclick="setMktFilter('scanner','all')">All</span>
-        <span class="fchip"    id="mktScan_NSE" onclick="setMktFilter('scanner','NSE')">NSE</span>
+        <span class="fchip"    id="mktScan_all" onclick="setMktFilter('scanner','all')">All</span>
+        <span class="fchip on" id="mktScan_NSE" onclick="setMktFilter('scanner','NSE')">NSE</span>
         <span class="fchip"    id="mktScan_US"  onclick="setMktFilter('scanner','US')">US</span>
       </div>
     </div>
@@ -1666,6 +1666,11 @@ window.addEventListener('load', function(){
   renderHist();
 });
 
+// ─── MARKET FILTER STATE (must be before init) ────────────────────────────────
+var _mktFilterScanner  = 'NSE';
+var _mktFilterHistory  = 'all';
+var _mktFilterBacktest = 'all';
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 (function init(){
   const now=new Date(),utcM=now.getUTCHours()*60+now.getUTCMinutes(),istM=(utcM+330)%1440;
@@ -1674,7 +1679,8 @@ window.addEventListener('load', function(){
   else if(istM>=570&&istM<930){mc.textContent='Market open (IST)';mc.className='chip chip-green';}
   else{mc.textContent='Market closed (IST)';mc.className='chip chip-amber';}
   const g=document.getElementById('quickPills');
-  STOCKS.forEach(s=>{const el=document.createElement('span');el.className='qpill';el.id='qp_'+s.sym;el.textContent=s.sym;el.title=s.name;el.onclick=()=>sel.has(s.sym)?removeSel(s.sym):addSel(s);g.appendChild(el);});
+  ALL_STOCKS.forEach(s=>{const el=document.createElement('span');el.className='qpill';el.id='qp_'+s.sym;el.textContent=s.sym;el.title=s.name;el.dataset.market=s.market;el.onclick=()=>sel.has(s.sym)?removeSel(s.sym):addSel(s);g.appendChild(el);});
+  _refreshQuickPills();
   checkProxy();
   renderHistBadge();
   fetchBtBadge();
@@ -2172,8 +2178,19 @@ async function runScan(){
 
   for(const[sym,s]of sel){
     btn.innerHTML='\u27f3 &nbsp;Fetching '+sym+'\u2026';
-    try{const[intra,daily,ltp]=await Promise.all([getIntra(s.ikey),getDaily(s.ikey),getLTP(s.ikey)]);const setup=applyMarketContext(buildSetup(sym,s.sec,intra,daily,ltp));recordSignal(sym,setup);results.push(setup);}
-    catch(e){errs.push(sym+': '+e.message);}
+    try{
+      let intra,daily,ltp;
+      if(s.market==='US'){
+        const d=await fetch(BACKEND+'/us-stock-data?sym='+encodeURIComponent(sym)).then(r=>r.json());
+        if(d.error)throw new Error(d.error);
+        intra=d.intra;daily=d.daily;ltp=d.ltp;
+      }else{
+        [intra,daily,ltp]=await Promise.all([getIntra(s.ikey),getDaily(s.ikey),getLTP(s.ikey)]);
+      }
+      const setup=applyMarketContext(buildSetup(sym,s.sec,intra,daily,ltp));
+      if(s.market==='US')setup.market='US';
+      recordSignal(sym,setup);results.push(setup);
+    }catch(e){errs.push(sym+': '+e.message);}
   }
   if(errs.length)showErr('Errors: '+errs.join(' | '));
   if(!results.length){showErr('No data returned.');btn.disabled=false;btn.innerHTML='\u27f3 &nbsp;Fetch live data & scan';return;}
@@ -2735,9 +2752,13 @@ function importCSV(event){const file=event.target.files[0];if(!file)return;const
 function parseCsvRow(line){const out=[];let cur='',inQ=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}else if(ch===','&&!inQ){out.push(cur);cur='';}else cur+=ch;}out.push(cur);return out;}
 
 // ─── MARKET FILTER (shared across Scanner / History / Backtest tabs) ─────────
-var _mktFilterScanner  = 'all';
-var _mktFilterHistory  = 'all';
-var _mktFilterBacktest = 'all';
+function _refreshQuickPills(){
+  const f=(_mktFilterScanner||'all').toUpperCase();
+  document.querySelectorAll('#quickPills .qpill').forEach(function(el){
+    const m=(el.dataset.market||'NSE').toUpperCase();
+    el.style.display=(f==='ALL'||m===f)?'':'none';
+  });
+}
 
 function setMktFilter(tab, mkt) {
   if (tab === 'scanner') {
@@ -2746,6 +2767,7 @@ function setMktFilter(tab, mkt) {
       const el = document.getElementById('mktScan_' + m);
       if (el) el.classList.toggle('on', m === mkt);
     });
+    _refreshQuickPills();
     _applyMktFilterScan();
   } else if (tab === 'history') {
     _mktFilterHistory = mkt;
