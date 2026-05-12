@@ -37,6 +37,7 @@ import urllib.request
 import urllib.parse
 import urllib.error
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 from signals import STOCKS, US_STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, READY_GREEN_MIN
 from data_provider import get_intraday_candles, get_daily_candles, get_ltp_price, get_market_context_us
@@ -145,11 +146,7 @@ STATE    = SessionState()   # NSE session
 US_STATE = SessionState()   # US session (independent date/lock tracking)
 
 # Eastern Time — US market timezone (UTC-5 EST / UTC-4 EDT)
-try:
-    from zoneinfo import ZoneInfo
-    ET = ZoneInfo("America/New_York")
-except Exception:
-    ET = timezone(timedelta(hours=-4))   # EDT fallback — close enough for ORB window
+ET = ZoneInfo("America/New_York")
 
 def et_now_mins():
     """Current time as minutes since midnight ET (mirrors ist_now_mins for US market)."""
@@ -329,11 +326,19 @@ def _save_paper_trade(s: dict, market: str = "NSE"):
     """
     try:
         now = datetime.now(IST)
+        if market == "US":
+            # Store signal_time in ET so it aligns with yfinance candle timestamps (also ET)
+            now_et = datetime.now(ET)
+            sig_time   = now_et.strftime("%H:%M")
+            trade_date = now_et.strftime("%Y-%m-%d")
+        else:
+            sig_time   = now.strftime("%H:%M")
+            trade_date = now.strftime("%Y-%m-%d")
         trade_id = f"pt_{now.strftime('%Y%m%d')}_{market}_{s['sym']}"
         trade = {
             "id":           trade_id,
-            "trade_date":   now.strftime("%Y-%m-%d"),
-            "signal_time":  now.strftime("%H:%M"),
+            "trade_date":   trade_date,
+            "signal_time":  sig_time,
             "sym":          s["sym"],
             "sec":          s.get("sec", ""),
             "sig":          s["sig"],

@@ -20,6 +20,7 @@ import urllib.request
 import urllib.error
 import urllib.parse
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from flask import Flask, request, Response, jsonify, make_response
 from apscheduler.schedulers.background import BackgroundScheduler
 from ai_insights import get_ai_setup_insight
@@ -66,6 +67,7 @@ UPSTOX_BASE    = "https://api.upstox.com"
 ANTHROPIC_BASE = "https://api.anthropic.com"
 ALLOWED_ORIGIN = "https://abhisheksa09.github.io"
 IST            = timezone(timedelta(hours=5, minutes=30))
+ET             = ZoneInfo("America/New_York")
 # ─── Session helpers ──────────────────────────────────────────────────────────
 SESSION_COOKIE  = "nse_session"
 SESSION_TTL_SEC = 30 * 24 * 3600
@@ -1711,13 +1713,17 @@ def trigger_paper_trade_settlement():
     sess, err = _require_admin(request)
     if err:
         return err
-    settled, skipped, errors = _settle_paper_trades_for_date()
+    nse_settled, nse_skipped, nse_errors = _settle_paper_trades_for_date()
+    us_settled,  us_skipped,  us_errors  = _settle_us_paper_trades_for_date()
     return jsonify({
-        "status":  "ok",
-        "settled": settled,
-        "skipped": skipped,
-        "errors":  errors,
-        "ist_now": datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
+        "status":      "ok",
+        "nse_settled": nse_settled,
+        "nse_skipped": nse_skipped,
+        "nse_errors":  nse_errors,
+        "us_settled":  us_settled,
+        "us_skipped":  us_skipped,
+        "us_errors":   us_errors,
+        "ist_now":     datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S IST"),
     })
 
 
@@ -1990,6 +1996,119 @@ def _eod_settlement_job():
         log.warning("EOD settlement email failed: %s", _ee)
 
 
+def _settle_us_paper_trades_for_date(date_str: str = None):
+    """
+    Settle all open US paper trades for date_str using yfinance intraday candles.
+    signal_time stored in ET (fixed in scanner._save_paper_trade) aligns with
+    yfinance candle timestamps which are also in ET.
+    Returns: (settled_count, skipped_count, error_list)
+    """
+    from data_provider import _yf_intraday, US_STOCKS
+
+    if date_str is None:
+        date_str = datetime.now(ET).strftime("%Y-%m-%d")
+
+    open_trades = _db_module.get_paper_trades(
+        from_date=date_str,
+        to_date=date_str,
+        outcome="open",
+        market="US",
+        limit=200,
+    )
+
+    if not open_trades:
+        log.info("US EOD settlement: no open US paper trades for %s", date_str)
+        return 0, 0, []
+
+    us_syms = {s["sym"] for s in US_STOCKS}
+    settled, skipped, errors = 0, 0, []
+
+    for trade in open_trades:
+        sym = trade["sym"]
+        if sym not in us_syms:
+            log.warning("US EOD settlement: unknown symbol %s", sym)
+            errors.append(f"Unknown US symbol: {sym}")
+            skipped += 1
+            continue
+
+        try:
+            candles = _yf_intraday(sym)
+            if not candles:
+                raise ValueError(f"Empty intraday candle data for {sym}")
+
+            exit_price, outcome, pnl_pts, pnl_pct, target_hit, sl_hit = \
+                _compute_outcome_intraday(
+                    sig             = trade["sig"],
+                    entry           = float(trade["entry"]),
+                    target          = float(trade["target"]),
+                    stop_loss       = float(trade["stop_loss"]),
+                    candles         = candles,
+                    signal_time_str = trade.get("signal_time", "09:30"),
+                )
+
+            day_high = round(max(float(c[2]) for c in candles), 2)
+            day_low  = round(min(float(c[3]) for c in candles), 2)
+
+            ok = _db_module.settle_paper_trade(
+                trade_id    = trade["id"],
+                close_price = exit_price,
+                outcome     = outcome,
+                pnl_pts     = pnl_pts,
+                pnl_pct     = pnl_pct,
+                target_hit  = target_hit,
+                sl_hit      = sl_hit,
+                day_high    = day_high,
+                day_low     = day_low,
+            )
+
+            if ok:
+                settled += 1
+                log.info(
+                    "US settled %s %s: exit=%.2f entry=%.2f → %s (%.2f pts, %.2f%%) "
+                    "[tgt=%s sl=%s]",
+                    trade["sig"], sym, exit_price, float(trade["entry"]),
+                    outcome, pnl_pts, pnl_pct,
+                    "HIT" if target_hit else "-",
+                    "HIT" if sl_hit     else "-",
+                )
+            else:
+                skipped += 1
+                errors.append(f"{sym}: DB update failed (already settled?)")
+
+        except Exception as e:
+            log.warning("US EOD settlement error for %s: %s", sym, e)
+            errors.append(f"{sym}: {str(e)}")
+            skipped += 1
+
+    log.info("US EOD settlement done: %d settled, %d skipped", settled, skipped)
+    return settled, skipped, errors
+
+
+def _us_eod_settlement_job():
+    """APScheduler job — runs at 16:05 ET on US market days."""
+    now_et = datetime.now(ET)
+    if now_et.weekday() >= 5:
+        log.info("US EOD settlement: skipping weekend")
+        return
+    log.info("US EOD settlement job triggered at %s ET", now_et.strftime("%H:%M"))
+    settled, skipped, errors = _settle_us_paper_trades_for_date()
+    if errors:
+        log.warning("US EOD settlement errors: %s", errors)
+    if skipped > 0 or errors:
+        err_lines = "\n".join(f"• {e}" for e in errors) if errors else "• (no detail)"
+        scanner.send_telegram(
+            f"⚠️ <b>US EOD Settlement — {skipped} trade(s) unsettled</b>\n\n"
+            f"{err_lines}\n\n"
+            f"Settled: {settled}  |  Skipped: {skipped}\n"
+            f"⏰ {now_et.strftime('%H:%M ET')}"
+        )
+    try:
+        today_et = now_et.strftime("%Y-%m-%d")
+        trades = _db_module.get_paper_trades(from_date=today_et, to_date=today_et, market="US")
+        _email.send_email(*_email.format_eod_settlement(trades, settled, skipped, errors))
+    except Exception as _ee:
+        log.warning("US EOD settlement email failed: %s", _ee)
+
 
 import fundamentals as _lt
 
@@ -2128,6 +2247,18 @@ def start_scheduler():
     sched.add_job(scanner.run_us_scan, trigger="interval", minutes=interval,
                   id="us_scan", max_instances=1, misfire_grace_time=60)
     log.info("US market scan job registered — every %d min (active 09:30–11:00 ET)", interval)
+
+    # US EOD settlement — runs at 16:05 ET every weekday (5 min after NYSE close)
+    sched.add_job(
+        _us_eod_settlement_job,
+        trigger="cron",
+        hour=16, minute=5,
+        timezone="America/New_York",
+        id="us_eod_settlement",
+        max_instances=1,
+        misfire_grace_time=600,
+    )
+    log.info("US EOD paper-trade settlement job scheduled at 16:05 ET daily")
 
     # Weekly long-term scan — Sunday at 00:00 IST
     sched.add_job(
