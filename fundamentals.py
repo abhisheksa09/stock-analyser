@@ -10,6 +10,7 @@ import os
 import json
 import logging
 import time
+import threading
 import warnings
 import urllib.request
 import urllib.error
@@ -118,8 +119,10 @@ WEIGHTS = {
 }
 
 # ── NSE session (needed for corporate events API) ─────────────────────────────
-_nse_session_cookie = None
-_nse_session_ts     = None
+_nse_session_cookie  = None
+_nse_session_ts      = None
+_nse_blocked         = False   # set True on first 403 — skip all further NSE calls this run
+_nse_lock            = threading.Lock()
 NSE_HEADERS = {
     "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120",
     "Accept":          "application/json, text/plain, */*",
@@ -129,36 +132,60 @@ NSE_HEADERS = {
 
 def _get_nse_cookies() -> dict:
     """Fetch a fresh NSE India session cookie (valid ~5 min)."""
-    global _nse_session_cookie, _nse_session_ts
-    now = time.time()
-    if _nse_session_cookie and _nse_session_ts and (now - _nse_session_ts < 240):
-        return _nse_session_cookie
-    try:
-        req = urllib.request.Request(
-            "https://www.nseindia.com/",
-            headers={**NSE_HEADERS, "Accept": "text/html"},
-        )
-        with urllib.request.urlopen(req, timeout=10) as r:
-            cookies = {}
-            for hdr in r.headers.get_all("Set-Cookie") or []:
-                name, _, rest = hdr.partition("=")
-                val, _, _     = rest.partition(";")
-                cookies[name.strip()] = val.strip()
-            _nse_session_cookie = cookies
-            _nse_session_ts     = now
-            return cookies
-    except Exception as e:
-        log.warning("NSE session fetch failed: %s", e)
+    global _nse_session_cookie, _nse_session_ts, _nse_blocked
+    # Fast path: check outside lock to avoid contention on every call
+    if _nse_blocked:
         return {}
+    with _nse_lock:
+        # Re-check inside lock — another thread may have just set _nse_blocked
+        if _nse_blocked:
+            return {}
+        now = time.time()
+        if _nse_session_cookie and _nse_session_ts and (now - _nse_session_ts < 240):
+            return _nse_session_cookie
+        try:
+            req = urllib.request.Request(
+                "https://www.nseindia.com/",
+                headers={**NSE_HEADERS, "Accept": "text/html"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                cookies = {}
+                for hdr in r.headers.get_all("Set-Cookie") or []:
+                    name, _, rest = hdr.partition("=")
+                    val, _, _     = rest.partition(";")
+                    cookies[name.strip()] = val.strip()
+                _nse_session_cookie = cookies
+                _nse_session_ts     = now
+                return cookies
+        except urllib.error.HTTPError as e:
+            if e.code == 403:
+                _nse_blocked = True
+                log.warning("NSE India blocked this server IP (403) — skipping corporate events for this scan")
+            else:
+                log.debug("NSE session fetch failed: %s", e)
+            return {}
+        except Exception as e:
+            log.debug("NSE session fetch failed: %s", e)
+            return {}
 
 def _nse_get(url: str) -> dict | None:
     """GET an NSE India API endpoint with session cookie. Returns parsed JSON or None."""
     cookies = _get_nse_cookies()
+    if not cookies:
+        return None
     cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
     try:
         req = urllib.request.Request(url, headers={**NSE_HEADERS, "Cookie": cookie_str})
         with urllib.request.urlopen(req, timeout=4) as r:
             return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            global _nse_blocked
+            _nse_blocked = True
+            log.warning("NSE India API blocked (403) — skipping remaining corporate events")
+        else:
+            log.debug("NSE API %s failed: %s", url, e)
+        return None
     except Exception as e:
         log.debug("NSE API %s failed: %s", url, e)
         return None
@@ -232,7 +259,19 @@ def _get_corporate_events(symbol: str) -> dict:
     return out
 
 # ── yfinance fundamentals ─────────────────────────────────────────────────────
-def _fetch_yf(symbol: str) -> dict | None:
+def _fetch_nifty_history(yf):
+    """Fetch Nifty 50 1-year history once per scan. Returns DataFrame or None."""
+    try:
+        nh = yf.Ticker("^NSEI").history(period="1y", interval="1d", auto_adjust=True)
+        if nh is not None and not nh.empty:
+            log.info("LT scan: Nifty 50 history fetched (%d days)", len(nh))
+            return nh
+    except Exception as e:
+        log.warning("LT scan: Nifty 50 history failed: %s", e)
+    return None
+
+
+def _fetch_yf(symbol: str, nifty_hist=None) -> dict | None:
     """Fetch fundamentals + price history for one NSE stock via yfinance."""
     try:
         import yfinance as yf
@@ -244,10 +283,10 @@ def _fetch_yf(symbol: str) -> dict | None:
     # Timestamp.utcnow is raised by pandas internals and not actionable from here.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return _fetch_yf_inner(symbol, yf)
+        return _fetch_yf_inner(symbol, yf, nifty_hist)
 
 
-def _fetch_yf_inner(symbol: str, yf) -> dict | None:
+def _fetch_yf_inner(symbol: str, yf, nifty_hist=None) -> dict | None:
     """Inner implementation — called inside warnings.catch_warnings() block."""
     ticker = yf.Ticker(f"{symbol}.NS")
     try:
@@ -276,33 +315,40 @@ def _fetch_yf_inner(symbol: str, yf) -> dict | None:
         dma_200 = float(hist["Close"].mean())
         above_200dma = cmp > dma_200 if cmp else None
 
-    # 6-month relative strength vs Nifty 50
+    # 6-month relative strength vs Nifty 50 — uses pre-fetched history (not per-stock)
     rel_strength_6m = None
     try:
-        nifty = yf.Ticker("^NSEI")
-        nh = nifty.history(period="6mo", interval="1d", auto_adjust=True)
-        if hist is not None and not hist.empty and not nh.empty:
+        nh = nifty_hist
+        if hist is not None and not hist.empty and nh is not None and not nh.empty:
             stock_ret = (hist["Close"].iloc[-1] - hist["Close"].iloc[-126]) / hist["Close"].iloc[-126] if len(hist) >= 126 else None
             nifty_ret = (nh["Close"].iloc[-1] - nh["Close"].iloc[-126]) / nh["Close"].iloc[-126] if len(nh) >= 126 else None
             if stock_ret is not None and nifty_ret is not None:
-                rel_strength_6m = float(stock_ret - nifty_ret)  # positive = outperforming
+                rel_strength_6m = float(stock_ret - nifty_ret)
     except Exception as e:
         log.debug("rel_strength %s: %s", symbol, e)
 
     # Financials for EPS/revenue growth
+    # yfinance renames rows occasionally — try multiple known labels in priority order
+    _NI_KEYS  = ["Net Income", "Net Income Common Stockholders",
+                 "Net Income From Continuing Operations", "NetIncome"]
+    _REV_KEYS = ["Total Revenue", "Revenue", "TotalRevenue", "Operating Revenue"]
     eps_growth = None
     rev_growth = None
     try:
         fin = ticker.financials  # annual, most recent first
         if fin is not None and not fin.empty and fin.shape[1] >= 2:
-            if "Net Income" in fin.index:
-                ni = fin.loc["Net Income"]
-                if ni.iloc[0] and ni.iloc[1] and ni.iloc[1] != 0:
-                    eps_growth = float((ni.iloc[0] - ni.iloc[1]) / abs(ni.iloc[1]))
-            if "Total Revenue" in fin.index:
-                rev = fin.loc["Total Revenue"]
-                if rev.iloc[0] and rev.iloc[1] and rev.iloc[1] != 0:
-                    rev_growth = float((rev.iloc[0] - rev.iloc[1]) / abs(rev.iloc[1]))
+            for key in _NI_KEYS:
+                if key in fin.index:
+                    ni = fin.loc[key]
+                    if ni.iloc[0] and ni.iloc[1] and ni.iloc[1] != 0:
+                        eps_growth = float((ni.iloc[0] - ni.iloc[1]) / abs(ni.iloc[1]))
+                    break
+            for key in _REV_KEYS:
+                if key in fin.index:
+                    rev = fin.loc[key]
+                    if rev.iloc[0] and rev.iloc[1] and rev.iloc[1] != 0:
+                        rev_growth = float((rev.iloc[0] - rev.iloc[1]) / abs(rev.iloc[1]))
+                    break
     except Exception as e:
         log.debug("financials %s: %s", symbol, e)
 
@@ -596,6 +642,9 @@ def run_lt_scan(segment: str = None) -> dict:
     Saves results to DB via a dedicated connection (not shared with intraday thread).
     Returns summary dict.
     """
+    global _nse_blocked
+    _nse_blocked = False  # reset per scan run — give NSE a fresh attempt each time
+
     segments = [segment] if segment else ["large", "mid", "small"]
     universe = {"large": LARGE_CAP, "mid": MIDCAP, "small": SMALLCAP}
     all_picks = []
@@ -610,11 +659,20 @@ def run_lt_scan(segment: str = None) -> dict:
         log.info("LT scan: starting %s cap (%d stocks)", seg, len(universe[seg]))
         stocks = universe[seg]
 
-        # Step 1: Fetch yfinance data for all stocks in segment
+        # Step 1a: Fetch Nifty 50 history once for the whole segment
+        try:
+            import yfinance as _yf
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                nifty_hist = _fetch_nifty_history(_yf)
+        except Exception:
+            nifty_hist = None
+
+        # Step 1b: Fetch yfinance data for all stocks in segment
         stock_data = []
         for i, sym in enumerate(stocks, 1):
             try:
-                d = _fetch_yf(sym)
+                d = _fetch_yf(sym, nifty_hist=nifty_hist)
                 if d:
                     stock_data.append(d)
                 time.sleep(0.3)  # be gentle to yfinance
@@ -690,6 +748,19 @@ def run_lt_scan(segment: str = None) -> dict:
         top_picks = [p for p in picks if p["signal"] != "SKIP"][:10]
 
         log.info("LT scan %s: %d stocks scored, %d picks (≥55)", seg, len(picks), len(top_picks))
+        if picks:
+            top5 = picks[:5]
+            log.info(
+                "LT scan %s top-5 scores: %s",
+                seg,
+                ", ".join(
+                    f"{p['symbol']}={p['score']} "
+                    f"(eps_g={p['eps_growth']}% rev_g={p['rev_growth']}% "
+                    f"roe={p['roe']} 200dma={'Y' if p['above_200dma'] else 'N' if p['above_200dma'] is False else '?'} "
+                    f"rs={p['rel_strength_6m']}%)"
+                    for p in top5
+                ),
+            )
 
         # Save to DB via dedicated connection
         if lt_conn:
