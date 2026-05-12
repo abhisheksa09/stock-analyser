@@ -2003,7 +2003,7 @@ def _settle_us_paper_trades_for_date(date_str: str = None):
     yfinance candle timestamps which are also in ET.
     Returns: (settled_count, skipped_count, error_list)
     """
-    from data_provider import _yf_intraday, US_STOCKS
+    from data_provider import get_intraday_candles, US_STOCKS
 
     if date_str is None:
         date_str = datetime.now(ET).strftime("%Y-%m-%d")
@@ -2032,7 +2032,7 @@ def _settle_us_paper_trades_for_date(date_str: str = None):
             continue
 
         try:
-            candles = _yf_intraday(sym)
+            candles = get_intraday_candles(sym, "US")
             if not candles:
                 raise ValueError(f"Empty intraday candle data for {sym}")
 
