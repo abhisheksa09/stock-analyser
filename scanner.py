@@ -358,8 +358,12 @@ def _save_paper_trade(s: dict, market: str = "NSE"):
         if saved:
             log.info("[%s] Paper trade saved: %s %s @ %.2f (conf %d%%)",
                      market, s["sig"], s["sym"], s["en"], s["conf"])
+        else:
+            log.warning("[%s] Paper trade NOT saved (DB rejected): %s", market, s.get("sym"))
+        return bool(saved)
     except Exception as e:
         log.warning("_save_paper_trade failed for %s: %s", s.get("sym"), e)
+        return False
 
 
 def run_scan(force: bool = False):
@@ -551,9 +555,9 @@ def run_scan(force: bool = False):
                         log.info("Paper trade skipped (excluded symbol): %s", sym)
                         STATE.bt_saved.add(sym)  # mark as handled so we don't keep checking
                     else:
-                        _save_paper_trade(s, market="NSE")
-                        _check_real_trade_overlap(s)
-                    STATE.bt_saved.add(sym)
+                        if _save_paper_trade(s, market="NSE"):
+                            _check_real_trade_overlap(s)
+                            STATE.bt_saved.add(sym)
                     del STATE.bt_first_green[sym]
                 else:
                     # First green scan, or direction reversed — (re)start the clock
@@ -738,9 +742,10 @@ def run_us_scan(force: bool = False):
             if verdict == "green":
                 prior = US_STATE.bt_first_green.get(sym)
                 if prior and prior["sig"] == s["sig"]:
-                    if sym not in pt_excluded:
-                        _save_paper_trade(s, market="US")
-                    US_STATE.bt_saved.add(sym)
+                    if sym in pt_excluded:
+                        US_STATE.bt_saved.add(sym)
+                    elif _save_paper_trade(s, market="US"):
+                        US_STATE.bt_saved.add(sym)
                     US_STATE.bt_first_green.pop(sym, None)
                 else:
                     US_STATE.bt_first_green[sym] = {"sig": s["sig"], "mins": mins}
