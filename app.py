@@ -676,8 +676,8 @@ def auth_login():
     # Exception: if the token is known dead (in-memory flag OR DB is_invalid flag),
     # it caused a 401, so a fresh OAuth flow is safe and necessary.
     # DB flag survives server restarts; in-memory flag covers the current session.
-    existing = get_effective_token()
     token_known_dead = scanner.STATE.token_expired_alerted or _db_module.is_token_invalid()
+    existing = get_effective_token()
     if existing and not token_known_dead:
         ist_time = datetime.now(IST).strftime("%H:%M IST")
         return _auth_page(

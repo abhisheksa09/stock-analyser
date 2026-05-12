@@ -278,21 +278,25 @@ def delete_token(date_=None):
 
 def mark_token_invalid(date_=None):
     """Flag today's token as rejected by Upstox (persists across restarts)."""
-    conn = db()
-    if not conn:
-        return False
     if date_ is None:
         date_ = today_ist()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE token_store SET is_invalid=TRUE WHERE ist_date=%s",
-                (date_,),
-            )
-        return True
-    except Exception as e:
-        log.warning("mark_token_invalid: %s", e)
-        return False
+    for attempt in range(2):
+        conn = db()
+        if not conn:
+            _invalidate_conn()
+            continue
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE token_store SET is_invalid=TRUE WHERE ist_date=%s",
+                    (date_,),
+                )
+            return True
+        except Exception as e:
+            log.warning("mark_token_invalid attempt %d: %s", attempt + 1, e)
+            _invalidate_conn()
+    log.error("mark_token_invalid: failed after 2 attempts — is_invalid NOT persisted")
+    return False
 
 def is_token_invalid(date_=None):
     """Return True if today's token has been flagged as invalid in DB."""
