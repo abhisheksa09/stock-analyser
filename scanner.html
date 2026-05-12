@@ -2182,9 +2182,19 @@ async function runScan(){
     try{
       let intra,daily,ltp;
       if(s.market==='US'){
-        const d=await fetch(BACKEND+'/us-stock-data?sym='+encodeURIComponent(sym)).then(r=>r.json());
-        if(d.error)throw new Error(d.error);
+        let d,resp;
+        for(let attempt=0;attempt<3;attempt++){
+          resp=await fetch(BACKEND+'/us-stock-data?sym='+encodeURIComponent(sym));
+          d=await resp.json();
+          if(resp.status===429&&attempt<2){
+            const wait=4000*(attempt+1);
+            btn.innerHTML='⟳ &nbsp;Rate limited — retrying '+sym+' in '+(wait/1000)+'s…';
+            await new Promise(r=>setTimeout(r,wait));
+          }else break;
+        }
+        if(d.error)throw new Error(d.message||d.error);
         intra=d.intra;daily=d.daily;ltp=d.ltp;
+        await new Promise(r=>setTimeout(r,600));
       }else{
         [intra,daily,ltp]=await Promise.all([getIntra(s.ikey),getDaily(s.ikey),getLTP(s.ikey)]);
       }

@@ -439,14 +439,21 @@ def us_stock_data():
     if not sym:
         return cors(jsonify({"error": "sym parameter required"})), 400
     try:
-        from data_provider import get_intraday_candles, get_daily_candles, get_ltp_price
+        from data_provider import get_intraday_candles, get_daily_candles, get_ltp_price, YFRateLimitError
         intra = get_intraday_candles(sym, "US")
         daily = get_daily_candles(sym, "US")
         ltp   = get_ltp_price(sym, "US")
-        return cors(jsonify({"sym": sym, "intra": intra, "daily": daily, "ltp": ltp}))
+        if not intra and not daily and ltp is None:
+            log.warning("us-stock-data %s: No US intraday data for %s", sym, sym)
+            return cors(jsonify({"error": f"No US intraday data for {sym}"})), 503
+        return cors(jsonify({"sym": sym, "intra": intra, "daily": daily, "ltp": ltp or 0}))
     except Exception as e:
+        msg = str(e)
+        if "Too Many Requests" in msg or "rate limit" in msg.lower() or "429" in msg:
+            log.warning("us-stock-data %s: rate limited: %s", sym, e)
+            return cors(jsonify({"error": "rate_limited", "message": "Yahoo Finance rate limit — wait ~1 min and retry."})), 429
         log.warning("us-stock-data %s: %s", sym, e)
-        return cors(jsonify({"error": str(e)})), 500
+        return cors(jsonify({"error": msg})), 500
 
 
 # ── Dry run test scan ────────────────────────────────────────────────────────

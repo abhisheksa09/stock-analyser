@@ -10,9 +10,15 @@ Candle format (both markets): [timestamp_str, open, high, low, close, volume]
 """
 
 import logging
+import time
 import requests
 
 log = logging.getLogger("data_provider")
+
+
+class YFRateLimitError(Exception):
+    pass
+
 
 _YF_SESSION = requests.Session()
 _YF_SESSION.headers.update({
@@ -22,6 +28,30 @@ _YF_SESSION.headers.update({
         "Chrome/120.0.0.0 Safari/537.36"
     )
 })
+
+
+def _yf_ticker(sym):
+    """Return a yf.Ticker with the shared session."""
+    import yfinance as yf
+    return yf.Ticker(sym, session=_YF_SESSION)
+
+
+def _yf_fetch(sym, period, interval, retries=2):
+    """Fetch history; raises YFRateLimitError on HTTP 429, returns None on other errors."""
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            df = _yf_ticker(sym).history(period=period, interval=interval)
+            return df
+        except Exception as e:
+            msg = str(e)
+            if "429" in msg or "too many requests" in msg.lower():
+                raise YFRateLimitError(f"{sym}: Too Many Requests. Rate limited. Try after a while.")
+            last_exc = e
+            if attempt < retries - 1:
+                time.sleep(1)
+    log.warning("yf_fetch %s %s/%s failed: %s", sym, period, interval, last_exc)
+    return None
 
 MARKET_NSE = "NSE"
 MARKET_US  = "US"
@@ -48,10 +78,7 @@ def get_daily_candles(sym, market, token=None, ikey=None):
 def get_ltp_price(sym, market, token=None, ikey=None):
     """Last traded / most recent close price."""
     if market == MARKET_US:
-        candles = _yf_intraday(sym)
-        if candles:
-            return float(candles[-1][4])
-        raise ValueError(f"No US intraday data for {sym}")
+        return _yf_ltp(sym)
     from signals import get_ltp
     return get_ltp(ikey, token)
 
@@ -147,50 +174,71 @@ _YF_INDEX_MAP = {
 
 # ─── yfinance helpers ─────────────────────────────────────────────────────────
 
+def _df_to_candles(df):
+    """Convert a yfinance history DataFrame to [[ts,o,h,l,c,v], ...]."""
+    result = []
+    for ts, row in df.iterrows():
+        result.append([
+            str(ts),
+            float(row["Open"]),
+            float(row["High"]),
+            float(row["Low"]),
+            float(row["Close"]),
+            int(row["Volume"]),
+        ])
+    return result
+
+
 def _yf_intraday(sym):
-    """1-min candles for today (chronological, oldest first)."""
+    """1-min candles for the most recent session (chronological, oldest first).
+    Uses period='5d' so pre-market runs still return the previous session."""
     try:
-        import yfinance as yf
-        df = yf.Ticker(sym, session=_YF_SESSION).history(period="1d", interval="1m")
-        if df.empty:
-            return []
-        result = []
-        for ts, row in df.iterrows():
-            result.append([
-                str(ts),
-                float(row["Open"]),
-                float(row["High"]),
-                float(row["Low"]),
-                float(row["Close"]),
-                int(row["Volume"]),
-            ])
-        return result
-    except Exception as e:
+        df = _yf_fetch(sym, period="5d", interval="1m")
+    except YFRateLimitError as e:
         log.warning("yf_intraday %s: %s", sym, e)
+        raise
+    if df is None or df.empty:
         return []
+    candles = _df_to_candles(df)
+    if not candles:
+        return []
+    # Keep only the most recent trading session (same date as last candle)
+    last_date = candles[-1][0][:10]
+    return [c for c in candles if c[0][:10] == last_date]
 
 
 def _yf_daily(sym):
     """Daily candles for last 60 days, newest-first (matches Upstox format)."""
     try:
-        import yfinance as yf
-        df = yf.Ticker(sym, session=_YF_SESSION).history(period="60d", interval="1d")
-        if df.empty:
-            return []
-        result = []
-        for ts, row in df.iterrows():
-            result.append([
-                str(ts),
-                float(row["Open"]),
-                float(row["High"]),
-                float(row["Low"]),
-                float(row["Close"]),
-                int(row["Volume"]),
-            ])
-        return list(reversed(result))  # newest first to match Upstox
-    except Exception as e:
+        df = _yf_fetch(sym, period="60d", interval="1d")
+    except YFRateLimitError as e:
         log.warning("yf_daily %s: %s", sym, e)
+        raise
+    if df is None or df.empty:
         return []
+    return list(reversed(_df_to_candles(df)))
+
+
+def _yf_ltp(sym):
+    """Most recent price: tries fast_info first, falls back to last candle.
+    Returns None if no data available (non-rate-limit case)."""
+    try:
+        fi = _yf_ticker(sym).fast_info
+        price = getattr(fi, "last_price", None) or getattr(fi, "regularMarketPrice", None)
+        if price:
+            return float(price)
+    except YFRateLimitError:
+        raise
+    except Exception:
+        pass
+    # Fallback: last close from intraday, then daily (YFRateLimitError propagates)
+    intra = _yf_intraday(sym)
+    if intra:
+        return float(intra[-1][4])
+    daily = _yf_daily(sym)
+    if daily:
+        return float(daily[0][4])
+    return None
 
 
 def _yf_index_change(index_name):
@@ -198,11 +246,10 @@ def _yf_index_change(index_name):
     ticker = _YF_INDEX_MAP.get(index_name)
     if not ticker:
         return 0.0
+    df = _yf_fetch(ticker, period="5d", interval="1d")
+    if df is None or len(df) < 2:
+        return 0.0
     try:
-        import yfinance as yf
-        df = yf.Ticker(ticker, session=_YF_SESSION).history(period="5d", interval="1d")
-        if len(df) < 2:
-            return 0.0
         prev_close = float(df["Close"].iloc[-2])
         curr_close = float(df["Close"].iloc[-1])
         return round((curr_close - prev_close) / prev_close * 100, 2)
