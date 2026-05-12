@@ -2319,7 +2319,6 @@ function renderScanTable(){
     '</div></td>';
     tb.appendChild(dp);
   });
-}
   _applyMktFilterScan();
 }
 function toggleRow(i){if(openRow===i){document.getElementById('panel'+i)?.classList.remove('open');document.getElementById('sr'+i)?.classList.remove('sel');openRow=-1;return;}if(openRow>=0){document.getElementById('panel'+openRow)?.classList.remove('open');document.getElementById('sr'+openRow)?.classList.remove('sel');}document.getElementById('panel'+i)?.classList.add('open');document.getElementById('sr'+i)?.classList.add('sel');openRow=i;}
