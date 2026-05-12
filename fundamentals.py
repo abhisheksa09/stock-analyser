@@ -706,7 +706,7 @@ def run_lt_scan(segment: str = None) -> dict:
                 scored  = score_stock(d, seg, sector_medians)
                 targets = compute_targets(d, sector_medians)
                 sentiment = 1.0
-                if scored["score"] >= 55:
+                if scored["score"] >= 50:
                     # Only fetch news for plausible picks (save API calls)
                     sentiment = _get_stock_news_sentiment(d["symbol"])
 
@@ -716,7 +716,7 @@ def run_lt_scan(segment: str = None) -> dict:
                     "symbol":          d["symbol"],
                     "segment":         seg,
                     "score":           final_score,
-                    "signal":          "STRONG_BUY" if final_score >= 70 else ("WATCH" if final_score >= 55 else "SKIP"),
+                    "signal":          "STRONG_BUY" if final_score >= 70 else ("WATCH" if final_score >= 50 else "SKIP"),
                     "cmp":             d.get("cmp"),
                     "pe":              d.get("pe"),
                     "roe":             round(d.get("roe") or 0, 1),
@@ -747,7 +747,7 @@ def run_lt_scan(segment: str = None) -> dict:
         picks.sort(key=lambda x: x["score"], reverse=True)
         top_picks = [p for p in picks if p["signal"] != "SKIP"][:10]
 
-        log.info("LT scan %s: %d stocks scored, %d picks (≥55)", seg, len(picks), len(top_picks))
+        log.info("LT scan %s: %d stocks scored, %d picks (≥50)", seg, len(picks), len(top_picks))
         if picks:
             top5 = picks[:5]
             log.info(
