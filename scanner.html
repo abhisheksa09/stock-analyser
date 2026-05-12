@@ -2828,10 +2828,11 @@ async function loadPaperTrades() {
 
   try {
     var tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
+    const mktQs = (_mktFilterBacktest && _mktFilterBacktest !== 'all') ? '&market=' + encodeURIComponent(_mktFilterBacktest) : '';
     var [trRes, stRes, bpRes] = await Promise.all([
       fetch(BACKEND + '/paper-trades' + qs, { headers: appHeaders(), credentials: 'include' }),
-      fetch(BACKEND + '/paper-trades/stats?days=60', { headers: appHeaders(), credentials: 'include' }),
-      fetch(BACKEND + '/paper-trades/best-pick-stats?days=60', { headers: appHeaders(), credentials: 'include' })
+      fetch(BACKEND + '/paper-trades/stats?days=60' + mktQs, { headers: appHeaders(), credentials: 'include' }),
+      fetch(BACKEND + '/paper-trades/best-pick-stats?days=60' + mktQs, { headers: appHeaders(), credentials: 'include' })
     ]);
 
     var trData = await trRes.json();

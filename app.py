@@ -1691,7 +1691,8 @@ def get_paper_trade_stats():
     if not _has_db():
         return jsonify({"stats": {}})
     days = int(request.args.get("days", 30))
-    stats = _db_module.get_paper_trade_stats(days=days, username=sess["username"])
+    market = request.args.get("market") or None
+    stats = _db_module.get_paper_trade_stats(days=days, username=sess["username"], market=market)
     return jsonify({"stats": stats})
 
 
@@ -1703,7 +1704,8 @@ def get_best_pick_stats():
     if not _has_db():
         return jsonify({"stats": {}})
     days = int(request.args.get("days", 30))
-    stats = _db_module.get_best_pick_stats(days=days, username=sess["username"])
+    market = request.args.get("market") or None
+    stats = _db_module.get_best_pick_stats(days=days, username=sess["username"], market=market)
     return jsonify({"stats": stats})
 
 

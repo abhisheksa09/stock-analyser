@@ -963,7 +963,7 @@ def get_walk_forward_stats(months: int = 6, username: str = None) -> list:
         return []
 
 
-def get_paper_trade_stats(days: int = 30, username: str = None) -> dict:
+def get_paper_trade_stats(days: int = 30, username: str = None, market: str = None) -> dict:
     """Accuracy metrics over the last N calendar days."""
     conn = db()
     if not conn:
@@ -980,6 +980,9 @@ def get_paper_trade_stats(days: int = 30, username: str = None) -> dict:
         if username:
             sql += " AND (created_by IS NULL OR created_by = %s)"
             params.append(username)
+        if market:
+            sql += " AND market = %s"
+            params.append(market.upper())
         with conn.cursor() as cur:
             cur.execute(sql, params)
             rows = [dict(r) for r in cur.fetchall()]
@@ -1037,7 +1040,7 @@ def get_paper_trade_stats(days: int = 30, username: str = None) -> dict:
     }
 
 
-def get_best_pick_stats(days: int = 30, username: str = None) -> dict:
+def get_best_pick_stats(days: int = 30, username: str = None, market: str = None) -> dict:
     """
     Per-day best pick: selects the single trade with highest conf*rr score
     for each trading day, then returns aggregate stats across those picks.
@@ -1058,17 +1061,22 @@ def get_best_pick_stats(days: int = 30, username: str = None) -> dict:
                 WHERE trade_date >= CURRENT_DATE - %s
                   AND outcome <> 'open'
                   {user_filter}
+                  {market_filter}
             )
             SELECT outcome, conf, rr, pnl_pts, pnl_pct, target_hit, sl_hit
             FROM ranked
             WHERE rn = 1
         """
         params = [days]
+        user_f = ""
         if username:
-            sql = sql.format(user_filter="AND (created_by IS NULL OR created_by = %s)")
+            user_f = "AND (created_by IS NULL OR created_by = %s)"
             params.append(username)
-        else:
-            sql = sql.format(user_filter="")
+        market_f = ""
+        if market:
+            market_f = "AND market = %s"
+            params.append(market.upper())
+        sql = sql.format(user_filter=user_f, market_filter=market_f)
         with conn.cursor() as cur:
             cur.execute(sql, params)
             rows = [dict(r) for r in cur.fetchall()]
