@@ -690,7 +690,14 @@ def run_us_scan(force: bool = False):
     # Fetch S&P 500 context once per cycle
     try:
         sp500_ctx = get_market_context_us("Technology")
-        log.info("[US] S&P500: %+.1f%%  (bias: %s)", sp500_ctx["nifty_chg"], sp500_ctx["market_bias"])
+        _ub = sp500_ctx.get("broad_chgs", {})
+        log.info(
+            "[US] Market: SPX=%+.2f%% | NDX=%+.2f%% | RUT=%+.2f%%"
+            "  →  composite=%+.2f%%  bias=%s  VIX=%.1f",
+            _ub.get("SP500", 0), _ub.get("NASDAQ", 0), _ub.get("RUSSELL2K", 0),
+            sp500_ctx.get("composite_chg", 0), sp500_ctx["market_bias"],
+            sp500_ctx.get("vix", 0),
+        )
     except Exception as e:
         log.warning("[US] Market context fetch failed: %s", e)
         sp500_ctx = None
@@ -726,8 +733,11 @@ def run_us_scan(force: bool = False):
             if sp500_ctx is not None:
                 try:
                     ctx = get_market_context_us(stock["sec"])
-                    ctx["nifty_chg"]   = sp500_ctx["nifty_chg"]
-                    ctx["market_bias"] = sp500_ctx["market_bias"]
+                    ctx["nifty_chg"]     = sp500_ctx["nifty_chg"]
+                    ctx["composite_chg"] = sp500_ctx["composite_chg"]
+                    ctx["broad_chgs"]    = sp500_ctx.get("broad_chgs", {})
+                    ctx["vix"]           = sp500_ctx.get("vix", 0.0)
+                    ctx["market_bias"]   = sp500_ctx["market_bias"]
                 except Exception:
                     ctx = sp500_ctx
             else:

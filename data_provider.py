@@ -152,25 +152,41 @@ def get_ltp_price(sym, market, token=None, ikey=None):
 
 def get_market_context_us(sector):
     """
-    US market context using yfinance ETFs. Returns same dict shape as
+    US market context using composite breadth: SP500 (45%) + NASDAQ (35%) + Russell2000 (20%).
+    Also fetches CBOE VIX for confidence penalty. Returns same dict shape as
     signals.get_market_context() so build_setup() works without changes.
     """
-    sp500_chg  = _yf_index_change("SP500")
-    sector_idx = US_SECTOR_INDEX.get(sector)
-    sector_chg = _yf_index_change(sector_idx) if sector_idx else 0.0
-
     def bias(chg):
         if chg <= -0.5: return "bearish"
         if chg >= +0.5: return "bullish"
         return "neutral"
 
+    broad_chgs = {idx: _yf_index_change(idx) for idx in US_BROAD_MARKET_WEIGHTS}
+    composite_chg = round(
+        sum(broad_chgs[idx] * wt for idx, wt in US_BROAD_MARKET_WEIGHTS.items()), 2
+    )
+
+    vix = 0.0
+    try:
+        df = _yf_fetch("^VIX", period="1d", interval="1m")
+        if df is not None and not df.empty:
+            vix = round(float(df["Close"].iloc[-1]), 2)
+    except Exception:
+        pass
+
+    sector_idx = US_SECTOR_INDEX.get(sector)
+    sector_chg = _yf_index_change(sector_idx) if sector_idx else 0.0
+
     return {
-        "nifty_chg":   sp500_chg,   # reuses same key — build_setup reads this for hard-block logic
-        "sector_chg":  sector_chg,
-        "market_bias": bias(sp500_chg),
-        "sector_bias": bias(sector_chg),
-        "index_name":  "S&P 500",   # for display labels in Telegram/frontend
-        "market":      MARKET_US,
+        "nifty_chg":     broad_chgs["SP500"],   # S&P 500 raw — for display
+        "composite_chg": composite_chg,
+        "broad_chgs":    broad_chgs,
+        "vix":           vix,
+        "sector_chg":    sector_chg,
+        "market_bias":   bias(composite_chg),
+        "sector_bias":   bias(sector_chg),
+        "index_name":    "S&P 500",
+        "market":        MARKET_US,
     }
 
 
@@ -231,11 +247,19 @@ US_SECTOR_INDEX = {
 }
 
 _YF_INDEX_MAP = {
-    "SP500":  "^GSPC",
-    "NASDAQ": "^IXIC",
-    "VIX":    "^VIX",
+    "SP500":    "^GSPC",
+    "NASDAQ":   "^IXIC",
+    "RUSSELL2K": "^RUT",
+    "VIX":      "^VIX",
     "XLK": "XLK", "XLF": "XLF", "XLV": "XLV", "XLE": "XLE",
     "XLY": "XLY", "XLI": "XLI", "XLU": "XLU", "XLB": "XLB",
+}
+
+# Broad market breadth weights: SP500 (45%) + NASDAQ (35%) + Russell2000 (20%)
+US_BROAD_MARKET_WEIGHTS = {
+    "SP500":     0.45,
+    "NASDAQ":    0.35,
+    "RUSSELL2K": 0.20,
 }
 
 
