@@ -437,8 +437,15 @@ def run_scan(force: bool = False):
     # Fetch market context ONCE per scan cycle (not per stock — saves API calls)
     try:
         nifty_ctx = get_market_context("Banking", token)
-        log.info("Nifty50: %+.1f%%  (market bias: %s)",
-                 nifty_ctx["nifty_chg"], nifty_ctx["market_bias"])
+        _b = nifty_ctx.get("broad_chgs", {})
+        log.info(
+            "Market: N50=%+.2f%% | NXT50=%+.2f%% | MID100=%+.2f%% | SM100=%+.2f%%"
+            "  →  composite=%+.2f%%  bias=%s  VIX=%.1f",
+            _b.get("NIFTY50", 0), _b.get("NIFTYNEXT50", 0),
+            _b.get("NIFTYMIDCAP100", 0), _b.get("NIFTYSMLCAP100", 0),
+            nifty_ctx.get("composite_chg", 0), nifty_ctx["market_bias"],
+            nifty_ctx.get("vix", 0),
+        )
     except Exception as e:
         log.warning("Market context fetch failed: %s — proceeding without filters", e)
         nifty_ctx = None
@@ -482,8 +489,13 @@ def run_scan(force: bool = False):
             if nifty_ctx is not None:
                 try:
                     ctx = get_market_context(stock["sec"], token)
-                    ctx["nifty_chg"]   = nifty_ctx["nifty_chg"]
-                    ctx["market_bias"] = nifty_ctx["market_bias"]
+                    # Overwrite broad-market fields from the pre-fetched cycle context
+                    # (saves 4 extra API calls per stock; only sector_chg is stock-specific)
+                    ctx["nifty_chg"]     = nifty_ctx["nifty_chg"]
+                    ctx["composite_chg"] = nifty_ctx["composite_chg"]
+                    ctx["broad_chgs"]    = nifty_ctx.get("broad_chgs", {})
+                    ctx["vix"]           = nifty_ctx.get("vix", 0.0)
+                    ctx["market_bias"]   = nifty_ctx["market_bias"]
                 except Exception:
                     ctx = nifty_ctx
             else:

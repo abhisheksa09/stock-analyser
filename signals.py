@@ -3,10 +3,11 @@ signals.py — NSE signal computation with market context filters
 Shared between app.py (proxy) and scanner.py (alert engine)
 
 Filters added:
-  1. Market filter  — Nifty50 down >1% hard-blocks BUY; up >1% hard-blocks SELL
-  2. Sector filter  — Bank Nifty / Nifty IT direction penalises counter-trend trades
+  1. Market filter  — composite breadth (N50/Next50/Mid100/Small100) hard-blocks on >1% move
+  2. Sector filter  — sector index direction penalises counter-trend trades
   3. Gap filter     — gap-down open on BUY (or gap-up on SELL) reduces confidence
   4. Day trend      — stock net negative on day reduces BUY confidence (and vice versa)
+  5. VIX filter     — India VIX above threshold reduces confidence (elevated uncertainty)
 """
 
 import math
@@ -26,6 +27,8 @@ GAP_PENALTY             = 10
 DAY_TREND_PENALTY       = 10
 DAY_TREND_BONUS         = 5
 CANDLE_CONFIRM_PENALTY  = 20
+VIX_HIGH_THRESHOLD      = 20.0   # India VIX above this = elevated uncertainty
+VIX_PENALTY             = 5      # confidence reduction when VIX is high
 
 # ALERT_GREEN_THRESHOLD env var lets you lower the green bar for testing
 # e.g. set to 50 on Render to fire alerts at 50%+ confidence
@@ -89,21 +92,53 @@ STOCKS = [
 ]
 
 # ─── Index instrument keys (for market/sector context) ───────────────────────
+
+# Broad market breadth indices (used for composite bias)
+# Weights: N50=40%, Next50=20%, Midcap100=25%, Smallcap100=15%
+BROAD_MARKET_WEIGHTS = {
+    "NIFTY50":        0.40,
+    "NIFTYNEXT50":    0.20,
+    "NIFTYMIDCAP100": 0.25,
+    "NIFTYSMLCAP100": 0.15,
+}
+
 INDEX_KEYS = {
-    "NIFTY50":   "NSE_INDEX|Nifty 50",
-    "BANKNIFTY": "NSE_INDEX|Nifty Bank",
-    "NIFTYIT":   "NSE_INDEX|Nifty IT",
-    "NIFTYAUTO": "NSE_INDEX|Nifty Auto",
-    "NIFTYPHRM": "NSE_INDEX|Nifty Pharma",
+    # Broad market
+    "NIFTY50":        "NSE_INDEX|Nifty 50",
+    "NIFTYNEXT50":    "NSE_INDEX|Nifty Next 50",
+    "NIFTYMIDCAP100": "NSE_INDEX|Nifty Midcap 100",
+    "NIFTYSMLCAP100": "NSE_INDEX|Nifty Smallcap 100",
+    "INDIAVIX":       "NSE_INDEX|India VIX",
+    # Sector indices
+    "BANKNIFTY":      "NSE_INDEX|Nifty Bank",
+    "NIFTYIT":        "NSE_INDEX|Nifty IT",
+    "NIFTYAUTO":      "NSE_INDEX|Nifty Auto",
+    "NIFTYPHRM":      "NSE_INDEX|Nifty Pharma",
+    "NIFTYFMCG":      "NSE_INDEX|Nifty FMCG",
+    "NIFTYENERGY":    "NSE_INDEX|Nifty Energy",
+    "NIFTYMETAL":     "NSE_INDEX|Nifty Metal",
+    "NIFTYINFRA":     "NSE_INDEX|Nifty Infrastructure",
+    "NIFTYHEALTHCR":  "NSE_INDEX|Nifty Healthcare Index",
+    "NIFTYCONSD":     "NSE_INDEX|Nifty Consumer Durables",
+    "NIFTYDIGITAL":   "NSE_INDEX|Nifty India Digital",
 }
 
 # Map stock sectors to their relevant index
 SECTOR_INDEX = {
-    "Banking": "BANKNIFTY",
-    "NBFC":    "BANKNIFTY",
-    "IT":      "NIFTYIT",
-    "Auto":    "NIFTYAUTO",
-    "Pharma":  "NIFTYPHRM",
+    "Banking":    "BANKNIFTY",
+    "NBFC":       "BANKNIFTY",
+    "IT":         "NIFTYIT",
+    "Auto":       "NIFTYAUTO",
+    "Pharma":     "NIFTYPHRM",
+    "FMCG":       "NIFTYFMCG",
+    "Energy":     "NIFTYENERGY",
+    "Metals":     "NIFTYMETAL",
+    "Infra":      "NIFTYINFRA",
+    "Healthcare": "NIFTYHEALTHCR",
+    "Consumer":   "NIFTYCONSD",
+    "Telecom":    "NIFTYDIGITAL",
+    "Cement":     "NIFTYINFRA",    # closest proxy — construction-driven macro
+    "Utilities":  "NIFTYENERGY",  # power sector tracks energy macro
 }
 
 CONFIRM_CANDLES = 3
@@ -172,53 +207,65 @@ def get_daily(ikey, token):
     )
     return d.get("data", {}).get("candles", [])
 
-# ─── Market context (Nifty + sector index) ───────────────────────────────────
+# ─── Market context (composite breadth + sector index + VIX) ─────────────────
 
 def get_index_change(index_name, token):
-    """
-    Returns % change of an index vs previous close.
-    Uses intraday candles: first candle open = today's open, last candle close = LTP.
-    Falls back to 0.0 on any error so a missing index never blocks the scan.
-    """
+    """Returns % change of an index vs previous close. Falls back to 0.0 on any error."""
     ikey = INDEX_KEYS.get(index_name)
     if not ikey:
         return 0.0
     try:
-        # Get daily to find previous close
         daily  = get_daily(ikey, token)
         prev_c = daily[0][4] if daily else None
         if not prev_c:
             return 0.0
-        # Get current LTP
         ltp = get_ltp(ikey, token)
         return round((ltp - prev_c) / prev_c * 100, 2)
     except Exception:
-        return 0.0   # never crash the scan due to index fetch failure
+        return 0.0
+
+def get_vix(token):
+    """Returns India VIX absolute level (not % change). Falls back to 0.0 on error."""
+    ikey = INDEX_KEYS.get("INDIAVIX")
+    if not ikey:
+        return 0.0
+    try:
+        return round(get_ltp(ikey, token), 2)
+    except Exception:
+        return 0.0
 
 def get_market_context(sec, token):
     """
-    Returns a dict with:
-      nifty_chg    — Nifty 50 % change today
-      sector_chg   — sector index % change (0.0 if no specific index)
-      market_bias  — 'bullish' | 'bearish' | 'neutral'
-      sector_bias  — 'bullish' | 'bearish' | 'neutral'
+    Returns composite market bias from 4 breadth indices:
+      Nifty50 (40%) + Next50 (20%) + Midcap100 (25%) + Smallcap100 (15%)
+    Also fetches India VIX for confidence penalty and sector index for tailwind/headwind.
+    Falls back gracefully — missing indices contribute 0.0 to composite.
     """
-    nifty_chg  = get_index_change("NIFTY50", token)
-    sector_idx = SECTOR_INDEX.get(sec)
-    sector_chg = get_index_change(sector_idx, token) if sector_idx else 0.0
-
     def bias(chg):
         if chg <= -0.5: return "bearish"
         if chg >= +0.5: return "bullish"
         return "neutral"
 
+    broad_chgs = {idx: get_index_change(idx, token) for idx in BROAD_MARKET_WEIGHTS}
+    composite_chg = round(
+        sum(broad_chgs[idx] * wt for idx, wt in BROAD_MARKET_WEIGHTS.items()), 2
+    )
+
+    vix = get_vix(token)
+
+    sector_idx = SECTOR_INDEX.get(sec)
+    sector_chg = get_index_change(sector_idx, token) if sector_idx else 0.0
+
     return {
-        "nifty_chg":   nifty_chg,
-        "sector_chg":  sector_chg,
-        "market_bias": bias(nifty_chg),
-        "sector_bias": bias(sector_chg),
-        "index_name":  "Nifty50",
-        "market":      "NSE",
+        "nifty_chg":     broad_chgs["NIFTY50"],
+        "composite_chg": composite_chg,
+        "broad_chgs":    broad_chgs,
+        "vix":           vix,
+        "sector_chg":    sector_chg,
+        "market_bias":   bias(composite_chg),
+        "sector_bias":   bias(sector_chg),
+        "index_name":    "Nifty50",
+        "market":        "NSE",
     }
 
 # ─── Indicators ───────────────────────────────────────────────────────────────
@@ -647,20 +694,21 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
     market_blocked = False
 
     if market_ctx:
-        nifty_chg = market_ctx.get("nifty_chg", 0.0) or 0.0
-        sector_chg = market_ctx.get("sector_chg", 0.0) or 0.0
+        nifty_chg     = market_ctx.get("nifty_chg", 0.0) or 0.0
+        composite_chg = market_ctx.get("composite_chg", nifty_chg) or nifty_chg
+        sector_chg    = market_ctx.get("sector_chg", 0.0) or 0.0
+        vix           = market_ctx.get("vix", 0.0) or 0.0
 
-        # Market hard block
-        idx_label = market_ctx.get("index_name", "Nifty")
-        if sig == "BUY" and nifty_chg <= -MARKET_HARD_BLOCK_PCT:
+        # Market hard block — uses composite breadth, not just Nifty50
+        if sig == "BUY" and composite_chg <= -MARKET_HARD_BLOCK_PCT:
             sig = "WATCH"
             market_blocked = True
-            ctx_warnings.append(f"{idx_label} {nifty_chg:+.1f}% — BUY blocked")
+            ctx_warnings.append(f"Composite {composite_chg:+.1f}% — BUY blocked")
             reason = "Blocked by broad market weakness"
-        elif sig == "SELL" and nifty_chg >= MARKET_HARD_BLOCK_PCT:
+        elif sig == "SELL" and composite_chg >= MARKET_HARD_BLOCK_PCT:
             sig = "WATCH"
             market_blocked = True
-            ctx_warnings.append(f"{idx_label} {nifty_chg:+.1f}% — SELL blocked")
+            ctx_warnings.append(f"Composite {composite_chg:+.1f}% — SELL blocked")
             reason = "Blocked by broad market strength"
 
         if not market_blocked and sig != "WATCH":
@@ -697,6 +745,11 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
                 ctx_warnings.append(
                     f"Stock {chg:+.1f}% on day — net positive reduces SELL confidence (-{DAY_TREND_PENALTY}% conf)"
                 )
+
+            # VIX filter — elevated volatility dampens confidence
+            if vix >= VIX_HIGH_THRESHOLD:
+                conf_penalties += VIX_PENALTY
+                ctx_warnings.append(f"India VIX {vix:.1f} (elevated) (-{VIX_PENALTY}% conf)")
             elif sig == "BUY" and chg >= +0.5:
                 conf_penalties -= DAY_TREND_BONUS
                 ctx_warnings.append(
