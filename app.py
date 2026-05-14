@@ -689,6 +689,16 @@ def _get_session(req) -> dict | None:
         return None
     return _db_module.validate_app_session(token)
 
+def _probe_upstox_token(token: str) -> bool:
+    """Return True if Upstox accepts the token (profile endpoint returns 200)."""
+    try:
+        from signals import _upstox_get
+        _upstox_get("/v2/user/profile", token, timeout=5)
+        return True
+    except Exception:
+        return False
+
+
 @app.route("/auth/login")
 def auth_login():
     """
@@ -705,17 +715,27 @@ def auth_login():
     token_known_dead = scanner.STATE.token_expired_alerted or _db_module.is_token_invalid()
     existing = get_effective_token()
     if existing and not token_known_dead:
-        ist_time = datetime.now(IST).strftime("%H:%M IST")
-        return _auth_page(
-            success=True,
-            title="Already logged in",
-            message=(
-                f"Token is already set for today ({ist_time}). "
-                f"No action needed — the scanner is active.<br><br>"
-                f"<small style='color:#888'>If you believe the token is stale, "
-                f"use the admin panel to clear it first before logging in again.</small>"
-            ),
-        )
+        # Actively probe Upstox to catch tokens that expired without the scanner
+        # ever seeing a 401 (e.g. server restart before first scan of the day).
+        # The frontend profile check is JS-only and never updates the DB flag,
+        # so we must verify here rather than rely solely on is_invalid.
+        if not _probe_upstox_token(existing):
+            log.warning("auth_login: existing token rejected by Upstox — marking dead, proceeding to OAuth")
+            _db_module.mark_token_invalid()
+            scanner.STATE.token_expired_alerted = True
+            scanner.set_token("")
+        else:
+            ist_time = datetime.now(IST).strftime("%H:%M IST")
+            return _auth_page(
+                success=True,
+                title="Already logged in",
+                message=(
+                    f"Token is already set for today ({ist_time}). "
+                    f"No action needed — the scanner is active.<br><br>"
+                    f"<small style='color:#888'>If you believe the token is stale, "
+                    f"use the admin panel to clear it first before logging in again.</small>"
+                ),
+            )
 
     api_key = os.environ.get("UPSTOX_API_KEY", "")
     if not api_key:
