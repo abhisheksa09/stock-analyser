@@ -726,7 +726,7 @@ def run_lt_scan(segment: str = None) -> dict:
                     "promoter_pct":    d.get("promoter_holding"),
                     "sector":          d.get("sector", ""),
                     "above_200dma":    d.get("above_200dma"),
-                    "rel_strength_6m": round((d.get("rel_strength_6m") or 0) * 100, 1),
+                    "rel_strength_6m": None if (_rs := d.get("rel_strength_6m")) != _rs else round((_rs or 0) * 100, 1),
                     "target_low":      targets.get("target_low"),
                     "target_high":     targets.get("target_high"),
                     "upside_low":      targets.get("upside_low"),

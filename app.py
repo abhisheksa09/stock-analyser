@@ -22,6 +22,7 @@ import urllib.parse
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from flask import Flask, request, Response, jsonify, make_response
+from flask.json.provider import DefaultJSONProvider
 from apscheduler.schedulers.background import BackgroundScheduler
 from ai_insights import get_ai_setup_insight
 
@@ -60,7 +61,25 @@ else:
 
 log = logging.getLogger("app")
 
+class _SafeJSONProvider(DefaultJSONProvider):
+    """Replaces float NaN/Inf with None so jsonify() always emits valid JSON."""
+    @staticmethod
+    def _sanitize(obj):
+        if isinstance(obj, float):
+            import math
+            return None if (math.isnan(obj) or math.isinf(obj)) else obj
+        if isinstance(obj, dict):
+            return {k: _SafeJSONProvider._sanitize(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_SafeJSONProvider._sanitize(v) for v in obj]
+        return obj
+
+    def dumps(self, obj, **kwargs):
+        return super().dumps(self._sanitize(obj), **kwargs)
+
 app = Flask(__name__)
+app.json_provider_class = _SafeJSONProvider
+app.json = _SafeJSONProvider(app)
 app.url_map.strict_slashes = False  # prevent /path -> /path/ redirects
 
 UPSTOX_BASE    = "https://api.upstox.com"

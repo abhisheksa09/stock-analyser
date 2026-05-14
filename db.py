@@ -1233,6 +1233,7 @@ def get_lt_picks(segment: str = None, scan_date: str = None, limit: int = 50) ->
             cur.execute(sql, params)
             rows = cur.fetchall()
 
+        import math as _math
         result = []
         for r in rows:
             row = dict(r)
@@ -1240,7 +1241,8 @@ def get_lt_picks(segment: str = None, scan_date: str = None, limit: int = 50) ->
                 if hasattr(v, "isoformat"):
                     row[k] = v.isoformat()
                 elif hasattr(v, "__float__"):
-                    row[k] = float(v)
+                    fval = float(v)
+                    row[k] = None if (_math.isnan(fval) or _math.isinf(fval)) else fval
             result.append(row)
         return result
     except Exception as e:
