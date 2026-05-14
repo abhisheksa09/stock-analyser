@@ -40,7 +40,7 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
 from signals import STOCKS, US_STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, READY_GREEN_MIN
-from data_provider import get_intraday_candles, get_daily_candles, get_ltp_price, get_market_context_us
+from data_provider import get_intraday_candles, get_daily_candles, get_ltp_price, get_market_context_us, _alpaca_configured
 from macro import get_full_macro_context, apply_all_macro_penalties
 import db as _db_module
 import email_alerts as _email
@@ -144,6 +144,8 @@ class SessionState:
 
 STATE    = SessionState()   # NSE session
 US_STATE = SessionState()   # US session (independent date/lock tracking)
+
+_us_market_ctx_cache: dict | None = None   # last good sp500_ctx across cycles
 
 # Eastern Time — US market timezone (UTC-5 EST / UTC-4 EDT)
 ET = ZoneInfo("America/New_York")
@@ -685,11 +687,14 @@ def run_us_scan(force: bool = False):
     watch = [s.strip().upper() for s in os.environ.get("US_SCAN_SYMBOLS", "").split(",") if s.strip()]
     all_syms = [s for s in US_STOCKS if (not watch or s["sym"] in watch) or s["sym"] in bt_syms]
 
-    log.info("[US] Scanning %d symbols at %02d:%02d ET", len(all_syms), mins // 60, mins % 60)
+    data_src = "Alpaca" if _alpaca_configured() else "yfinance"
+    log.info("[US] Scanning %d symbols at %02d:%02d ET (data: %s)", len(all_syms), mins // 60, mins % 60, data_src)
 
-    # Fetch S&P 500 context once per cycle
+    # Fetch S&P 500 context once per cycle; fall back to last good value on rate-limit
+    global _us_market_ctx_cache
     try:
         sp500_ctx = get_market_context_us("Technology")
+        _us_market_ctx_cache = sp500_ctx
         _ub = sp500_ctx.get("broad_chgs", {})
         log.info(
             "[US] Market: SPX=%+.2f%% | NDX=%+.2f%% | RUT=%+.2f%%"
@@ -699,8 +704,12 @@ def run_us_scan(force: bool = False):
             sp500_ctx.get("vix", 0),
         )
     except Exception as e:
-        log.warning("[US] Market context fetch failed: %s", e)
-        sp500_ctx = None
+        if _us_market_ctx_cache is not None:
+            log.warning("[US] Market context fetch failed (%s) — using cached values", e)
+            sp500_ctx = _us_market_ctx_cache
+        else:
+            log.warning("[US] Market context fetch failed (%s) — no cache available", e)
+            sp500_ctx = None
 
     try:
         _scan_timeout_mins = int(os.environ.get("SCAN_TIMEOUT_MINS", "4"))
@@ -709,6 +718,7 @@ def run_us_scan(force: bool = False):
     scan_deadline = datetime.now(ET) + timedelta(minutes=_scan_timeout_mins)
 
     sent = 0
+    skipped = 0
 
     for stock in all_syms:
         if datetime.now(ET) > scan_deadline:
@@ -726,7 +736,8 @@ def run_us_scan(force: bool = False):
             intra = get_intraday_candles(sym, "US")
             daily = get_daily_candles(sym, "US")
             if not intra or not daily:
-                log.debug("[US] No data for %s — skipping", sym)
+                log.warning("[US] No data for %s — skipping (possible rate limit)", sym)
+                skipped += 1
                 continue
             ltp = float(intra[-1][4])
 
@@ -751,6 +762,7 @@ def run_us_scan(force: bool = False):
 
         except Exception as e:
             log.warning("[US] Fetch/build error %s: %s", sym, e)
+            skipped += 1
             continue
 
         verdict, _ = is_ready(s, mins, market="US")
@@ -786,7 +798,7 @@ def run_us_scan(force: bool = False):
         US_STATE.prev_conf[sym] = s["conf"]
         US_STATE.prev_sig[sym]  = s["sig"]
 
-    log.info("[US] Scan done — %d alerts sent, %d paper trades saved today", sent, len(US_STATE.bt_saved))
+    log.info("[US] Scan done — %d alerts sent, %d paper trades saved today, %d symbols skipped (no data)", sent, len(US_STATE.bt_saved), skipped)
 
 
 # ─── Real-trade overlap check ─────────────────────────────────────────────────
