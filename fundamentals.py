@@ -487,8 +487,10 @@ def compute_targets(data: dict, sector_medians: dict) -> dict:
 
     if eps and eps_growth > 0:
         # High: PEG-based — fair P/E = EPS growth rate (as %)
-        peg_pe     = min(max(eps_growth * 100, 10), 50)  # clamp 10–50
-        fwd_eps    = eps * (1 + eps_growth)
+        # Cap growth at 50% — one-off recoveries (e.g. 500% from near-zero base) produce nonsensical targets
+        peg_growth  = min(eps_growth, 0.50)
+        peg_pe      = min(max(peg_growth * 100, 10), 50)  # clamp 10–50
+        fwd_eps     = eps * (1 + peg_growth)
         target_high = round(peg_pe * fwd_eps, 2)
 
     # Fallback to analyst target or 52W high
@@ -505,6 +507,14 @@ def compute_targets(data: dict, sector_medians: dict) -> dict:
 
     upside_low  = round((target_low  / cmp - 1) * 100, 1) if (cmp and target_low)  else None
     upside_high = round((target_high / cmp - 1) * 100, 1) if (cmp and target_high) else None
+
+    # Hard cap: >150% upside in 6-12 months is not actionable for established stocks
+    if upside_high and upside_high > 150:
+        upside_high = None
+        target_high = None
+    if upside_low and upside_low > 150:
+        upside_low = None
+        target_low = None
 
     return {
         "target_low":   target_low,
