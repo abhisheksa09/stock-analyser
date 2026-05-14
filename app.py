@@ -32,21 +32,24 @@ import db as _db_module
 import auto_login as _auto_login
 import email_alerts as _email
 
-# ── Dual-timezone log formatter (IST + CET/CEST) ─────────────────────────────
+# ── Triple-timezone log formatter (IST + CET/CEST + ET) ──────────────────────
 class _DualTZFormatter(logging.Formatter):
     try:
         from zoneinfo import ZoneInfo as _ZI
         _ist = _ZI("Asia/Kolkata")
         _cet = _ZI("Europe/Amsterdam")   # DST-aware: CET in winter, CEST in summer
+        _et  = _ZI("America/New_York")   # DST-aware: EST in winter, EDT in summer
     except Exception:
         _ist = timezone(timedelta(hours=5, minutes=30))
         _cet = timezone(timedelta(hours=1))
+        _et  = timezone(timedelta(hours=-5))
 
     def formatTime(self, record, datefmt=None):
         utc = datetime.fromtimestamp(record.created, tz=timezone.utc)
         ist = utc.astimezone(self._ist)
         cet = utc.astimezone(self._cet)
-        return f"{ist.strftime('%Y-%m-%d %H:%M:%S')} IST / {cet.strftime('%H:%M:%S')} CET"
+        et  = utc.astimezone(self._et)
+        return f"{ist.strftime('%Y-%m-%d %H:%M:%S')} IST / {cet.strftime('%H:%M:%S')} CET / {et.strftime('%H:%M:%S')} ET"
 
 # Replace whatever basicConfig (scanner.py on import) installed, or add fresh handler
 _fmt = _DualTZFormatter("%(asctime)s [%(name)s] %(message)s")
