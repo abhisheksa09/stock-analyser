@@ -240,7 +240,7 @@ def get_token(date_=None):
         date_ = today_ist()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT token FROM token_store WHERE ist_date=%s", (date_,))
+            cur.execute("SELECT token FROM token_store WHERE ist_date=%s AND is_invalid=FALSE", (date_,))
             row = cur.fetchone()
             return row["token"] if row else None
     except Exception as e:
