@@ -2295,6 +2295,11 @@ def start_scheduler():
     sched.add_job(scanner.run_us_scan, trigger="interval", minutes=interval,
                   id="us_scan", max_instances=1, misfire_grace_time=60)
     log.info("US market scan job registered — every %d min (active 09:30–11:00 ET)", interval)
+    from data_provider import _alpaca_configured
+    if _alpaca_configured():
+        log.info("[US] Data source: Alpaca (ALPACA_API_KEY is set)")
+    else:
+        log.warning("[US] Data source: yfinance — ALPACA_API_KEY not set, US scan will use delayed data and may hit rate limits")
 
     # US EOD settlement — runs at 16:05 ET every weekday (5 min after NYSE close)
     sched.add_job(
