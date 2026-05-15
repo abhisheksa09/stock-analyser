@@ -106,8 +106,8 @@ INDEX_KEYS = {
     # Broad market
     "NIFTY50":        "NSE_INDEX|Nifty 50",
     "NIFTYNEXT50":    "NSE_INDEX|Nifty Next 50",
-    "NIFTYMIDCAP100": "NSE_INDEX|Nifty Midcap 100",
-    "NIFTYSMLCAP100": "NSE_INDEX|Nifty Smallcap 100",
+    "NIFTYMIDCAP100": "NSE_INDEX|NIFTY MIDCAP 100",
+    "NIFTYSMLCAP100": "NSE_INDEX|NIFTY SMLCAP 100",
     "INDIAVIX":       "NSE_INDEX|India VIX",
     # Sector indices
     "BANKNIFTY":      "NSE_INDEX|Nifty Bank",
@@ -119,7 +119,7 @@ INDEX_KEYS = {
     "NIFTYMETAL":     "NSE_INDEX|Nifty Metal",
     "NIFTYINFRA":     "NSE_INDEX|Nifty Infrastructure",
     "NIFTYHEALTHCR":  "NSE_INDEX|Nifty Healthcare Index",
-    "NIFTYCONSD":     "NSE_INDEX|Nifty Consumer Durables",
+    "NIFTYCONSD":     "NSE_INDEX|NIFTY CONSR DURBL",
     "NIFTYDIGITAL":   "NSE_INDEX|Nifty India Digital",
 }
 
