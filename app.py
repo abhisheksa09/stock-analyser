@@ -2035,13 +2035,16 @@ def _eod_settlement_job():
             f"Settled: {settled}  |  Skipped: {skipped}\n"
             f"⏰ {now_ist.strftime('%H:%M IST')}"
         )
-    # Email digest with today's settled trades
-    try:
-        today = now_ist.strftime("%Y-%m-%d")
-        trades = _db_module.get_paper_trades(from_date=today, to_date=today)
-        _email.send_email(*_email.format_eod_settlement(trades, settled, skipped, errors))
-    except Exception as _ee:
-        log.warning("EOD settlement email failed: %s", _ee)
+    # Email digest — only when there is something to report
+    if settled > 0 or skipped > 0 or errors:
+        try:
+            today = now_ist.strftime("%Y-%m-%d")
+            trades = _db_module.get_paper_trades(from_date=today, to_date=today)
+            _email.send_email(*_email.format_eod_settlement(trades, settled, skipped, errors))
+        except Exception as _ee:
+            log.warning("EOD settlement email failed: %s", _ee)
+    else:
+        log.info("EOD settlement: no trades today — skipping email")
 
 
 def _settle_us_paper_trades_for_date(date_str: str = None):
@@ -2150,12 +2153,15 @@ def _us_eod_settlement_job():
             f"Settled: {settled}  |  Skipped: {skipped}\n"
             f"⏰ {now_et.strftime('%H:%M ET')}"
         )
-    try:
-        today_et = now_et.strftime("%Y-%m-%d")
-        trades = _db_module.get_paper_trades(from_date=today_et, to_date=today_et, market="US")
-        _email.send_email(*_email.format_eod_settlement(trades, settled, skipped, errors, market="US"))
-    except Exception as _ee:
-        log.warning("US EOD settlement email failed: %s", _ee)
+    if settled > 0 or skipped > 0 or errors:
+        try:
+            today_et = now_et.strftime("%Y-%m-%d")
+            trades = _db_module.get_paper_trades(from_date=today_et, to_date=today_et, market="US")
+            _email.send_email(*_email.format_eod_settlement(trades, settled, skipped, errors, market="US"))
+        except Exception as _ee:
+            log.warning("US EOD settlement email failed: %s", _ee)
+    else:
+        log.info("US EOD settlement: no trades today — skipping email")
 
 
 import fundamentals as _lt

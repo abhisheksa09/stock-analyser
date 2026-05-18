@@ -158,11 +158,24 @@ def et_now_mins():
 
 # ─── Token store ──────────────────────────────────────────────────────────────
 
-_token = {"value": os.environ.get("UPSTOX_TOKEN", "")}
+_initial_token = os.environ.get("UPSTOX_TOKEN", "").strip()
+_token = {
+    "value": _initial_token,
+    # Record the IST date the token was set so stale tokens from previous
+    # days are never used (prevents spurious 401 → "token expired" alerts
+    # when the server runs continuously overnight).
+    "date":  datetime.now(IST).strftime("%Y-%m-%d") if _initial_token else None,
+}
 
-def get_token():    return _token["value"]
+def get_token():
+    """Return today's in-memory token; returns '' for tokens set on a previous day."""
+    if _token["date"] and _token["date"] != datetime.now(IST).strftime("%Y-%m-%d"):
+        return ""   # stale — run_scan will reload from DB or skip cleanly
+    return _token["value"]
+
 def set_token(tok):
     _token["value"] = tok.strip()
+    _token["date"]  = datetime.now(IST).strftime("%Y-%m-%d") if tok.strip() else None
     STATE.token_expired_alerted = False   # reset so next expiry triggers a fresh alert
     log.info("Upstox token updated")
 
