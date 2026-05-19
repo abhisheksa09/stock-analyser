@@ -117,10 +117,10 @@ INDEX_KEYS = {
     "NIFTYFMCG":      "NSE_INDEX|Nifty FMCG",
     "NIFTYENERGY":    "NSE_INDEX|Nifty Energy",
     "NIFTYMETAL":     "NSE_INDEX|Nifty Metal",
-    "NIFTYINFRA":     "NSE_INDEX|Nifty Infrastructure",
-    "NIFTYHEALTHCR":  "NSE_INDEX|Nifty Healthcare Index",
+    "NIFTYINFRA":     "NSE_INDEX|Nifty Infra",
+    "NIFTYHEALTHCR":  "NSE_INDEX|NIFTY HEALTHCARE",
     "NIFTYCONSD":     "NSE_INDEX|NIFTY CONSR DURBL",
-    "NIFTYDIGITAL":   "NSE_INDEX|Nifty India Digital",
+    "NIFTYDIGITAL":   "NSE_INDEX|NIFTY IND DIGITAL",
 }
 
 # Map stock sectors to their relevant index
@@ -176,7 +176,11 @@ def _upstox_get(path, token, timeout=15):
             body = e.read().decode("utf-8", errors="replace")[:300]
         except Exception:
             pass
-        _log.warning("Upstox HTTP %s on %s — %s", e.code, path, body)
+        if e.code == 400 and "UDAPI100011" in body:
+            # Invalid instrument key — caller will cache and warn once
+            _log.debug("Upstox HTTP 400 UDAPI100011 on %s", path)
+        else:
+            _log.warning("Upstox HTTP %s on %s — %s", e.code, path, body)
         raise
 
 def get_ltp(ikey, token):
@@ -209,10 +213,14 @@ def get_daily(ikey, token):
 
 # ─── Market context (composite breadth + sector index + VIX) ─────────────────
 
+_DEAD_IKEYS: set = set()  # instrument keys that returned UDAPI100011; skip silently after first hit
+
 def get_index_change(index_name, token):
     """Returns % change of an index vs previous close. Falls back to 0.0 on any error."""
+    import logging as _logging
+    _log = _logging.getLogger("scanner")
     ikey = INDEX_KEYS.get(index_name)
-    if not ikey:
+    if not ikey or ikey in _DEAD_IKEYS:
         return 0.0
     try:
         daily  = get_daily(ikey, token)
@@ -221,6 +229,11 @@ def get_index_change(index_name, token):
             return 0.0
         ltp = get_ltp(ikey, token)
         return round((ltp - prev_c) / prev_c * 100, 2)
+    except urllib.error.HTTPError as e:
+        if e.code == 400:
+            _DEAD_IKEYS.add(ikey)
+            _log.warning("Invalid instrument key %r (%s) — update INDEX_KEYS in signals.py", ikey, index_name)
+        return 0.0
     except Exception:
         return 0.0
 
