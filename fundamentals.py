@@ -259,10 +259,19 @@ def _get_corporate_events(symbol: str) -> dict:
     return out
 
 # ── yfinance fundamentals ─────────────────────────────────────────────────────
+def _get_yf_proxy() -> str | None:
+    """Return the YF_PROXY env var if set, else None."""
+    return os.environ.get("YF_PROXY") or None
+
+
 def _fetch_nifty_history(yf):
     """Fetch Nifty 50 1-year history once per scan. Returns DataFrame or None."""
+    proxy = _get_yf_proxy()
     try:
-        nh = yf.Ticker("^NSEI").history(period="1y", interval="1d", auto_adjust=True)
+        nh = yf.Ticker("^NSEI").history(
+            period="1y", interval="1d", auto_adjust=True,
+            **({"proxy": proxy} if proxy else {}),
+        )
         if nh is not None and not nh.empty:
             log.info("LT scan: Nifty 50 history fetched (%d days)", len(nh))
             return nh
@@ -288,7 +297,8 @@ def _fetch_yf(symbol: str, nifty_hist=None) -> dict | None:
 
 def _fetch_yf_inner(symbol: str, yf, nifty_hist=None) -> dict | None:
     """Inner implementation — called inside warnings.catch_warnings() block."""
-    ticker = yf.Ticker(f"{symbol}.NS")
+    proxy = _get_yf_proxy()
+    ticker = yf.Ticker(f"{symbol}.NS", **({"proxy": proxy} if proxy else {}))
     try:
         info = ticker.info or {}
     except Exception as e:
@@ -298,7 +308,10 @@ def _fetch_yf_inner(symbol: str, yf, nifty_hist=None) -> dict | None:
     # Price history for 200 DMA + 6-month relative strength
     hist = None
     try:
-        hist = ticker.history(period="1y", interval="1d", auto_adjust=True)
+        hist = ticker.history(
+            period="1y", interval="1d", auto_adjust=True,
+            **({"proxy": proxy} if proxy else {}),
+        )
     except Exception as e:
         log.debug("yfinance history %s: %s", symbol, e)
 
@@ -335,7 +348,7 @@ def _fetch_yf_inner(symbol: str, yf, nifty_hist=None) -> dict | None:
     eps_growth = None
     rev_growth = None
     try:
-        fin = ticker.financials  # annual, most recent first
+        fin = ticker.get_financials(proxy=proxy) if proxy else ticker.financials  # annual, most recent first
         if fin is not None and not fin.empty and fin.shape[1] >= 2:
             for key in _NI_KEYS:
                 if key in fin.index:
@@ -660,6 +673,9 @@ def run_lt_scan(segment: str = None) -> dict:
     all_picks = []
     summary   = {}
 
+    proxy = _get_yf_proxy()
+    log.info("LT scan: proxy=%s", proxy if proxy else "none (direct connection)")
+
     # Open a dedicated DB connection for this scan run — never shares with intraday thread
     lt_conn = _open_lt_db_conn()
     if not lt_conn:
@@ -690,6 +706,27 @@ def run_lt_scan(segment: str = None) -> dict:
                 log.debug("fetch_yf %s: %s", sym, e)
             if i % 10 == 0:
                 log.info("LT scan %s: fetched %d/%d stocks (%d ok)", seg, i, len(stocks), len(stock_data))
+
+        # Step 1c: Sanity-check — abort segment if >80% of stocks have no CMP.
+        # This means yfinance is being blocked (Render IP rate-limited by Yahoo Finance).
+        # Saving all-null picks would produce meaningless 50-score WATCH rows.
+        if stock_data:
+            missing_cmp = sum(1 for d in stock_data if not d.get("cmp"))
+            pct_missing = missing_cmp / len(stock_data)
+            if pct_missing > 0.80:
+                log.error(
+                    "LT scan %s: %.0f%% of stocks have no CMP — yfinance fetch failed "
+                    "(likely Render IP blocked by Yahoo Finance). "
+                    "Set YF_PROXY env var to a working HTTP proxy. Skipping segment.",
+                    seg, pct_missing * 100,
+                )
+                summary[seg] = {"scanned": 0, "picks": 0, "error": "yfinance_blocked"}
+                continue
+            elif pct_missing > 0.30:
+                log.warning(
+                    "LT scan %s: %.0f%% of stocks have no CMP — partial yfinance failure, "
+                    "proxy may be rate-limited.", seg, pct_missing * 100,
+                )
 
         # Step 2: Compute sector medians from this segment's data
         sector_medians = _compute_sector_medians(stock_data)

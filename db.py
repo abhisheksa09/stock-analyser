@@ -202,6 +202,8 @@ _MIGRATIONS = [
     "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS day_high NUMERIC",
     "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS day_low  NUMERIC",
     "ALTER TABLE token_store  ADD COLUMN IF NOT EXISTS is_invalid BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE token_store  ADD COLUMN IF NOT EXISTS invalidated_at TIMESTAMPTZ",
+    "ALTER TABLE token_store  ADD COLUMN IF NOT EXISTS invalidated_by TEXT",
     # Multi-market support — existing rows default to NSE
     "ALTER TABLE paper_trades  ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'NSE'",
     "ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'NSE'",
@@ -260,7 +262,8 @@ def set_token(token: str, set_by: str = "admin", date_=None):
                 INSERT INTO token_store (token, set_by, ist_date, is_invalid)
                 VALUES (%s, %s, %s, FALSE)
                 ON CONFLICT (ist_date) DO UPDATE
-                  SET token=%s, set_by=%s, set_at=NOW(), is_invalid=FALSE
+                  SET token=%s, set_by=%s, set_at=NOW(), is_invalid=FALSE,
+                      invalidated_at=NULL, invalidated_by=NULL
             """, (token, set_by, date_, token, set_by))
         return True
     except Exception as e:
@@ -281,10 +284,11 @@ def delete_token(date_=None):
         log.warning("delete_token: %s", e)
         return False
 
-def mark_token_invalid(date_=None):
+def mark_token_invalid(date_=None, by: str = "unknown"):
     """Flag today's token as rejected by Upstox (persists across restarts)."""
     if date_ is None:
         date_ = today_ist()
+    log.warning("mark_token_invalid called by=%s date=%s", by, date_)
     for attempt in range(2):
         conn = db()
         if not conn:
@@ -293,8 +297,8 @@ def mark_token_invalid(date_=None):
         try:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE token_store SET is_invalid=TRUE WHERE ist_date=%s",
-                    (date_,),
+                    "UPDATE token_store SET is_invalid=TRUE, invalidated_at=NOW(), invalidated_by=%s WHERE ist_date=%s",
+                    (by, date_),
                 )
             return True
         except Exception as e:
@@ -321,6 +325,33 @@ def is_token_invalid(date_=None):
     except Exception as e:
         log.warning("is_token_invalid: %s", e)
         return False
+
+def get_token_status(date_=None):
+    """Return a dict with token metadata for today: is_invalid, set_at, set_by, invalidated_at, invalidated_by."""
+    conn = db()
+    if not conn:
+        return {}
+    if date_ is None:
+        date_ = today_ist()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT is_invalid, set_at, set_by, invalidated_at, invalidated_by FROM token_store WHERE ist_date=%s",
+                (date_,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return {"is_invalid": None, "set_at": None, "set_by": None, "invalidated_at": None, "invalidated_by": None}
+            return {
+                "is_invalid":     row["is_invalid"],
+                "set_at":         row["set_at"].isoformat() if row["set_at"] else None,
+                "set_by":         row["set_by"],
+                "invalidated_at": row["invalidated_at"].isoformat() if row["invalidated_at"] else None,
+                "invalidated_by": row["invalidated_by"],
+            }
+    except Exception as e:
+        log.warning("get_token_status: %s", e)
+        return {}
 
 # ── Session state ─────────────────────────────────────────────────────────────
 def get_session_state(date_=None):

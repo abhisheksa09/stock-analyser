@@ -259,6 +259,7 @@ def alert_status():
     return jsonify({
         "session_date":      scanner.STATE.date,
         "token_set":         bool(get_effective_token()),
+        "token_status":      _db_module.get_token_status(),
         "locked_signals":    scanner.STATE.locked_sig,
         "alerts_sent_today": sorted(scanner.STATE.alerted),
         "prev_confidence":   scanner.STATE.prev_conf,
@@ -711,14 +712,26 @@ def _get_session(req) -> dict | None:
         return None
     return _db_module.validate_app_session(token)
 
-def _probe_upstox_token(token: str) -> bool:
-    """Return True if Upstox accepts the token (profile endpoint returns 200)."""
+def _probe_upstox_token(token: str):
+    """
+    Probe Upstox with the token.
+    Returns True  — Upstox accepted it.
+    Returns False — Upstox explicitly rejected it (HTTP 401 or 403).
+    Returns None  — network/transient error; validity is unknown.
+    """
     try:
         from signals import _upstox_get
-        _upstox_get("/v2/user/profile", token, timeout=5)
+        _upstox_get("/v2/user/profile", token, timeout=8)
         return True
-    except Exception:
-        return False
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            log.warning("_probe_upstox_token: HTTP %s — token rejected by Upstox", e.code)
+            return False
+        log.warning("_probe_upstox_token: HTTP %s — treating as transient, not marking invalid", e.code)
+        return None
+    except Exception as e:
+        log.warning("_probe_upstox_token: network/transient error (%s) — not marking token invalid", e)
+        return None
 
 
 @app.route("/auth/login")
@@ -741,11 +754,30 @@ def auth_login():
         # ever seeing a 401 (e.g. server restart before first scan of the day).
         # The frontend profile check is JS-only and never updates the DB flag,
         # so we must verify here rather than rely solely on is_invalid.
-        if not _probe_upstox_token(existing):
-            log.warning("auth_login: existing token rejected by Upstox — marking dead, proceeding to OAuth")
-            _db_module.mark_token_invalid()
+        probe = _probe_upstox_token(existing)
+        if probe is False:
+            # Upstox explicitly returned 401/403 — this token is dead.
+            log.warning("auth_login: existing token rejected by Upstox (401/403) — marking dead, proceeding to OAuth")
+            _db_module.mark_token_invalid(by="probe_login")
             scanner.STATE.token_expired_alerted = True
             scanner.set_token("")
+        elif probe is None:
+            # Network/transient error during probe — we cannot confirm the token is bad.
+            # Do NOT mark it invalid: a false-positive here permanently kills a valid token.
+            # Show "already logged in" so the user doesn't trigger a second OAuth
+            # (which would revoke the existing token via Upstox UDAPI100050).
+            log.warning("auth_login: probe had network error — assuming token valid, blocking second OAuth")
+            ist_time = datetime.now(IST).strftime("%H:%M IST")
+            return _auth_page(
+                success=True,
+                title="Already logged in",
+                message=(
+                    f"Token is set for today ({ist_time}). "
+                    f"(Upstox probe had a transient network error — token assumed valid.)<br><br>"
+                    f"<small style='color:#888'>If the scanner is alerting about an expired token, "
+                    f"use the admin panel to clear the token first, then log in again.</small>"
+                ),
+            )
         else:
             ist_time = datetime.now(IST).strftime("%H:%M IST")
             return _auth_page(

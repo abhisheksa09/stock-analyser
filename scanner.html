@@ -1093,6 +1093,14 @@ th[data-tip]{cursor:default;}
     </div>
 
     <div class="card">
+      <div class="card-title">Token Health</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+        <button class="btn" onclick="loadTokenHealth()">&#128274; Refresh token health</button>
+      </div>
+      <div id="tokenHealthBox" style="font-size:13px;line-height:1.8;display:none;"></div>
+    </div>
+
+    <div class="card">
       <div class="card-title">System Status</div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
         <button class="btn" onclick="adminLoad('alert-status','adminStatusBox')">&#128200; Alert status</button>
@@ -1315,6 +1323,44 @@ async function verifyAdminPin(){
 }
 
 // ─── ADMIN TAB FUNCTIONS ─────────────────────────────────────────────────────
+async function loadTokenHealth(){
+  const box=document.getElementById('tokenHealthBox');
+  if(!box)return;
+  box.style.display='block';
+  box.innerHTML='Loading…';
+  try{
+    const r=await fetch(BACKEND+'/alert-status');
+    const d=await r.json();
+    const ts=d.token_status||{};
+    const isInvalid=ts.is_invalid;
+    const setAt=ts.set_at?new Date(ts.set_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):'—';
+    const invAt=ts.invalidated_at?new Date(ts.invalidated_at).toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}):'—';
+    const invBy=ts.invalidated_by||'—';
+    const setBy=ts.set_by||'—';
+    const tokenPresent=d.token_set;
+
+    const statusColor = isInvalid ? '#A32D2D' : (tokenPresent ? '#27500A' : '#888');
+    const statusText  = isInvalid ? 'INVALID' : (tokenPresent ? 'VALID' : 'NOT SET');
+
+    box.innerHTML=`
+      <table style="border-collapse:collapse;width:100%">
+        <tr><td style="padding:4px 10px 4px 0;color:#888;width:160px">Status</td>
+            <td style="font-weight:700;color:${statusColor}">${statusText}</td></tr>
+        <tr><td style="padding:4px 10px 4px 0;color:#888">Set at (IST)</td>
+            <td>${setAt}</td></tr>
+        <tr><td style="padding:4px 10px 4px 0;color:#888">Set by</td>
+            <td>${setBy}</td></tr>
+        ${isInvalid?`
+        <tr><td style="padding:4px 10px 4px 0;color:#A32D2D">Invalidated at</td>
+            <td style="color:#A32D2D">${invAt}</td></tr>
+        <tr><td style="padding:4px 10px 4px 0;color:#A32D2D">Invalidated by</td>
+            <td style="color:#A32D2D">${invBy}</td></tr>`:''}
+      </table>`;
+  }catch(e){
+    box.innerHTML='<span style="color:#A32D2D">Error: '+e.message+'</span>';
+  }
+}
+
 async function adminLoad(endpoint, boxId){
   const box=document.getElementById(boxId);
   if(!box)return;
@@ -3022,10 +3068,15 @@ function renderBtTable() {
     var pnls   = dayRows.filter(function(t) { return t.pnl_pts != null; }).map(function(t) { return t.pnl_pts; });
     var totalPnL = pnls.length ? +pnls.reduce(function(a,b){return a+b;},0).toFixed(2) : null;
     var totalInr = dayRows.reduce(function(sum, t) {
-      if (t.pnl_pts == null || !(t.entry > 0)) return sum;
+      if (t.pnl_pts == null || !(t.entry > 0) || t.market === 'US') return sum;
       return sum + Math.round(t.pnl_pts * Math.floor(btCapital() / t.entry));
     }, 0);
-    var hasInr = dayRows.some(function(t) { return t.pnl_pts != null && t.entry > 0; });
+    var totalUsd = dayRows.reduce(function(sum, t) {
+      if (t.pnl_pts == null || !(t.entry > 0) || t.market !== 'US') return sum;
+      return sum + Math.round(t.pnl_pts * Math.floor(btCapital() / t.entry));
+    }, 0);
+    var hasInr = dayRows.some(function(t) { return t.pnl_pts != null && t.entry > 0 && t.market !== 'US'; });
+    var hasUsd = dayRows.some(function(t) { return t.pnl_pts != null && t.entry > 0 && t.market === 'US'; });
 
     var meta = '<span class="dg-badge dg-count">' + dayRows.length + ' trade' + (dayRows.length !== 1 ? 's' : '') + '</span>';
     if (wins.length)   meta += '<span class="dg-badge dg-hit">'     + wins.length   + ' win'  + (wins.length   !== 1 ? 's' : '') + '</span>';
@@ -3033,6 +3084,7 @@ function renderBtTable() {
     if (open.length)   meta += '<span class="dg-badge dg-pending">' + open.length   + ' open' + '</span>';
     if (totalPnL !== null) meta += '<span class="dg-pnl ' + (totalPnL >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '">' + (totalPnL >= 0 ? '+' : '') + fc(totalPnL) + ' pts</span>';
     if (hasInr) meta += '<span class="dg-pnl ' + (totalInr >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '" style="margin-left:4px;">' + (totalInr >= 0 ? '+' : '') + '₹' + Math.abs(totalInr).toLocaleString('en-IN') + '</span>';
+    if (hasUsd) meta += '<span class="dg-pnl ' + (totalUsd >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '" style="margin-left:4px;">' + (totalUsd >= 0 ? '+' : '') + '$' + Math.abs(totalUsd).toLocaleString('en-US') + '</span>';
 
     var hdr = document.createElement('tr');
     hdr.className = 'date-group-hdr';
@@ -3069,7 +3121,7 @@ function renderBtTable() {
       tr.innerHTML =
         '<td class="cb-col"><input type="checkbox" class="row-cb bt-row-cb" data-id="' + t.id + '" ' + (isSel ? 'checked' : '') + ' onclick="toggleBtRowSel(this)"></td>' +
         '<td style="white-space:nowrap;"><div style="font-weight:600;font-size:12px;">' + fmtDate(date) + '</div>' +
-          '<div style="color:#888;font-size:11px;">' + (t.signal_time || '') + ' IST</div></td>' +
+          '<div style="color:#888;font-size:11px;">' + (t.signal_time || '') + ' ' + (_isUS ? 'ET' : 'IST') + '</div></td>' +
         '<td><div class="sym">' + (t.sym || '') + '</div>' + (isBest ? '<div style="margin:2px 0 1px;"><span style="font-size:10px;background:#EF9F27;color:#fff;padding:1px 5px;border-radius:3px;font-weight:600;white-space:nowrap;display:inline-block;">★ Pick</span></div>' : '') + '<div class="sec">' + (t.sec || '') + '</div></td>' +
         '<td><span class="sig ' + sigCls + '"><span class="dot"></span>' + t.sig + '</span></td>' +
         '<td><span class="conf-n ' + confMt.cls + '">' + (t.conf || 0) + '%</span></td>' +

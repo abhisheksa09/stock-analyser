@@ -542,7 +542,7 @@ def run_scan(force: bool = False):
             )
             if is_auth_error and not STATE.token_expired_alerted:
                 STATE.token_expired_alerted = True
-                _db_module.mark_token_invalid()   # persist across restarts
+                _db_module.mark_token_invalid(by=f"scanner_http{http_code or 'err'}")   # persist across restarts
                 log.warning("Token auth error (%s) — alerting user", http_code)
                 render_base = os.environ.get("RENDER_BASE_URL", "").rstrip("/")
                 login_url   = f"{render_base}/auth/login" if render_base else None
