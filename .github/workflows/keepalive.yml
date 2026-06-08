@@ -1,0 +1,30 @@
+name: Render Keepalive
+
+on:
+  schedule:
+    # All times in UTC. IST = UTC+5:30, ET (summer) = UTC-4, Amsterdam (summer) = UTC+2
+
+    # Morning scan window: 8:30–11:20 AM IST = 3:00–5:50 AM UTC (weekdays)
+    - cron: '*/10 3-5 * * 1-5'
+
+    # EOD settlement window: 2:30–5:20 PM IST = 9:00–11:50 AM UTC (weekdays)
+    - cron: '*/10 9-11 * * 1-5'
+
+    # US scan window: 9:00–11:50 AM ET = 1:00–3:50 PM UTC (weekdays)
+    - cron: '*/10 13-15 * * 1-5'
+
+  # Allow manual trigger from GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render service
+        run: |
+          echo "Pinging nse-proxy at $(date -u)"
+          curl --max-time 90 --retry 2 --retry-delay 10 \
+               --silent --show-error \
+               https://nse-proxy-mojx.onrender.com/ping
+          echo ""
+          echo "Done at $(date -u)"
