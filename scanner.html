@@ -2,6 +2,68 @@
 <html lang="en">
 <head>
 <script>
+// ── Render wake-up overlay ────────────────────────────────────────────────────
+(function(){
+  var RENDER_HOST = 'nse-proxy-mojx.onrender.com';
+  var _pending = 0;
+  var _timer = null;
+  var _overlay = null;
+
+  function showOverlay(){
+    if(_overlay) return;
+    _overlay = document.createElement('div');
+    _overlay.id = '_renderWakeOverlay';
+    _overlay.style.cssText = [
+      'position:fixed','top:0','left:0','width:100%','height:100%',
+      'background:rgba(0,0,0,.45)','z-index:99999',
+      'display:flex','align-items:center','justify-content:center',
+      'backdrop-filter:blur(2px)','-webkit-backdrop-filter:blur(2px)'
+    ].join(';');
+    _overlay.innerHTML = [
+      '<div style="background:#fff;border-radius:16px;padding:28px 32px;',
+      'max-width:320px;width:90%;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.18);">',
+      '<div style="font-size:36px;margin-bottom:12px;animation:_rwSpin 1.2s linear infinite;display:inline-block;">⏳</div>',
+      '<div style="font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:6px;">Service is waking up</div>',
+      '<div style="font-size:12px;color:#888;line-height:1.5;">Render free tier spins down after inactivity.',
+      '<br>Please wait <b>20–60 seconds</b> while it restarts…</div>',
+      '</div>'
+    ].join('');
+    var style = document.createElement('style');
+    style.textContent = '@keyframes _rwSpin{0%{transform:none}50%{transform:rotate(-20deg)}100%{transform:none}}';
+    _overlay.appendChild(style);
+    document.body.appendChild(_overlay);
+  }
+
+  function hideOverlay(){
+    if(_overlay){ _overlay.remove(); _overlay = null; }
+  }
+
+  function onStart(){
+    _pending++;
+    if(_pending === 1){
+      _timer = setTimeout(showOverlay, 2000);
+    }
+  }
+
+  function onEnd(){
+    _pending = Math.max(0, _pending - 1);
+    if(_pending === 0){
+      clearTimeout(_timer);
+      hideOverlay();
+    }
+  }
+
+  var _origFetch = window.fetch.bind(window);
+  window.fetch = function(input, init){
+    var url = (typeof input === 'string') ? input : (input && input.url) ? input.url : '';
+    if(url.indexOf(RENDER_HOST) !== -1){
+      onStart();
+      return _origFetch(input, init).then(function(r){ onEnd(); return r; }, function(e){ onEnd(); throw e; });
+    }
+    return _origFetch(input, init);
+  };
+})();
+
 // ── Session token (set after login) ───────────────────────────────────────────
 var _appSessionToken = localStorage.getItem('nse_app_token') || '';
 //Admin
