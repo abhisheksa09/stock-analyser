@@ -1,28 +1,45 @@
-name: Render Keepalive
+name: Render Keepalive (backup)
+
+# ── Why these schedules look the way they do ─────────────────────────────────
+# GitHub Actions scheduled workflows are BEST-EFFORT, not guaranteed:
+#   • They can be delayed 5–30+ min, or dropped entirely, under high load.
+#   • High load peaks at the TOP OF THE HOUR (:00) — the single worst slot.
+#     (Source: GitHub docs — "schedule your workflow to run at a different
+#      time of the hour" to decrease the chance of delay.)
+#
+# So we do TWO things:
+#   1. OFFSET the minutes off :00 and the round :05/:10/:15 marks (which collide
+#      with everyone else's */5 //10 //15 jobs). We fire at :02,:07,:12,... —
+#      this measurably lowers GitHub's drop rate. No extra cost.
+#   2. LEAD TIME: a short pre-warm ramp before the moment we actually need the
+#      service up, so a dropped run or two still leaves a later run to wake it.
+#
+# This account has MULTIPLE Render services sharing the free 750 instance-hrs/mo
+# pool, so we keep windows tight (no 24/7) to avoid burning the shared budget.
+#
+# All times UTC. IST = UTC+5:30 (no DST). Summer: ET = UTC-4, Amsterdam = UTC+2.
 
 on:
   schedule:
-    # All times in UTC. IST = UTC+5:30, ET (summer) = UTC-4, Amsterdam (summer) = UTC+2
+    # 1. NSE morning: pre-open 9:00 IST = 3:30 UTC, scan ~8:30–10:30 IST
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 3-5 * * 1-5'
 
-    # NOTE: GitHub Actions scheduler can delay by 5–20 min, so we use */5 (every 5 min)
-    # to ensure Render never hits its 15-min inactivity sleep threshold mid-window.
+    # 2. NSE EOD settlement 15:35 IST + evening scan = 10:00–10:59 UTC
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 9-10 * * 1-5'
 
-    # 1. Login reminder + NSE morning scan: 8:30–10:30 AM IST = 3:00–5:00 AM UTC (weekdays)
-    - cron: '*/5 3-5 * * 1-5'
+    # 3a. US pre-open WARMUP ramp — ~45 min before 13:30 UTC open (cheap lead time)
+    - cron: '47,52,57 12 * * 1-5'
+    # 3b. US market: 9:30 ET open = 13:30 UTC; scan window 13:00–15:59 UTC
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 13-15 * * 1-5'
 
-    # 2. Indian EOD settlement (15:35 IST) + Evening scan (15:40 IST) = 10:00–10:50 AM UTC (weekdays)
-    - cron: '*/5 9-10 * * 1-5'
+    # 4. US EOD settlement ~16:05 ET = ~20:05 UTC — bracket it 19:47–20:17
+    - cron: '47,52,57 19 * * 1-5'
+    - cron: '2,7,12,17 20 * * 1-5'
 
-    # 3. US market scan: 9:30–11:00 AM ET = 1:30–3:00 PM UTC (weekdays)
-    - cron: '*/5 13-15 * * 1-5'
+    # 5. Weekly LT scan: Sunday 00:00 IST = Saturday 18:30 UTC — bracket 18:12–18:42
+    - cron: '12,17,22,27,32,37,42 18 * * 6'
 
-    # 4. US EOD settlement: 16:05 ET = 20:05 UTC — warm up 10 min before (weekdays)
-    - cron: '50,55,0,5,10 19-20 * * 1-5'
-
-    # 5. Weekly LT scan: Sunday 00:00 IST = Saturday 18:30 UTC — warm up before
-    - cron: '15,20,25,30,35,40 18 * * 6'
-
-  # Allow manual trigger from GitHub Actions tab
+  # Manual trigger — use this from the Actions tab to wake the service on demand
   workflow_dispatch:
 
 jobs:
@@ -31,8 +48,8 @@ jobs:
     steps:
       - name: Ping Render service
         run: |
-          echo "Pinging nse-proxy at $(date -u)"
-          curl --max-time 60 --retry 3 --retry-delay 5 \
+          echo "Keepalive ping at $(date -u)"
+          curl --max-time 90 --retry 3 --retry-delay 10 \
                --silent --show-error \
                https://nse-proxy-mojx.onrender.com/ping
           echo ""
