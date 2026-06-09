@@ -4,20 +4,23 @@ on:
   schedule:
     # All times in UTC. IST = UTC+5:30, ET (summer) = UTC-4, Amsterdam (summer) = UTC+2
 
+    # NOTE: GitHub Actions scheduler can delay by 5–20 min, so we use */5 (every 5 min)
+    # to ensure Render never hits its 15-min inactivity sleep threshold mid-window.
+
     # 1. Login reminder + NSE morning scan: 8:30–10:30 AM IST = 3:00–5:00 AM UTC (weekdays)
-    - cron: '*/10 3-5 * * 1-5'
+    - cron: '*/5 3-5 * * 1-5'
 
     # 2. Indian EOD settlement (15:35 IST) + Evening scan (15:40 IST) = 10:00–10:50 AM UTC (weekdays)
-    - cron: '*/10 9-10 * * 1-5'
+    - cron: '*/5 9-10 * * 1-5'
 
     # 3. US market scan: 9:30–11:00 AM ET = 1:30–3:00 PM UTC (weekdays)
-    - cron: '*/10 13-15 * * 1-5'
+    - cron: '*/5 13-15 * * 1-5'
 
     # 4. US EOD settlement: 16:05 ET = 20:05 UTC — warm up 10 min before (weekdays)
-    - cron: '55,5 19-20 * * 1-5'
+    - cron: '50,55,0,5,10 19-20 * * 1-5'
 
     # 5. Weekly LT scan: Sunday 00:00 IST = Saturday 18:30 UTC — warm up before
-    - cron: '20,30,40 18 * * 6'
+    - cron: '15,20,25,30,35,40 18 * * 6'
 
   # Allow manual trigger from GitHub Actions tab
   workflow_dispatch:
@@ -29,7 +32,7 @@ jobs:
       - name: Ping Render service
         run: |
           echo "Pinging nse-proxy at $(date -u)"
-          curl --max-time 90 --retry 2 --retry-delay 10 \
+          curl --max-time 60 --retry 3 --retry-delay 5 \
                --silent --show-error \
                https://nse-proxy-mojx.onrender.com/ping
           echo ""
