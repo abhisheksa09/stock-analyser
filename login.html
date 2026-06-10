@@ -96,32 +96,79 @@ const PROXY='https://nse-proxy-mojx.onrender.com';
   var _timer = null;
   var _overlay = null;
 
+  var _wakeStart = 0;
+  var _msgInterval = null;
+  var _tickInterval = null;
+  var _msgIdx = 0;
+  var _MSGS = [
+    ['☕', 'Making the server a coffee first…'],
+    ['🐹', 'The hamsters that power this thing are stretching…'],
+    ['💤', 'Free tier: napping harder than you on a Sunday.'],
+    ['🥱', 'Render said "5 more minutes." That was 20s ago.'],
+    ['🪙', 'This app runs on good vibes and zero budget.'],
+    ['🧊', 'Cold start loading… (it's literally sleeping on ice)'],
+    ['🚀', 'Almost there. Probably. Fingers crossed.'],
+    ['🐢', 'Free hosting: fast to set up, slow to wake up.'],
+    ['⚡', 'Your patience is the premium plan.'],
+    ['🎁', 'Free tier waking up — the best things in life take 40s.'],
+  ];
+
   function showOverlay(){
     if(_overlay) return;
+    _wakeStart = Date.now();
+    _msgIdx = 0;
     _overlay = document.createElement('div');
     _overlay.id = '_renderWakeOverlay';
     _overlay.style.cssText = [
       'position:fixed','top:0','left:0','width:100%','height:100%',
-      'background:rgba(0,0,0,.45)','z-index:99999',
+      'background:rgba(0,0,0,.55)','z-index:99999',
       'display:flex','align-items:center','justify-content:center',
-      'backdrop-filter:blur(2px)','-webkit-backdrop-filter:blur(2px)'
+      'backdrop-filter:blur(3px)','-webkit-backdrop-filter:blur(3px)'
     ].join(';');
-    _overlay.innerHTML = [
-      '<div style="background:#fff;border-radius:16px;padding:28px 32px;',
-      'max-width:320px;width:90%;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.18);">',
-      '<div style="font-size:36px;margin-bottom:12px;animation:_rwSpin 1.2s linear infinite;display:inline-block;">⏳</div>',
-      '<div style="font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:6px;">Service is waking up</div>',
-      '<div style="font-size:12px;color:#888;line-height:1.5;">Render free tier spins down after inactivity.',
-      '<br>Please wait <b>20–60 seconds</b> while it restarts…</div>',
-      '</div>'
-    ].join('');
+    _overlay.innerHTML =
+      '<div style="background:#fff;border-radius:20px;padding:32px 28px;' +
+      'max-width:340px;width:90%;text-align:center;box-shadow:0 12px 48px rgba(0,0,0,.22);">' +
+        '<div id="_rwEmoji" style="font-size:44px;margin-bottom:10px;line-height:1;transition:all .3s;">☕</div>' +
+        '<div style="font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:8px;">Waking the server up…</div>' +
+        '<div id="_rwMsg" style="font-size:13px;color:#666;min-height:36px;line-height:1.5;' +
+        'transition:opacity .3s;margin-bottom:16px;">Making the server a coffee first…</div>' +
+        '<div style="background:#f0f0f0;border-radius:99px;height:6px;overflow:hidden;margin-bottom:12px;">' +
+          '<div id="_rwBar" style="height:100%;width:0%;background:linear-gradient(90deg,#4CAF50,#27500A);' +
+          'border-radius:99px;transition:width .8s ease;"></div>' +
+        '</div>' +
+        '<div style="font-size:11px;color:#bbb;">Free hosting · Render cold start · <span id="_rwSec">0</span>s elapsed</div>' +
+      '</div>';
     var style = document.createElement('style');
-    style.textContent = '@keyframes _rwSpin{0%{transform:none}50%{transform:rotate(-20deg)}100%{transform:none}}';
+    style.textContent = '@keyframes _rwBounce{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}';
     _overlay.appendChild(style);
     document.body.appendChild(_overlay);
+
+    _msgInterval = setInterval(function(){
+      _msgIdx = (_msgIdx + 1) % _MSGS.length;
+      var em = document.getElementById('_rwEmoji');
+      var tx = document.getElementById('_rwMsg');
+      if(!em || !tx) return;
+      em.style.opacity = '0'; tx.style.opacity = '0';
+      setTimeout(function(){
+        em.textContent = _MSGS[_msgIdx][0];
+        tx.textContent = _MSGS[_msgIdx][1];
+        em.style.opacity = '1'; tx.style.opacity = '1';
+      }, 300);
+    }, 4000);
+
+    _tickInterval = setInterval(function(){
+      var el = document.getElementById('_rwSec');
+      var bar = document.getElementById('_rwBar');
+      if(!el) return;
+      var s = Math.round((Date.now() - _wakeStart) / 1000);
+      el.textContent = s;
+      if(bar) bar.style.width = Math.min(s / 55 * 100, 95) + '%';
+    }, 1000);
   }
 
   function hideOverlay(){
+    clearInterval(_msgInterval); _msgInterval = null;
+    clearInterval(_tickInterval); _tickInterval = null;
     if(_overlay){ _overlay.remove(); _overlay = null; }
   }
 
