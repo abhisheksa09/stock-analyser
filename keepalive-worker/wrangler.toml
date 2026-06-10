@@ -1,0 +1,32 @@
+name = "render-keepalive"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[triggers]
+# Free plan: 5 cron triggers max.
+# All times UTC. IST = UTC+5:30. ET (summer) = UTC-4.
+crons = [
+  # 1. NSE morning — 3:00–5:57 UTC Mon–Fri (08:30–11:27 IST)
+  "2,7,12,17,22,27,32,37,42,47,52,57 3-5 * * 1-5",
+
+  # 2. NSE EOD + evening scan — 9:00–10:57 UTC Mon–Fri (14:30–16:27 IST)
+  "2,7,12,17,22,27,32,37,42,47,52,57 9-10 * * 1-5",
+
+  # 3. US pre-warm + US market — 12:47–15:57 UTC Mon–Fri (08:17–11:57 ET)
+  #    Covers the :47,:52,:57 pre-warm in hour 12, then every 5 min through 15:57
+  "47,52,57 12 * * 1-5",
+
+  # 4. US market — 13:00–15:57 UTC Mon–Fri
+  "2,7,12,17,22,27,32,37,42,47,52,57 13-15 * * 1-5",
+
+  # 5. US EOD (19:47–20:17 UTC Mon–Fri) + weekly LT scan (18:12–18:42 UTC Sat)
+  #    Uses day-of-week to distinguish: Mon-Fri fires at 19-20, Sat fires at 18
+  "47,52,57 19 * * 1-5",
+]
+
+# NOTE: The following slots from the GitHub Actions schedule are NOT covered due to the 5-trigger
+# limit. GitHub Actions (backup) handles them:
+#   - US EOD: 20:02,07,12,17 UTC Mon–Fri  (last 15 min of the US EOD bracket)
+#   - Weekly LT scan: 18:12–18:42 UTC Saturday
+# To cover these, upgrade to the Workers Paid plan ($5/mo, unlimited triggers) or keep GitHub
+# Actions as the fallback for the gaps.

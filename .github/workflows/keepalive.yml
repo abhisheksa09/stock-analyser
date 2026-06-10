@@ -1,19 +1,40 @@
-name: Render Keepalive
+name: Render Keepalive (backup)
+
+# PRIMARY keepalive is the Cloudflare Worker (keepalive-worker/wrangler.toml).
+# That worker fires reliably and waits 90s — long enough for Render's ~50s cold start.
+#
+# This GitHub Actions workflow is the BACKUP. It covers two windows the
+# Cloudflare free plan's 5-trigger limit couldn't fit:
+#   - US EOD tail: 20:02–20:17 UTC Mon–Fri
+#   - Weekly LT scan: 18:12–18:42 UTC Saturday
+# It also duplicates the primary windows so a GitHub delay is caught by CF and vice versa.
+#
+# GitHub Actions schedule is BEST-EFFORT — can be delayed 5–30+ min under load.
+# Minutes are offset off :00/:05/:10 to reduce drop rate (see GitHub docs).
+#
+# All times UTC. IST = UTC+5:30. ET (summer) = UTC-4.
 
 on:
   schedule:
-    # All times in UTC. IST = UTC+5:30, ET (summer) = UTC-4, Amsterdam (summer) = UTC+2
+    # 1. NSE morning: 3:00–5:57 UTC Mon–Fri (08:30–11:27 IST)
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 3-5 * * 1-5'
 
-    # Morning scan window: 8:30–11:20 AM IST = 3:00–5:50 AM UTC (weekdays)
-    - cron: '*/10 3-5 * * 1-5'
+    # 2. NSE EOD + evening scan: 9:00–10:57 UTC Mon–Fri (14:30–16:27 IST)
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 9-10 * * 1-5'
 
-    # EOD settlement window: 2:30–5:20 PM IST = 9:00–11:50 AM UTC (weekdays)
-    - cron: '*/10 9-11 * * 1-5'
+    # 3a. US pre-open warmup: 12:47–12:57 UTC Mon–Fri
+    - cron: '47,52,57 12 * * 1-5'
+    # 3b. US market: 13:00–15:57 UTC Mon–Fri
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 13-15 * * 1-5'
 
-    # US scan window: 9:00–11:50 AM ET = 1:00–3:50 PM UTC (weekdays)
-    - cron: '*/10 13-15 * * 1-5'
+    # 4. US EOD bracket: 19:47–20:17 UTC Mon–Fri
+    - cron: '47,52,57 19 * * 1-5'
+    - cron: '2,7,12,17 20 * * 1-5'
 
-  # Allow manual trigger from GitHub Actions tab
+    # 5. Weekly LT scan: 18:12–18:42 UTC Saturday (Sun 00:00 IST)
+    - cron: '12,17,22,27,32,37,42 18 * * 6'
+
+  # Manual trigger from the Actions tab
   workflow_dispatch:
 
 jobs:
@@ -22,8 +43,8 @@ jobs:
     steps:
       - name: Ping Render service
         run: |
-          echo "Pinging nse-proxy at $(date -u)"
-          curl --max-time 90 --retry 2 --retry-delay 10 \
+          echo "Keepalive ping at $(date -u)"
+          curl --max-time 90 --retry 3 --retry-delay 10 \
                --silent --show-error \
                https://nse-proxy-mojx.onrender.com/ping
           echo ""
