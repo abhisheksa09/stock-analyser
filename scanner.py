@@ -110,6 +110,7 @@ class SessionState:
         self.bt_first_green      = {}  # sym -> scan mins of first consecutive green hit
         self.bt_last_verdict     = {}  # sym -> last verdict string for diagnostics
         self.token_expired_alerted = False
+        self.scan_heartbeat_sent = False  # True after first "scan alive" Telegram sent
         self.needs_token_refresh = True   # signal run_scan to reload token from DB
         log.info("Session state reset for %s (bt_saved from DB: %s)", self.date, sorted(self.bt_saved))
 
@@ -332,6 +333,38 @@ def parse_hhmm(s, default):
         return int(h) * 60 + int(m)
     except Exception:
         return default
+
+# ─── Scan heartbeat ───────────────────────────────────────────────────────────
+
+def _send_scan_heartbeat(all_syms, market_ctx, mins, state, market: str = "NSE"):
+    """Send a one-time 'scanner alive' Telegram when first scan completes with no alerts."""
+    ist_time   = datetime.now(IST).strftime("%H:%M IST")
+    n          = len(all_syms)
+    bias       = market_ctx.get("market_bias", "?") if market_ctx else "?"
+    composite  = market_ctx.get("composite_chg", 0.0) if market_ctx else 0.0
+    vix        = market_ctx.get("vix", 0.0) if market_ctx else 0.0
+
+    # Top 3 scanned symbols by confidence (gives a quick peek at what's closest)
+    scored = sorted(
+        [(s["sym"], state.prev_conf.get(s["sym"], 0), state.prev_sig.get(s["sym"], "WATCH"))
+         for s in all_syms if s["sym"] in state.prev_conf],
+        key=lambda x: x[1], reverse=True,
+    )[:3]
+    top_str = "  |  ".join(f"{sym} {sig} {conf}%" for sym, conf, sig in scored) or "—"
+
+    mkt_label = "NSE SCANNER" if market == "NSE" else "US SCANNER"
+    flag      = "🇮🇳" if market == "NSE" else "🇺🇸"
+    send_telegram(
+        f"{flag} <b>{mkt_label} — scan complete, no alerts</b>\n"
+        f"\n"
+        f"{n} stocks scanned — nothing above threshold yet.\n"
+        f"Market: <b>{composite:+.2f}%</b>  bias={bias}  VIX={vix:.1f}\n"
+        f"\n"
+        f"Top conf: {top_str}\n"
+        f"\n"
+        f"⏰ {ist_time}"
+    )
+
 
 # ─── Core scan ────────────────────────────────────────────────────────────────
 
@@ -656,6 +689,12 @@ def run_scan(force: bool = False):
     log.info("Scan done — %d alerts sent, %d paper trades saved today",
              sent, len(STATE.bt_saved))
 
+    # Send one heartbeat per session so you know the scan is alive even when nothing fires
+    if not STATE.scan_heartbeat_sent:
+        STATE.scan_heartbeat_sent = True
+        if sent == 0:
+            _send_scan_heartbeat(all_syms, nifty_ctx, mins, STATE, market="NSE")
+
 
 # ─── US market scan ───────────────────────────────────────────────────────────
 
@@ -812,6 +851,11 @@ def run_us_scan(force: bool = False):
         US_STATE.prev_sig[sym]  = s["sig"]
 
     log.info("[US] Scan done — %d alerts sent, %d paper trades saved today, %d symbols skipped (no data)", sent, len(US_STATE.bt_saved), skipped)
+
+    if not US_STATE.scan_heartbeat_sent:
+        US_STATE.scan_heartbeat_sent = True
+        if sent == 0:
+            _send_scan_heartbeat(all_syms, _us_market_ctx_cache, mins, US_STATE, market="US")
 
 
 # ─── Real-trade overlap check ─────────────────────────────────────────────────
