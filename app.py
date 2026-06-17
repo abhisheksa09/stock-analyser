@@ -1950,6 +1950,29 @@ def _compute_outcome_intraday(sig: str, entry: float, target: float,
     return best_price, outcome, pts, pct, False, False
 
 
+def _send_target_hit_alert(trade: dict, exit_price: float, pnl_pts: float,
+                           pnl_pct: float, market: str = "NSE"):
+    """Notify via Telegram when a paper-traded pick reaches its target (a WON settle).
+    Best-effort: never raises, so it can't break the settlement loop."""
+    try:
+        cur   = "$" if market == "US" else "Rs"
+        tz    = "ET" if market == "US" else "IST"
+        flag  = "🇺🇸" if market == "US" else "🇮🇳"
+        now   = datetime.now(ET if market == "US" else IST)
+        conf  = trade.get("conf")
+        conf_str = f"  ·  conf {int(conf)}%" if conf is not None else ""
+        scanner.send_telegram(
+            f"🎯 <b>TARGET HIT — {trade['sym']}</b> {flag}\n\n"
+            f"{trade['sig']} pick reached its target.\n"
+            f"Entry : {cur}{float(trade['entry']):.2f}\n"
+            f"Target: {cur}{float(trade['target']):.2f}\n"
+            f"Gain  : +{abs(pnl_pts):.2f} ({abs(pnl_pct):.2f}%){conf_str}\n\n"
+            f"⏰ {now.strftime('%H:%M ' + tz)}  ·  settled @ {cur}{exit_price:.2f}"
+        )
+    except Exception as e:
+        log.warning("target-hit alert failed for %s: %s", trade.get("sym"), e)
+
+
 def _settle_paper_trades_for_date(date_str: str = None):
     """
     Settle all open paper trades for date_str by replaying intraday 1-minute
@@ -2033,6 +2056,8 @@ def _settle_paper_trades_for_date(date_str: str = None):
                     "HIT" if target_hit else "-",
                     "HIT" if sl_hit     else "-",
                 )
+                if target_hit:
+                    _send_target_hit_alert(trade, exit_price, pnl_pts, pnl_pct, market="NSE")
             else:
                 skipped += 1
                 errors.append(f"{sym}: DB update failed (already settled?)")
@@ -2154,6 +2179,8 @@ def _settle_us_paper_trades_for_date(date_str: str = None):
                     "HIT" if target_hit else "-",
                     "HIT" if sl_hit     else "-",
                 )
+                if target_hit:
+                    _send_target_hit_alert(trade, exit_price, pnl_pts, pnl_pct, market="US")
             else:
                 skipped += 1
                 errors.append(f"{sym}: DB update failed (already settled?)")
