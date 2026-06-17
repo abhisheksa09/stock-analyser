@@ -660,9 +660,17 @@ def run_scan(force: bool = False):
         # ── Telegram + email alerts: only when stock is ready to trade ────────
         if in_watch:
             if verdict == "green" and not STATE.already_alerted(sym, "green_ready"):
-                if send_telegram(format_alert("green_ready", s)):
+                _msg = format_alert("green_ready", s)
+                if send_telegram(_msg):
                     STATE.mark_alerted(sym, "green_ready")
                     sent += 1
+                    # Durably record the alert (independent of the paper-trade write) so a
+                    # pick is always recoverable from alert_log even if the trade save fails.
+                    try:
+                        _db_module.log_alert(sym, "green_ready", int(s["conf"]), s["sig"], _msg, True,
+                                             market="NSE")
+                    except Exception as _le:
+                        log.debug("log_alert failed for %s: %s", sym, _le)
                     # Also ensure paper trade saved for non-backtest alert symbols
                     if sym not in STATE.bt_saved and sym not in pt_excluded:
                         # Only mark saved if the DB write actually succeeded — a failed
@@ -870,9 +878,19 @@ def run_us_scan(force: bool = False):
 
         # Telegram alerts
         if in_watch and verdict == "green" and not US_STATE.already_alerted(sym, "green_ready"):
-            if send_telegram(format_alert("green_ready", s)):
+            _msg = format_alert("green_ready", s)
+            if send_telegram(_msg):
                 US_STATE.mark_alerted(sym, "green_ready")
                 sent += 1
+                # Durably record the alert (independent of the paper-trade write) so a
+                # pick is always recoverable from alert_log even if the trade save fails.
+                try:
+                    _now_et = datetime.now(ET)
+                    _db_module.log_alert(sym, "green_ready", int(s["conf"]), s["sig"], _msg, True,
+                                         date_=_now_et.strftime("%Y-%m-%d"),
+                                         time_=_now_et.strftime("%H:%M"), market="US")
+                except Exception as _le:
+                    log.debug("[US] log_alert failed for %s: %s", sym, _le)
                 if sym not in US_STATE.bt_saved and sym not in pt_excluded:
                     # Only mark saved if the DB write actually succeeded — a failed
                     # save must be retried next cycle, not silently swallowed (else the

@@ -197,6 +197,22 @@ CREATE TABLE IF NOT EXISTS evening_picks (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_evening_picks_date ON evening_picks(pick_date);
+
+CREATE TABLE IF NOT EXISTS market_snapshot (
+    id            SERIAL      PRIMARY KEY,
+    snap_date     DATE        NOT NULL,
+    market        TEXT        NOT NULL DEFAULT 'NSE',
+    nifty_chg     NUMERIC,
+    composite_chg NUMERIC,
+    vix           NUMERIC,
+    market_bias   TEXT,
+    regime        TEXT,
+    broad_chgs    JSONB,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (snap_date, market)
+);
+CREATE INDEX IF NOT EXISTS idx_market_snapshot_date ON market_snapshot(snap_date);
 """
 
 _MIGRATIONS = [
@@ -210,6 +226,12 @@ _MIGRATIONS = [
     "ALTER TABLE trade_history ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'NSE'",
     "ALTER TABLE evening_picks ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'NSE'",
     "ALTER TABLE alert_log     ADD COLUMN IF NOT EXISTS market TEXT NOT NULL DEFAULT 'NSE'",
+    # Market-condition context — lets backtest slice win-rate by regime / VIX
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS regime        TEXT",
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS composite_chg NUMERIC",
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS vix           NUMERIC",
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS sector_chg    NUMERIC",
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS market_bias   TEXT",
 ]
 
 def init_db():
@@ -499,7 +521,7 @@ def get_trade_stats(username=None):
     }
 
 # ── Alert log ─────────────────────────────────────────────────────────────────
-def log_alert(sym, kind, conf, sig, message, sent, date_=None, time_=None):
+def log_alert(sym, kind, conf, sig, message, sent, date_=None, time_=None, market="NSE"):
     conn = db()
     if not conn:
         return False
@@ -510,9 +532,9 @@ def log_alert(sym, kind, conf, sig, message, sent, date_=None, time_=None):
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO alert_log (ist_date, ist_time, sym, kind, conf, sig, message, sent)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (date_, time_, sym, kind, conf, sig, message, sent))
+                INSERT INTO alert_log (ist_date, ist_time, sym, kind, conf, sig, message, sent, market)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (date_, time_, sym, kind, conf, sig, message, sent, (market or "NSE").upper()))
         return True
     except Exception as e:
         log.warning("log_alert: %s", e)
@@ -772,14 +794,25 @@ def save_paper_trade(trade: dict) -> bool:
                 INSERT INTO paper_trades
                     (id, trade_date, signal_time, sym, sec, sig, conf,
                      signal_price, entry, target, stop_loss, rr, rsi, reason,
-                     created_by, market)
+                     created_by, market,
+                     regime, composite_chg, vix, sector_chg, market_bias)
                 VALUES
                     (%(id)s, %(trade_date)s, %(signal_time)s, %(sym)s, %(sec)s,
                      %(sig)s, %(conf)s, %(signal_price)s, %(entry)s, %(target)s,
                      %(stop_loss)s, %(rr)s, %(rsi)s, %(reason)s,
-                     %(created_by)s, %(market)s)
+                     %(created_by)s, %(market)s,
+                     %(regime)s, %(composite_chg)s, %(vix)s, %(sector_chg)s, %(market_bias)s)
                 ON CONFLICT (id) DO NOTHING
-            """, {**trade, "created_by": trade.get("created_by"), "market": trade.get("market", "NSE")})
+            """, {
+                **trade,
+                "created_by":    trade.get("created_by"),
+                "market":        trade.get("market", "NSE"),
+                "regime":        trade.get("regime"),
+                "composite_chg": trade.get("composite_chg"),
+                "vix":           trade.get("vix"),
+                "sector_chg":    trade.get("sector_chg"),
+                "market_bias":   trade.get("market_bias"),
+            })
         return True
     except Exception as e:
         log.warning("save_paper_trade: %s", e)
@@ -1003,7 +1036,8 @@ def get_paper_trade_stats(days: int = 30, username: str = None, market: str = No
     try:
         sql = """
             SELECT outcome, sig, conf,
-                   pnl_pts, pnl_pct, target_hit, sl_hit
+                   pnl_pts, pnl_pct, target_hit, sl_hit,
+                   regime, vix
             FROM paper_trades
             WHERE trade_date >= CURRENT_DATE - %s
               AND outcome <> 'open'
@@ -1055,6 +1089,28 @@ def get_paper_trade_stats(days: int = 30, username: str = None, market: str = No
             "win_rate": round(len(sub_won) / len(sub) * 100, 1) if sub else 0,
         }
 
+    def _winrate(sub):
+        sub_won = [r for r in sub if r["outcome"] in ("won", "partial_win")]
+        return {
+            "total": len(sub),
+            "won":   len(sub_won),
+            "win_rate": round(len(sub_won) / len(sub) * 100, 1) if sub else 0,
+        }
+
+    # Market-regime breakdown — only over rows that actually recorded a regime
+    by_regime = {}
+    for regime in ("bull_trend", "bear_trend", "gap_stall", "mixed"):
+        sub = [r for r in settled if r.get("regime") == regime]
+        if sub:
+            by_regime[regime] = _winrate(sub)
+
+    # VIX bucket breakdown — calm vs elevated (threshold mirrors VIX_HIGH_THRESHOLD=20)
+    by_vix = {}
+    for lo, hi, label in [(0, 20, "VIX <20 (calm)"), (20, 1e9, "VIX ≥20 (elevated)")]:
+        sub = [r for r in settled if r.get("vix") is not None and lo <= float(r["vix"]) < hi]
+        if sub:
+            by_vix[label] = _winrate(sub)
+
     return {
         "total":       len(settled),
         "settled":     len(settled),
@@ -1068,6 +1124,8 @@ def get_paper_trade_stats(days: int = 30, username: str = None, market: str = No
         "total_pnl_pts": round(sum(pnl_pts), 2) if pnl_pts else 0,
         "by_signal":   by_sig,
         "by_conf":     buckets,
+        "by_regime":   by_regime,
+        "by_vix":      by_vix,
         "days":        days,
     }
 
@@ -1133,6 +1191,82 @@ def get_best_pick_stats(days: int = 30, username: str = None, market: str = None
         "days":            days,
     }
 
+
+# ── Market snapshot (daily market condition) ──────────────────────────────────
+def save_market_snapshot(snap: dict, date_=None, market: str = "NSE") -> bool:
+    """
+    Upsert one daily market-condition snapshot (one row per date+market).
+    Captures breadth/VIX/regime at scan time so even zero-pick days are recorded.
+    `snap` is a market_ctx dict from signals.get_market_context() plus optional 'regime'.
+    """
+    conn = db()
+    if not conn:
+        return False
+    if date_ is None:
+        date_ = today_ist()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO market_snapshot
+                    (snap_date, market, nifty_chg, composite_chg, vix,
+                     market_bias, regime, broad_chgs)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (snap_date, market) DO UPDATE SET
+                    nifty_chg=EXCLUDED.nifty_chg,
+                    composite_chg=EXCLUDED.composite_chg,
+                    vix=EXCLUDED.vix,
+                    market_bias=EXCLUDED.market_bias,
+                    regime=EXCLUDED.regime,
+                    broad_chgs=EXCLUDED.broad_chgs,
+                    updated_at=NOW()
+            """, (
+                date_, market,
+                snap.get("nifty_chg"),
+                snap.get("composite_chg"),
+                snap.get("vix"),
+                snap.get("market_bias"),
+                snap.get("regime"),
+                json.dumps(snap.get("broad_chgs")) if snap.get("broad_chgs") else None,
+            ))
+        return True
+    except Exception as e:
+        log.warning("save_market_snapshot: %s", e)
+        return False
+
+def get_market_snapshots(from_date=None, to_date=None, market=None, limit=180) -> list:
+    """Return daily market snapshots, newest first."""
+    conn = db()
+    if not conn:
+        return []
+    try:
+        where, params = [], []
+        if from_date:
+            where.append("snap_date >= %s"); params.append(from_date)
+        if to_date:
+            where.append("snap_date <= %s"); params.append(to_date)
+        if market:
+            where.append("market = %s"); params.append(market.upper())
+        sql = "SELECT * FROM market_snapshot"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY snap_date DESC LIMIT %s"
+        params.append(limit)
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+        result = []
+        for r in rows:
+            row = dict(r)
+            for k, v in row.items():
+                if hasattr(v, "isoformat"):
+                    row[k] = v.isoformat()
+                elif hasattr(v, "__float__"):
+                    row[k] = float(v)
+            result.append(row)
+        return result
+    except Exception as e:
+        log.warning("get_market_snapshots: %s", e)
+        return []
 
 # ── Long-term picks ───────────────────────────────────────────────────────────
 LT_PICKS_SCHEMA = """
