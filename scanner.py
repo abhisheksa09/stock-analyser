@@ -39,7 +39,7 @@ import urllib.error
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
-from signals import STOCKS, US_STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, READY_GREEN_MIN
+from signals import STOCKS, US_STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, detect_regime, READY_GREEN_MIN
 from data_provider import get_intraday_candles, get_daily_candles, get_ltp_price, get_market_context_us, _alpaca_configured
 from macro import get_full_macro_context, apply_all_macro_penalties
 import db as _db_module
@@ -402,6 +402,16 @@ def _save_paper_trade(s: dict, market: str = "NSE"):
             "reason":       s.get("reason", ""),
             "market":       market,
         }
+        # Attach the market condition this pick was made in, so the backtest
+        # can slice win-rate by regime / VIX later (see db.get_paper_trade_stats).
+        mctx = s.get("market_ctx") or {}
+        trade.update({
+            "regime":        s.get("regime"),
+            "composite_chg": mctx.get("composite_chg"),
+            "vix":           mctx.get("vix"),
+            "sector_chg":    mctx.get("sector_chg"),
+            "market_bias":   mctx.get("market_bias"),
+        })
         saved = _db_module.save_paper_trade(trade)
         if saved:
             log.info("[%s] Paper trade saved: %s %s @ %.2f (conf %d%%)",
@@ -494,6 +504,15 @@ def run_scan(force: bool = False):
             nifty_ctx.get("composite_chg", 0), nifty_ctx["market_bias"],
             nifty_ctx.get("vix", 0),
         )
+        # Persist the daily market snapshot (one row/day) so the backtest records
+        # market condition even on zero-pick days. Market-level regime keys off
+        # breadth (chg/gap=0 → detect_regime uses nifty_chg).
+        try:
+            snap = dict(nifty_ctx)
+            snap["regime"] = detect_regime(0.0, 0.0, nifty_ctx)
+            _db_module.save_market_snapshot(snap, market="NSE")
+        except Exception as _se:
+            log.debug("save_market_snapshot skipped: %s", _se)
     except Exception as e:
         log.warning("Market context fetch failed: %s — proceeding without filters", e)
         nifty_ctx = None
@@ -646,9 +665,12 @@ def run_scan(force: bool = False):
                     sent += 1
                     # Also ensure paper trade saved for non-backtest alert symbols
                     if sym not in STATE.bt_saved and sym not in pt_excluded:
-                        _save_paper_trade(s, market="NSE")
+                        # Only mark saved if the DB write actually succeeded — a failed
+                        # save must be retried next cycle, not silently swallowed (else the
+                        # alert fires but the trade never reaches the Backtest tab).
+                        if _save_paper_trade(s, market="NSE"):
+                            STATE.bt_saved.add(sym)
                         _check_real_trade_overlap(s)
-                        STATE.bt_saved.add(sym)
                     elif sym in pt_excluded:
                         log.info("Paper trade skipped for alert symbol (excluded): %s", sym)
                 _email.send_email(*_email.format_green_ready(s))
@@ -755,6 +777,14 @@ def run_us_scan(force: bool = False):
             sp500_ctx.get("composite_chg", 0), sp500_ctx["market_bias"],
             sp500_ctx.get("vix", 0),
         )
+        try:
+            snap = dict(sp500_ctx)
+            # US ctx has no 'nifty_chg'; feed composite as the regime driver
+            _regime_ctx = {**sp500_ctx, "nifty_chg": sp500_ctx.get("composite_chg", 0.0)}
+            snap["regime"] = detect_regime(0.0, 0.0, _regime_ctx)
+            _db_module.save_market_snapshot(snap, market="US")
+        except Exception as _se:
+            log.debug("[US] save_market_snapshot skipped: %s", _se)
     except Exception as e:
         if _us_market_ctx_cache is not None:
             log.warning("[US] Market context fetch failed (%s) — using cached values", e)
@@ -844,8 +874,11 @@ def run_us_scan(force: bool = False):
                 US_STATE.mark_alerted(sym, "green_ready")
                 sent += 1
                 if sym not in US_STATE.bt_saved and sym not in pt_excluded:
-                    _save_paper_trade(s, market="US")
-                    US_STATE.bt_saved.add(sym)
+                    # Only mark saved if the DB write actually succeeded — a failed
+                    # save must be retried next cycle, not silently swallowed (else the
+                    # alert fires but the trade never reaches the Backtest tab).
+                    if _save_paper_trade(s, market="US"):
+                        US_STATE.bt_saved.add(sym)
 
         US_STATE.prev_conf[sym] = s["conf"]
         US_STATE.prev_sig[sym]  = s["sig"]
