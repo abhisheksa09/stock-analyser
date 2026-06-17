@@ -8,33 +8,168 @@
   var _pending = 0;
   var _timer = null;
   var _overlay = null;
+  var _wakeStart = 0;
+  var _msgInterval = null;
+  var _tickInterval = null;
+  var _msgIdx = 0;
+  var _boost = 0;
+
+  var _MSGS = [
+    ['☕', 'Brewing the server a strong coffee…'],
+    ['🐹', 'The hamsters powering this thing are warming up…'],
+    ['📈', 'Loading bulls. Shooing away the bears…'],
+    ['💤', 'Free tier: napping harder than the market on a holiday.'],
+    ['🧊', 'Cold start in progress — defrosting the order book…'],
+    ['🪙', 'This app runs on good vibes and a zero rupee budget.'],
+    ['🚀', 'Pre-market checks complete. Ignition shortly…'],
+    ['🐢', 'Free hosting: quick to deploy, slow to wake.'],
+    ['⚡', 'Your patience is the premium subscription.'],
+    ['🔔', 'Ringing the opening bell. Almost live…'],
+  ];
+  var _BOOST_MSGS = [
+    'Nice. +1 turbo.',
+    'The hamsters felt that.',
+    'Volume spike detected 📊',
+    'Bullish energy received 🟢',
+    'Render can\'t actually be rushed… but A+ effort!',
+    'You\'re basically a day trader now.',
+    'Circuit breaker warming up…',
+    'To the moon! (eventually) 🌙',
+  ];
 
   function showOverlay(){
     if(_overlay) return;
+    _wakeStart = Date.now();
+    _msgIdx = 0; _boost = 0;
     _overlay = document.createElement('div');
     _overlay.id = '_renderWakeOverlay';
     _overlay.style.cssText = [
       'position:fixed','top:0','left:0','width:100%','height:100%',
-      'background:rgba(0,0,0,.45)','z-index:99999',
+      'background:rgba(8,20,12,.62)','z-index:99999',
       'display:flex','align-items:center','justify-content:center',
-      'backdrop-filter:blur(2px)','-webkit-backdrop-filter:blur(2px)'
+      'backdrop-filter:blur(4px)','-webkit-backdrop-filter:blur(4px)'
     ].join(';');
-    _overlay.innerHTML = [
-      '<div style="background:#fff;border-radius:16px;padding:28px 32px;',
-      'max-width:320px;width:90%;text-align:center;box-shadow:0 8px 40px rgba(0,0,0,.18);">',
-      '<div style="font-size:36px;margin-bottom:12px;animation:_rwSpin 1.2s linear infinite;display:inline-block;">⏳</div>',
-      '<div style="font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:6px;">Service is waking up</div>',
-      '<div style="font-size:12px;color:#888;line-height:1.5;">Render free tier spins down after inactivity.',
-      '<br>Please wait <b>20–60 seconds</b> while it restarts…</div>',
-      '</div>'
-    ].join('');
+
+    // animated candlestick bars
+    var bars = '';
+    var heights = [34,52,28,64,46,76,58,88];
+    for(var i=0;i<heights.length;i++){
+      var up = i % 2 === 0;
+      bars += '<div class="_rwCandle" style="animation-delay:'+(i*0.12)+'s;">'+
+        '<span class="_rwWick" style="height:'+(heights[i]+18)+'%;"></span>'+
+        '<span class="_rwBody '+(up?'_rwUp':'_rwDn')+'" style="height:'+heights[i]+'%;"></span>'+
+      '</div>';
+    }
+
+    _overlay.innerHTML =
+      '<div class="_rwCard">'+
+        '<div class="_rwChart">'+
+          '<div class="_rwGrid"></div>'+
+          bars +
+          '<div id="_rwRocket" class="_rwRocket">🚀</div>'+
+        '</div>'+
+        '<div class="_rwTitle">Waking the markets up…</div>'+
+        '<div id="_rwMsg" class="_rwMsgTxt">Brewing the server a strong coffee…</div>'+
+        '<div class="_rwBarTrack"><div id="_rwBar" class="_rwBarFill"></div></div>'+
+        '<div class="_rwMeta">Render cold start · <span id="_rwSec">0</span>s elapsed</div>'+
+        '<button id="_rwBoost" class="_rwBoostBtn" type="button">⚡ Tap to boost</button>'+
+        '<div id="_rwBoostMsg" class="_rwBoostMsg"></div>'+
+      '</div>';
+
     var style = document.createElement('style');
-    style.textContent = '@keyframes _rwSpin{0%{transform:none}50%{transform:rotate(-20deg)}100%{transform:none}}';
+    style.textContent =
+      '#_renderWakeOverlay *{box-sizing:border-box;margin:0;padding:0;font-family:inherit}'+
+      '#_renderWakeOverlay ._rwCard{background:#fff;border-radius:22px;padding:24px 26px 26px;'+
+        'max-width:360px;width:90%;text-align:center;box-shadow:0 18px 60px rgba(0,0,0,.32);'+
+        'animation:_rwPop .35s cubic-bezier(.2,1.3,.5,1)}'+
+      '#_renderWakeOverlay ._rwChart{position:relative;height:110px;display:flex;align-items:flex-end;'+
+        'justify-content:center;gap:7px;margin-bottom:18px;padding:6px 4px 0;'+
+        'background:linear-gradient(180deg,#f6fbf6,#eef6ee);border-radius:14px;overflow:hidden}'+
+      '#_renderWakeOverlay ._rwGrid{position:absolute;inset:0;background-image:'+
+        'repeating-linear-gradient(0deg,rgba(39,80,10,.06) 0 1px,transparent 1px 22px)}'+
+      '#_renderWakeOverlay ._rwCandle{position:relative;width:13px;height:100%;display:flex;'+
+        'align-items:flex-end;justify-content:center;animation:_rwGrow 1.6s ease-in-out infinite alternate}'+
+      '#_renderWakeOverlay ._rwWick{position:absolute;bottom:0;width:2px;background:#9bbf86;border-radius:2px}'+
+      '#_renderWakeOverlay ._rwBody{position:relative;width:100%;border-radius:3px}'+
+      '#_renderWakeOverlay ._rwUp{background:linear-gradient(180deg,#4CAF50,#27500A)}'+
+      '#_renderWakeOverlay ._rwDn{background:linear-gradient(180deg,#ff7a59,#d23b1e)}'+
+      '#_renderWakeOverlay ._rwRocket{position:absolute;left:8px;bottom:8px;font-size:24px;'+
+        'animation:_rwFly 2.8s ease-in-out infinite;filter:drop-shadow(0 2px 3px rgba(0,0,0,.25))}'+
+      '#_renderWakeOverlay ._rwTitle{font-size:16px;font-weight:800;color:#1a1a1a;margin-bottom:7px}'+
+      '#_renderWakeOverlay ._rwMsgTxt{font-size:13px;color:#5a6b5a;min-height:38px;line-height:1.5;'+
+        'transition:opacity .3s;margin-bottom:14px}'+
+      '#_renderWakeOverlay ._rwBarTrack{background:#eaeaea;border-radius:99px;height:7px;overflow:hidden;margin-bottom:9px}'+
+      '#_renderWakeOverlay ._rwBarFill{height:100%;width:0%;border-radius:99px;'+
+        'background:linear-gradient(90deg,#4CAF50,#27500A);transition:width .8s ease}'+
+      '#_renderWakeOverlay ._rwMeta{font-size:11px;color:#aab2aa;margin-bottom:14px}'+
+      '#_renderWakeOverlay ._rwBoostBtn{border:0;cursor:pointer;font-size:14px;font-weight:700;color:#fff;'+
+        'padding:10px 22px;border-radius:99px;background:linear-gradient(90deg,#4CAF50,#27500A);'+
+        'box-shadow:0 4px 14px rgba(39,80,10,.35);transition:transform .08s,box-shadow .2s;user-select:none}'+
+      '#_renderWakeOverlay ._rwBoostBtn:hover{box-shadow:0 6px 20px rgba(39,80,10,.45)}'+
+      '#_renderWakeOverlay ._rwBoostBtn:active{transform:scale(.93)}'+
+      '#_renderWakeOverlay ._rwBoostBtn._rwPunch{animation:_rwPunch .3s ease}'+
+      '#_renderWakeOverlay ._rwBoostMsg{font-size:11px;color:#27500A;font-weight:600;min-height:15px;'+
+        'margin-top:9px;transition:opacity .2s}'+
+      '@keyframes _rwGrow{from{transform:scaleY(.55)}to{transform:scaleY(1)}}'+
+      '@keyframes _rwFly{0%{left:8px;bottom:8px;transform:rotate(35deg)}'+
+        '45%{left:46%;bottom:52%;transform:rotate(45deg)}'+
+        '50%{left:48%;bottom:56%;transform:rotate(45deg) scale(1.08)}'+
+        '100%{left:88%;bottom:86%;transform:rotate(48deg)}}'+
+      '@keyframes _rwPop{from{transform:scale(.85);opacity:0}to{transform:scale(1);opacity:1}}'+
+      '@keyframes _rwPunch{0%{transform:scale(1)}40%{transform:scale(1.14)}100%{transform:scale(1)}}'+
+      '@keyframes _rwFloat{0%{transform:translateY(0);opacity:1}100%{transform:translateY(-34px);opacity:0}}';
     _overlay.appendChild(style);
     document.body.appendChild(_overlay);
+
+    // interactive "boost" button — playful placebo
+    var btn = document.getElementById('_rwBoost');
+    var bmsg = document.getElementById('_rwBoostMsg');
+    if(btn){
+      btn.addEventListener('click', function(ev){
+        _boost++;
+        btn.classList.remove('_rwPunch'); void btn.offsetWidth; btn.classList.add('_rwPunch');
+        if(bmsg){
+          bmsg.style.opacity = '0';
+          setTimeout(function(){
+            bmsg.textContent = '⚡ x'+_boost+' · '+_BOOST_MSGS[Math.min(_boost-1,_BOOST_MSGS.length-1)];
+            bmsg.style.opacity = '1';
+          }, 120);
+        }
+        // floating coin feedback
+        var coin = document.createElement('div');
+        coin.textContent = ['🪙','💸','📈','🟢','⚡'][_boost % 5];
+        coin.style.cssText = 'position:absolute;left:'+(ev.offsetX)+'px;top:6px;font-size:18px;'+
+          'pointer-events:none;animation:_rwFloat .9s ease forwards';
+        btn.style.position = 'relative';
+        btn.appendChild(coin);
+        setTimeout(function(){ coin.remove(); }, 900);
+      });
+    }
+
+    _msgInterval = setInterval(function(){
+      _msgIdx = (_msgIdx + 1) % _MSGS.length;
+      var tx = document.getElementById('_rwMsg');
+      if(!tx) return;
+      tx.style.opacity = '0';
+      setTimeout(function(){
+        tx.textContent = _MSGS[_msgIdx][0] + '  ' + _MSGS[_msgIdx][1];
+        tx.style.opacity = '1';
+      }, 300);
+    }, 3500);
+
+    _tickInterval = setInterval(function(){
+      var el = document.getElementById('_rwSec');
+      var bar = document.getElementById('_rwBar');
+      if(!el) return;
+      var s = Math.round((Date.now() - _wakeStart) / 1000);
+      el.textContent = s;
+      if(bar) bar.style.width = Math.min(s / 55 * 100, 95) + '%';
+    }, 1000);
   }
 
   function hideOverlay(){
+    clearInterval(_msgInterval); _msgInterval = null;
+    clearInterval(_tickInterval); _tickInterval = null;
     if(_overlay){ _overlay.remove(); _overlay = null; }
   }
 
