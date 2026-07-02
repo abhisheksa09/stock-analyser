@@ -83,13 +83,16 @@ def _alpaca_bars(sym, timeframe, start, end, limit=500):
         f"{ALPACA_DATA_URL}/stocks/{sym}/bars",
         headers=_alpaca_headers(), params=params, timeout=10,
     )
-    resp.raise_for_status()
+    if not resp.ok:
+        log.warning("[Alpaca] %s %s fetch failed: HTTP %s %s", sym, timeframe, resp.status_code, resp.text[:120])
+        resp.raise_for_status()
     candles = []
     for bar in resp.json().get("bars") or []:
         ts_et = datetime.fromisoformat(bar["t"].replace("Z", "+00:00")).astimezone(ET)
         # str(ts_et) → "2024-01-15 09:30:00-05:00"  ts[11:16] = "09:30" ✓
         candles.append([str(ts_et), float(bar["o"]), float(bar["h"]),
                         float(bar["l"]), float(bar["c"]), int(bar["v"])])
+    log.debug("[Alpaca] %s %s → %d candles", sym, timeframe, len(candles))
     return candles
 
 
@@ -150,35 +153,62 @@ def get_ltp_price(sym, market, token=None, ikey=None):
     return get_ltp(ikey, token)
 
 
+def _alpaca_pct_change(sym):
+    """% change of an ETF vs its previous session close using Alpaca daily bars."""
+    try:
+        end   = datetime.now(ET).date().isoformat()
+        start = (datetime.now(ET) - timedelta(days=10)).date().isoformat()
+        bars  = _alpaca_bars(sym, "1Day", start, end, limit=5)
+        if len(bars) < 2:
+            return 0.0
+        prev_close = float(bars[-2][4])
+        curr_close = float(bars[-1][4])
+        return round((curr_close - prev_close) / prev_close * 100, 2)
+    except Exception as e:
+        log.warning("[Alpaca] pct_change %s failed: %s", sym, e)
+        return 0.0
+
+
+# When Alpaca is active, use ETF proxies instead of yfinance indices
+_ALPACA_INDEX_PROXY = {
+    "SP500":     "SPY",
+    "NASDAQ":    "QQQ",
+    "RUSSELL2K": "IWM",
+}
+
+
 def get_market_context_us(sector):
     """
     US market context using composite breadth: SP500 (45%) + NASDAQ (35%) + Russell2000 (20%).
-    Also fetches CBOE VIX for confidence penalty. Returns same dict shape as
-    signals.get_market_context() so build_setup() works without changes.
+    Uses ETF proxies (SPY/QQQ/IWM) — Alpaca when configured, else yfinance.
+    Returns same dict shape as signals.get_market_context().
     """
     def bias(chg):
         if chg <= -0.5: return "bearish"
         if chg >= +0.5: return "bullish"
         return "neutral"
 
-    broad_chgs = {idx: _yf_index_change(idx) for idx in US_BROAD_MARKET_WEIGHTS}
+    use_alpaca = _alpaca_configured()
+
+    if use_alpaca:
+        broad_chgs = {idx: _alpaca_pct_change(_ALPACA_INDEX_PROXY[idx])
+                      for idx in US_BROAD_MARKET_WEIGHTS}
+        sector_idx = US_SECTOR_INDEX.get(sector)
+        sector_chg = _alpaca_pct_change(sector_idx) if sector_idx and sector_idx != "SP500" else 0.0
+    else:
+        broad_chgs = {idx: _yf_index_change(idx) for idx in US_BROAD_MARKET_WEIGHTS}
+        sector_idx = US_SECTOR_INDEX.get(sector)
+        sector_chg = _yf_index_change(sector_idx) if sector_idx else 0.0
+
+    # Alpaca has no VIX feed, so fetch it via yfinance in both paths.
+    vix = _yf_vix()
+
     composite_chg = round(
         sum(broad_chgs[idx] * wt for idx, wt in US_BROAD_MARKET_WEIGHTS.items()), 2
     )
 
-    vix = 0.0
-    try:
-        df = _yf_fetch("^VIX", period="1d", interval="1m")
-        if df is not None and not df.empty:
-            vix = round(float(df["Close"].iloc[-1]), 2)
-    except Exception:
-        pass
-
-    sector_idx = US_SECTOR_INDEX.get(sector)
-    sector_chg = _yf_index_change(sector_idx) if sector_idx else 0.0
-
     return {
-        "nifty_chg":     broad_chgs["SP500"],   # S&P 500 raw — for display
+        "nifty_chg":     broad_chgs["SP500"],
         "composite_chg": composite_chg,
         "broad_chgs":    broad_chgs,
         "vix":           vix,
@@ -246,10 +276,15 @@ US_SECTOR_INDEX = {
     "ETF":        "SP500",
 }
 
+# NOTE: use tradeable ETF proxies (SPY/QQQ/IWM) for the broad indices instead of
+# Yahoo "^"-prefixed index tickers (^GSPC/^IXIC/^RUT). The index tickers are
+# frequently rate-limited / return empty on shared hosts (Render), which nulled
+# the whole market context (composite=0.00%, bias=?). % change of the ETF tracks
+# its index closely, and matches what the Alpaca path already uses.
 _YF_INDEX_MAP = {
-    "SP500":    "^GSPC",
-    "NASDAQ":   "^IXIC",
-    "RUSSELL2K": "^RUT",
+    "SP500":    "SPY",
+    "NASDAQ":   "QQQ",
+    "RUSSELL2K": "IWM",
     "VIX":      "^VIX",
     "XLK": "XLK", "XLF": "XLF", "XLV": "XLV", "XLE": "XLE",
     "XLY": "XLY", "XLI": "XLI", "XLU": "XLU", "XLB": "XLB",
@@ -333,11 +368,19 @@ def _yf_ltp(sym):
 
 
 def _yf_index_change(index_name):
-    """% change of an index vs its previous session close."""
+    """% change of an index (via its ETF proxy) vs its previous session close.
+
+    Never raises — a rate-limit / fetch failure on one index returns 0.0 rather
+    than propagating and nulling the entire market context (which produced the
+    'bias=?' heartbeats)."""
     ticker = _YF_INDEX_MAP.get(index_name)
     if not ticker:
         return 0.0
-    df = _yf_fetch(ticker, period="5d", interval="1d")
+    try:
+        df = _yf_fetch(ticker, period="5d", interval="1d")
+    except YFRateLimitError as e:
+        log.warning("yf_index_change %s rate-limited: %s", index_name, e)
+        return 0.0
     if df is None or len(df) < 2:
         return 0.0
     try:
@@ -346,3 +389,19 @@ def _yf_index_change(index_name):
         return round((curr_close - prev_close) / prev_close * 100, 2)
     except Exception:
         return 0.0
+
+
+def _yf_vix():
+    """Latest VIX level via yfinance ^VIX. Tries intraday first, then daily.
+    Returns 0.0 if unavailable (Yahoo throttles the '^' index tickers)."""
+    for period, interval in (("1d", "1m"), ("5d", "1d")):
+        try:
+            df = _yf_fetch("^VIX", period=period, interval=interval)
+        except YFRateLimitError:
+            return 0.0
+        if df is not None and not df.empty:
+            try:
+                return round(float(df["Close"].iloc[-1]), 2)
+            except Exception:
+                continue
+    return 0.0
