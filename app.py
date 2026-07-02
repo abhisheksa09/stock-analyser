@@ -1249,11 +1249,11 @@ def _auth_page(success: bool, title: str, message: str) -> str:
   <h2>{title}</h2>
   <p>{message}</p>
   {'<a href="/auth/login" class="btn">Try again</a>' if not success else
-   '<p style="font-size:13px;color:#888;margin-top:8px;">This tab will close in <span id="cd">3</span>s&#8230;</p>'}
+   '<p id="closemsg" style="font-size:13px;color:#888;margin-top:8px;">This tab will close in <span id="cd">3</span>s&#8230;</p>'}
   {'<a href="' + status_url + '" class="btn btn-sec">Check alert status</a>' if not success else ''}
   <p class="tip">NSE Intraday Scanner &#183; Render.com</p>
 </div>
-{'<script>if(window.opener){window.opener.postMessage({type:"upstox_auth_success"},"*");}let n=3;const i=setInterval(()=>{n--;const el=document.getElementById("cd");if(el)el.textContent=n;if(n<=0){clearInterval(i);window.close();}},1000);</script>' if success else ''}
+{'<script>if(window.opener){window.opener.postMessage({type:"upstox_auth_success"},"*");}let n=3;const i=setInterval(()=>{n--;const el=document.getElementById("cd");if(el)el.textContent=n;if(n<=0){clearInterval(i);window.close();setTimeout(function(){var m=document.getElementById("closemsg");if(m)m.innerHTML="You can now safely close this tab.";},500);}},1000);</script>' if success else ''}
 </body>
 </html>"""
 
