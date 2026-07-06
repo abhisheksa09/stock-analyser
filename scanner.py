@@ -85,6 +85,38 @@ def _get_backtest_min_conf() -> int:
     except ValueError:
         return 70
 
+def _get_allow_amber() -> bool:
+    """When true, amber setups (all hard gates pass, conf in the 55–74 band) may be
+    auto-saved too — not just full-green (conf >= READY_GREEN_MIN). Historically only
+    green saved, which buried every borderline setup and made BACKTEST_MIN_CONF a no-op.
+    Default on so the Backtest tab fills on marginal days; set BACKTEST_ALLOW_AMBER=0 to
+    restore green-only behaviour."""
+    return os.environ.get("BACKTEST_ALLOW_AMBER", "1").strip() not in ("0", "false", "False", "")
+
+def _get_confirm_scans() -> int:
+    """Consecutive qualifying scans (same direction, in the prime window) required before
+    a paper trade is saved. Was hard-coded to 2; default is now 1 (save on first qualifying
+    scan). Raise BACKTEST_CONFIRM_SCANS to demand the signal holds across N scans."""
+    try:
+        return max(1, int(os.environ.get("BACKTEST_CONFIRM_SCANS", "1")))
+    except ValueError:
+        return 1
+
+def _save_verdict_ok(verdict: str, conf: float, bt_min_conf: int) -> bool:
+    """Whether a scan result qualifies for an auto paper-trade save.
+
+    The real bar is now BACKTEST_MIN_CONF (previously dead code — the save gate was an
+    undocumented hard-wired 'green' == conf >= 75). 'green' always qualifies; 'amber'
+    qualifies when BACKTEST_ALLOW_AMBER is on. In both cases conf must clear bt_min_conf.
+    """
+    if conf < bt_min_conf:
+        return False
+    if verdict == "green":
+        return True
+    if verdict == "amber" and _get_allow_amber():
+        return True
+    return False
+
 # ─── Session state ────────────────────────────────────────────────────────────
 
 class SessionState:
@@ -107,7 +139,7 @@ class SessionState:
         self.prev_sig            = {}
         self.alerted             = set()
         self.bt_saved            = self._load_bt_saved_from_db()
-        self.bt_first_green      = {}  # sym -> scan mins of first consecutive green hit
+        self.bt_first_green      = {}  # sym -> {"sig","count","mins"}: consecutive qualifying-scan streak
         self.bt_last_verdict     = {}  # sym -> last verdict string for diagnostics
         self.token_expired_alerted = False
         self.scan_heartbeat_sent = False  # True after first "scan alive" Telegram sent
@@ -447,7 +479,9 @@ def run_scan(force: bool = False):
         return
 
     start = parse_hhmm(os.environ.get("ALERT_START_IST", "09:15"), 555)
-    stop  = parse_hhmm(os.environ.get("ALERT_STOP_IST",  "10:30"), 630)
+    # Stop at 11:00 IST to fully cover the 09:45–11:00 "prime" ORB window that green/save
+    # requires (was 10:30, which cut the usable window to ~45 min).
+    stop  = parse_hhmm(os.environ.get("ALERT_STOP_IST",  "11:00"), 660)
     mins  = ist_now_mins()
 
     if not force and not (start <= mins <= stop):
@@ -622,14 +656,18 @@ def run_scan(force: bool = False):
             STATE.locked_sig[sym] = s["sig"]
 
         # ── Auto paper trade for backtest symbols ──────────────────────────
-        # Requires 2 consecutive green scans before saving — mirrors the
-        # real trading habit of confirming a signal holds across multiple scans.
-        # Also naturally filters out first-30-min fakeouts (green needs time >= 9:45).
+        # Save when the setup qualifies (green, or amber when BACKTEST_ALLOW_AMBER)
+        # for BACKTEST_CONFIRM_SCANS consecutive scans in the same direction.
+        # Default confirm=1 → save on the first qualifying scan. The prime-window
+        # gate (>= 9:45) still filters first-30-min fakeouts.
+        save_ok        = _save_verdict_ok(verdict, s["conf"], bt_min_conf)
+        confirm_needed = _get_confirm_scans()
         if in_bt and sym not in STATE.bt_saved and s.get("_time_prime"):
-            if verdict == "green":
-                prior = STATE.bt_first_green.get(sym)
-                if prior and prior["sig"] == s["sig"]:
-                    # Second consecutive green scan, same direction — fire the trade
+            if save_ok:
+                prior  = STATE.bt_first_green.get(sym)
+                streak = (prior.get("count", 1) + 1) if (prior and prior["sig"] == s["sig"]) else 1
+                if streak >= confirm_needed:
+                    # Enough consecutive qualifying scans — fire the trade
                     if sym in pt_excluded:
                         log.info("Paper trade skipped (excluded symbol): %s", sym)
                         STATE.bt_saved.add(sym)  # mark as handled so we don't keep checking
@@ -637,24 +675,25 @@ def run_scan(force: bool = False):
                         if _save_paper_trade(s, market="NSE"):
                             _check_real_trade_overlap(s)
                             STATE.bt_saved.add(sym)
-                    del STATE.bt_first_green[sym]
+                    STATE.bt_first_green.pop(sym, None)
                 else:
-                    # First green scan, or direction reversed — (re)start the clock
-                    if prior:
-                        log.info("Paper trade green reset (reversal %s→%s): %s",
+                    # Not yet confirmed — (re)start or extend the streak
+                    if prior and prior["sig"] != s["sig"]:
+                        log.info("Paper trade streak reset (reversal %s→%s): %s",
                                  prior["sig"], s["sig"], sym)
                     else:
-                        log.info("Paper trade pending 2nd green confirm: %s %s conf=%d%%",
-                                 s["sig"], sym, s["conf"])
-                    STATE.bt_first_green[sym] = {"sig": s["sig"], "mins": mins}
+                        log.info("Paper trade pending confirm %d/%d: %s %s conf=%d%% (verdict=%s)",
+                                 streak, confirm_needed, s["sig"], sym, s["conf"], verdict)
+                    STATE.bt_first_green[sym] = {"sig": s["sig"], "count": streak, "mins": mins}
             else:
-                # Signal weakened or time window closed — reset consecutive counter
+                # Signal no longer qualifies (verdict/conf dropped) — reset the streak
                 if sym in STATE.bt_first_green:
-                    log.info("Paper trade green reset (signal dropped): %s", sym)
+                    log.info("Paper trade streak reset (verdict=%s conf=%d%%): %s",
+                             verdict, s["conf"], sym)
                     del STATE.bt_first_green[sym]
         elif in_bt and not s.get("_time_prime") and sym in STATE.bt_first_green:
-            # Past 11:00 AM — discard any pending first-green confirmations
-            log.info("Paper trade green reset (past 11:00 AM window): %s", sym)
+            # Past 11:00 AM — discard any pending confirmations
+            log.info("Paper trade streak reset (past 11:00 AM window): %s", sym)
             del STATE.bt_first_green[sym]
 
         # ── Telegram + email alerts: only when stock is ready to trade ────────
@@ -697,9 +736,10 @@ def run_scan(force: bool = False):
         if sym in STATE.bt_saved:
             status = "✓saved"
         elif sym in STATE.bt_first_green:
-            status = "pending-2nd-green"
-        elif verdict != "green":
-            status = f"UNSAVED(verdict={verdict},need-all-6-gates)"
+            pend = STATE.bt_first_green[sym]
+            status = f"pending-confirm({pend.get('count', 1)}/{_get_confirm_scans()})"
+        elif not _save_verdict_ok(verdict, conf, _get_backtest_min_conf()):
+            status = f"UNSAVED(verdict={verdict},conf<{_get_backtest_min_conf()}%-or-gates)"
         else:
             status = "UNSAVED(outside-9:45-11:00-window)"
         return f"{sig}/{conf}%/{status}"
@@ -861,18 +901,21 @@ def run_us_scan(force: bool = False):
         if sym not in US_STATE.locked_sig and s["sig"] != "WATCH":
             US_STATE.locked_sig[sym] = s["sig"]
 
-        # Auto paper trade (same 2-consecutive-green logic as NSE)
+        # Auto paper trade (same qualifying-verdict + confirm-streak logic as NSE)
+        save_ok        = _save_verdict_ok(verdict, s["conf"], bt_min_conf)
+        confirm_needed = _get_confirm_scans()
         if in_bt and sym not in US_STATE.bt_saved and s.get("_time_prime"):
-            if verdict == "green":
-                prior = US_STATE.bt_first_green.get(sym)
-                if prior and prior["sig"] == s["sig"]:
+            if save_ok:
+                prior  = US_STATE.bt_first_green.get(sym)
+                streak = (prior.get("count", 1) + 1) if (prior and prior["sig"] == s["sig"]) else 1
+                if streak >= confirm_needed:
                     if sym in pt_excluded:
                         US_STATE.bt_saved.add(sym)
                     elif _save_paper_trade(s, market="US"):
                         US_STATE.bt_saved.add(sym)
                     US_STATE.bt_first_green.pop(sym, None)
                 else:
-                    US_STATE.bt_first_green[sym] = {"sig": s["sig"], "mins": mins}
+                    US_STATE.bt_first_green[sym] = {"sig": s["sig"], "count": streak, "mins": mins}
             else:
                 US_STATE.bt_first_green.pop(sym, None)
 

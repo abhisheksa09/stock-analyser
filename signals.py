@@ -459,20 +459,29 @@ def _score_vwap(s):
     return 0.35
 
 def _score_rsi(s):
+    # Momentum-aligned scoring. This is an ORB *breakout* system, so a BUY should be
+    # confirmed by RSI pushing UP through the 50–65 zone — not by a low (mean-reversion)
+    # RSI. The old scale rewarded RSI<=35 for BUY and scored a genuine breakout (RSI ~50–55)
+    # at just 0.10, docking ~10 of the 15 RSI points off every clean setup and burying it
+    # in amber. Now momentum-consistent RSI scores high; only overbought/oversold extremes
+    # (fade risk) or momentum-contradicting RSI are penalised.
     rsi = s["rsi"]
     if s["sig"] == "BUY":
-        if rsi <= 25: return 0.55
-        if rsi <= 35: return 1.00
-        if rsi <= 40: return 0.85
-        if rsi <= 50: return 0.45
-        return 0.10
+        if 50 <= rsi <= 65: return 1.00   # healthy upside momentum
+        if 45 <= rsi < 50:  return 0.85   # momentum building
+        if 65 < rsi <= 72:  return 0.75   # strong but extended
+        if 40 <= rsi < 45:  return 0.60
+        if rsi > 72:        return 0.45   # overbought — pullback risk
+        if 35 <= rsi < 40:  return 0.40
+        return 0.25                        # < 35: no upside momentum behind the breakout
     if s["sig"] == "SELL":
-        if rsi >= 75: return 0.55
-        if rsi >= 65: return 1.00
-        if rsi >= 60: return 0.85
-        if rsi >= 50: return 0.45
-        if rsi >= 35 and s.get("gap_signal"): return 0.50  # gap-down: RSI 35-50 is expected, not a penalty
-        return 0.10
+        if 35 <= rsi <= 50: return 1.00   # healthy downside momentum
+        if 50 < rsi <= 55:  return 0.85   # momentum building
+        if 28 <= rsi < 35:  return 0.75   # strong but extended
+        if 55 < rsi <= 60:  return 0.60
+        if rsi < 28:        return 0.45   # oversold — bounce risk
+        if 60 < rsi <= 65:  return 0.40
+        return 0.25                        # > 65: no downside momentum behind the breakdown
     return 0.35
 
 def _score_rr(s):
