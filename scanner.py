@@ -39,7 +39,7 @@ import urllib.error
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
-from signals import STOCKS, US_STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, detect_regime, READY_GREEN_MIN
+from signals import STOCKS, US_STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, detect_regime, READY_GREEN_MIN, failing_gates
 from data_provider import get_intraday_candles, get_daily_candles, get_ltp_price, get_market_context_us, _alpaca_configured
 from macro import get_full_macro_context, apply_all_macro_penalties
 import db as _db_module
@@ -141,6 +141,7 @@ class SessionState:
         self.bt_saved            = self._load_bt_saved_from_db()
         self.bt_first_green      = {}  # sym -> {"sig","count","mins"}: consecutive qualifying-scan streak
         self.bt_last_verdict     = {}  # sym -> last verdict string for diagnostics
+        self.bt_gates            = {}  # sym -> last failing-gates string for diagnostics
         self.token_expired_alerted = False
         self.scan_heartbeat_sent = False  # True after first "scan alive" Telegram sent
         self.needs_token_refresh = True   # signal run_scan to reload token from DB
@@ -650,6 +651,11 @@ def run_scan(force: bool = False):
         locked     = STATE.locked_sig.get(sym)
         if in_bt:
             STATE.bt_last_verdict[sym] = verdict
+            gates = failing_gates(s)
+            STATE.bt_gates[sym] = gates
+            if verdict != "green":
+                log.info("BT-GATES %s: %s/%d%% verdict=%s → %s",
+                         sym, s["sig"], s["conf"], verdict, gates)
 
         # Lock first signal of session
         if sym not in STATE.locked_sig and s["sig"] != "WATCH":
@@ -738,10 +744,9 @@ def run_scan(force: bool = False):
         elif sym in STATE.bt_first_green:
             pend = STATE.bt_first_green[sym]
             status = f"pending-confirm({pend.get('count', 1)}/{_get_confirm_scans()})"
-        elif not _save_verdict_ok(verdict, conf, _get_backtest_min_conf()):
-            status = f"UNSAVED(verdict={verdict},conf<{_get_backtest_min_conf()}%-or-gates)"
         else:
-            status = "UNSAVED(outside-9:45-11:00-window)"
+            # Show the exact blocking gate(s) so we never have to guess why nothing saved.
+            status = f"UNSAVED[{STATE.bt_gates.get(sym, '?')}]"
         return f"{sig}/{conf}%/{status}"
     bt_summary = {sym: _bt_label(sym) for sym in bt_syms}
     log.info("Backtest conf snapshot: %s",

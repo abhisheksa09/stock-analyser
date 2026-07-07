@@ -34,7 +34,10 @@ VIX_PENALTY             = 5      # confidence reduction when VIX is high
 # e.g. set to 50 on Render to fire alerts at 50%+ confidence
 READY_GREEN_MIN = int(os.environ.get("ALERT_GREEN_THRESHOLD", "75"))
 READY_AMBER_MIN = 55
-MIN_RVOL_GREEN  = 150   # percent of avg daily volume proxy — professional: 1.5× at open
+# Volume gate: today's per-minute pace must be this % of the 20-day average. 150 = 1.5×.
+# This is one of the two hard gates most likely to block a save on a calm day — tune via
+# MIN_RVOL_GREEN env (e.g. 120) if diagnostics show 'volume(...)' is the bottleneck.
+MIN_RVOL_GREEN  = int(os.environ.get("MIN_RVOL_GREEN", "150"))
 MIN_RR_SIGNAL   = 1.5   # hard R:R floor — below this the setup is mathematically poor
 
 
@@ -141,7 +144,10 @@ SECTOR_INDEX = {
     "Utilities":  "NIFTYENERGY",  # power sector tracks energy macro
 }
 
-CONFIRM_CANDLES = 3
+# Consecutive 1-min candles that must confirm (right side of VWAP + right body direction)
+# before a signal counts as fully confirmed. The other hard gate likely to block on a calm
+# day — lower to 2 via CONFIRM_CANDLES env if diagnostics show 'candle-confirm(...)' blocking.
+CONFIRM_CANDLES = int(os.environ.get("CONFIRM_CANDLES", "3"))
 
 # ─── US market re-exports (keep signals.py as the single import for scanner) ──
 # US_STOCKS and US_SECTOR_INDEX live in data_provider.py; import them here so
@@ -884,6 +890,23 @@ def is_ready(s, ist_mins, market="NSE"):
     conf_warn  = READY_AMBER_MIN <= s["conf"] < READY_GREEN_MIN
     candle_ok  = s["confirmed"]
 
+    # Per-gate breakdown, stashed on the setup so callers (scanner logs, /dry-scan)
+    # can report EXACTLY which gate blocked a save instead of guessing.
+    s["_gates"] = {
+        "time":       time_ok,
+        "prime":      time_prime,
+        "signal":     is_actual,
+        "candle":     candle_ok,
+        "vol":        vol_ok,
+        "orb":        orb_ok,
+        "conf_green": conf_ok,
+        "conf_amber": conf_warn,
+        "rvol_pct":   vp,
+        "blocked":    bool(s.get("market_blocked")),
+    }
+    # time_prime exposed so callers can enforce the ORB window as a hard gate
+    s["_time_prime"] = time_prime
+
     if s.get("market_blocked"):
         return "red", 0
 
@@ -896,8 +919,6 @@ def is_ready(s, ist_mins, market="NSE"):
         not orb_ok,
     ])
     warnings = sum([not time_prime and time_ok, conf_warn])
-    # time_prime exposed so callers can enforce the ORB window as a hard gate
-    s["_time_prime"] = time_prime
 
     if not is_actual:
         return "watch", 0
@@ -906,3 +927,32 @@ def is_ready(s, ist_mins, market="NSE"):
     if warnings > 0:
         return "amber", 6
     return "green", 6
+
+
+def failing_gates(s):
+    """Compact human-readable list of which readiness gates a setup is failing.
+    Reads the s["_gates"] breakdown set by is_ready(). Use for diagnostics so we can
+    see the exact bottleneck (volume? candle? no breakout?) per symbol, not just 'red'."""
+    g = s.get("_gates")
+    if not g:
+        return "no-gate-data"
+    if not g.get("signal"):
+        return "no-signal(WATCH)"
+    fails = []
+    if g.get("blocked"):
+        fails.append("market-blocked")
+    if not g.get("time"):
+        fails.append("outside-time-window")
+    elif not g.get("prime"):
+        fails.append("outside-prime-window(9:45-11:00)")
+    if not g.get("candle"):
+        fails.append(f"candle-confirm({s.get('confirm_count', '?')}/{CONFIRM_CANDLES})")
+    if not g.get("vol"):
+        fails.append(f"volume({g.get('rvol_pct', '?')}%<{MIN_RVOL_GREEN}%)")
+    if not g.get("orb"):
+        fails.append("no-ORB-breakout")
+    if not g.get("conf_green") and not g.get("conf_amber"):
+        fails.append(f"conf({s.get('conf', '?')}%<{READY_AMBER_MIN}%)")
+    elif not g.get("conf_green"):
+        fails.append(f"conf-amber({s.get('conf', '?')}%<{READY_GREEN_MIN}%)")
+    return ",".join(fails) if fails else "all-gates-pass"

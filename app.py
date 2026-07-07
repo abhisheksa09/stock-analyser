@@ -552,12 +552,16 @@ def dry_scan():
 
             # Force IST minutes to 9:50 (prime window) for readiness check
             verdict, gates_ok = is_ready(s, ist_mins=590)
+            from signals import failing_gates
+            fails = failing_gates(s) if not use_mock else "n/a(mock)"
 
             results.append({
                 "sym":     sym,
                 "sig":     s["sig"],
                 "conf":    s["conf"],
                 "verdict": verdict,
+                "failing_gates": fails,
+                "rvol_pct": (s.get("_gates") or {}).get("rvol_pct"),
                 "ltp":     s["ltp"],
                 "entry":   s["en"],
                 "target":  s["tg"],
