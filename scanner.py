@@ -289,13 +289,13 @@ def _pnl_line(s: dict) -> str:
     return f"+Rs{gain}" if s["sig"] == "BUY" else f"-Rs{gain}", f"-Rs{risk}"
 
 def format_alert(kind: str, s: dict, extra: str = "") -> str:
-    ist_time  = datetime.now(IST).strftime("%H:%M IST")
     gain      = round(abs(s["tg"] - s["en"]), 2)
     risk      = round(abs(s["sl"] - s["en"]), 2)
     chg_str   = f"{s['chg']:+.2f}%"
     is_us     = s.get("market") == "US"
     cur       = "$" if is_us else "Rs"
     mkt_name  = "US STOCK SCANNER" if is_us else "NSE SCANNER"
+    ist_time  = datetime.now(ET).strftime("%H:%M ET") if is_us else datetime.now(IST).strftime("%H:%M IST")
 
     if kind == "green_ready":
         sig_emoji = "🟢" if s["sig"] == "BUY" else "🔴"
@@ -371,7 +371,7 @@ def parse_hhmm(s, default):
 
 def _send_scan_heartbeat(all_syms, market_ctx, mins, state, market: str = "NSE"):
     """Send a one-time 'scanner alive' Telegram when first scan completes with no alerts."""
-    ist_time   = datetime.now(IST).strftime("%H:%M IST")
+    ist_time   = datetime.now(ET).strftime("%H:%M ET") if market == "US" else datetime.now(IST).strftime("%H:%M IST")
     n          = len(all_syms)
     bias       = market_ctx.get("market_bias", "?") if market_ctx else "?"
     composite  = market_ctx.get("composite_chg", 0.0) if market_ctx else 0.0
