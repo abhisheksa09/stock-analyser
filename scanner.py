@@ -9,7 +9,7 @@ Triggers Telegram alerts when:
 
 Automated backtest mode:
   For BACKTEST_SYMBOLS, paper trades are saved automatically at the first scan
-  where confidence >= BACKTEST_MIN_CONF (default 55%). This runs every market day
+  where confidence >= BACKTEST_MIN_CONF (default 65%). This runs every market day
   without any manual action, collecting data to calibrate signal thresholds.
 
 Environment variables (set in Render dashboard):
@@ -18,8 +18,8 @@ Environment variables (set in Render dashboard):
   TELEGRAM_CHAT_ID      — your personal chat ID  e.g. 123456789
   SCAN_SYMBOLS          — comma-separated symbols for Telegram alerts (default: all)
   BACKTEST_SYMBOLS      — comma-separated symbols for auto paper trades
-                          (default: 12 hardcoded diverse Nifty50 stocks)
-  BACKTEST_MIN_CONF     — min confidence to auto-save a paper trade (default: 55)
+                          (default: all scanned Nifty50 stocks)
+  BACKTEST_MIN_CONF     — min confidence to auto-save a paper trade (default: 65)
   PAPER_TRADE_EXCLUDE   — comma-separated symbols to never auto-save as paper trades
                           (default: MARUTI — too high-priced for ₹1L capital)
   ALERT_START_IST       — HH:MM  (default: 09:15)
@@ -39,7 +39,7 @@ import urllib.error
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
-from signals import STOCKS, US_STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, detect_regime, READY_GREEN_MIN, failing_gates
+from signals import STOCKS, US_STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, detect_regime, READY_GREEN_MIN, failing_gates, HIGH_CONF_TIME_OVERRIDE
 from data_provider import get_intraday_candles, get_daily_candles, get_ltp_price, get_market_context_us, _alpaca_configured
 from macro import get_full_macro_context, apply_all_macro_penalties
 import db as _db_module
@@ -51,28 +51,16 @@ logging.basicConfig(level=logging.INFO)  # formatter applied centrally in app.py
 IST = timezone(timedelta(hours=5, minutes=30))
 
 # ─── Backtest config ──────────────────────────────────────────────────────────
-# 12 liquid Nifty50 stocks across 8 sectors — good diversity for calibration.
-# Override any time via the BACKTEST_SYMBOLS env var (comma-separated).
-_DEFAULT_BACKTEST_SYMBOLS = [
-    "HDFCBANK",    # Banking (private)
-    "ICICIBANK",   # Banking (private)
-    "SBIN",        # Banking (PSU — different behaviour)
-    "TCS",         # IT
-    "INFY",        # IT
-    "RELIANCE",    # Energy / Conglomerate
-    "TATAMOTORS",  # Auto
-    "HINDUNILVR",  # FMCG
-    "SUNPHARMA",   # Pharma
-    "LT",          # Infrastructure
-    "BAJFINANCE",  # NBFC
-]
-
+# Default: every scanned Nifty50 stock is eligible for auto paper trades — previously
+# only 11 hardcoded symbols were, so any other stock (e.g. SHRIRAMFIN) could only ever
+# reach a paper trade via a full green alert (>=75% conf + all hard gates), never amber.
+# Override any time via the BACKTEST_SYMBOLS env var (comma-separated) to restrict it.
 def _get_backtest_symbols() -> set:
-    """Returns the active backtest symbol set (env override or hardcoded default)."""
+    """Returns the active backtest symbol set (env override or all scanned stocks)."""
     raw = os.environ.get("BACKTEST_SYMBOLS", "").strip()
     if raw:
         return {s.strip().upper() for s in raw.split(",") if s.strip()}
-    return set(_DEFAULT_BACKTEST_SYMBOLS)
+    return {stock["sym"] for stock in STOCKS}
 
 def _get_paper_trade_excluded() -> set:
     """Symbols that should never be auto-saved as paper trades (e.g. too high-priced for capital)."""
@@ -81,9 +69,9 @@ def _get_paper_trade_excluded() -> set:
 
 def _get_backtest_min_conf() -> int:
     try:
-        return int(os.environ.get("BACKTEST_MIN_CONF", "70"))
+        return int(os.environ.get("BACKTEST_MIN_CONF", "65"))
     except ValueError:
-        return 70
+        return 65
 
 def _get_allow_amber() -> bool:
     """When true, amber setups (all hard gates pass, conf in the 55–74 band) may be
@@ -377,13 +365,22 @@ def _send_scan_heartbeat(all_syms, market_ctx, mins, state, market: str = "NSE")
     composite  = market_ctx.get("composite_chg", 0.0) if market_ctx else 0.0
     vix        = market_ctx.get("vix", 0.0) if market_ctx else 0.0
 
-    # Top 3 scanned symbols by confidence (gives a quick peek at what's closest)
+    # Top 3 scanned symbols by confidence (gives a quick peek at what's closest).
+    # Each line shows the exact blocking gate (from state.bt_gates) so "why didn't this
+    # fire" is answered in the alert itself instead of requiring a server-log lookup.
     scored = sorted(
         [(s["sym"], state.prev_conf.get(s["sym"], 0), state.prev_sig.get(s["sym"], "WATCH"))
          for s in all_syms if s["sym"] in state.prev_conf],
         key=lambda x: x[1], reverse=True,
     )[:3]
-    top_str = "  |  ".join(f"{sym} {sig} {conf}%" for sym, conf, sig in scored) or "—"
+    top_lines = []
+    for sym, conf, sig in scored:
+        blocker = state.bt_gates.get(sym)
+        if blocker and blocker != "all-gates-pass":
+            top_lines.append(f"{sym} {sig} {conf}%  — blocked: {blocker}")
+        else:
+            top_lines.append(f"{sym} {sig} {conf}%")
+    top_str = "\n".join(top_lines) or "—"
 
     mkt_label = "NSE SCANNER" if market == "NSE" else "US SCANNER"
     flag      = "🇮🇳" if market == "NSE" else "🇺🇸"
@@ -393,7 +390,7 @@ def _send_scan_heartbeat(all_syms, market_ctx, mins, state, market: str = "NSE")
         f"{n} stocks scanned — nothing above threshold yet.\n"
         f"Market: <b>{composite:+.2f}%</b>  bias={bias}  VIX={vix:.1f}\n"
         f"\n"
-        f"Top conf: {top_str}\n"
+        f"Top conf:\n{top_str}\n"
         f"\n"
         f"⏰ {ist_time}"
     )
@@ -665,10 +662,13 @@ def run_scan(force: bool = False):
         # Save when the setup qualifies (green, or amber when BACKTEST_ALLOW_AMBER)
         # for BACKTEST_CONFIRM_SCANS consecutive scans in the same direction.
         # Default confirm=1 → save on the first qualifying scan. The prime-window
-        # gate (>= 9:45) still filters first-30-min fakeouts.
+        # gate (>= 9:45) still filters first-30-min fakeouts, except for a read at/above
+        # HIGH_CONF_TIME_OVERRIDE conf — that strong a signal saves immediately.
         save_ok        = _save_verdict_ok(verdict, s["conf"], bt_min_conf)
         confirm_needed = _get_confirm_scans()
-        if in_bt and sym not in STATE.bt_saved and s.get("_time_prime"):
+        early_high_conf = mins < 585 and s["conf"] >= HIGH_CONF_TIME_OVERRIDE
+        save_window     = bool(s.get("_time_prime")) or early_high_conf
+        if in_bt and sym not in STATE.bt_saved and save_window:
             if save_ok:
                 prior  = STATE.bt_first_green.get(sym)
                 streak = (prior.get("count", 1) + 1) if (prior and prior["sig"] == s["sig"]) else 1
@@ -697,7 +697,7 @@ def run_scan(force: bool = False):
                     log.info("Paper trade streak reset (verdict=%s conf=%d%%): %s",
                              verdict, s["conf"], sym)
                     del STATE.bt_first_green[sym]
-        elif in_bt and not s.get("_time_prime") and sym in STATE.bt_first_green:
+        elif in_bt and not save_window and sym in STATE.bt_first_green:
             # Past 11:00 AM — discard any pending confirmations
             log.info("Paper trade streak reset (past 11:00 AM window): %s", sym)
             del STATE.bt_first_green[sym]
@@ -909,7 +909,9 @@ def run_us_scan(force: bool = False):
         # Auto paper trade (same qualifying-verdict + confirm-streak logic as NSE)
         save_ok        = _save_verdict_ok(verdict, s["conf"], bt_min_conf)
         confirm_needed = _get_confirm_scans()
-        if in_bt and sym not in US_STATE.bt_saved and s.get("_time_prime"):
+        early_high_conf = mins < 570 and s["conf"] >= HIGH_CONF_TIME_OVERRIDE
+        save_window     = bool(s.get("_time_prime")) or early_high_conf
+        if in_bt and sym not in US_STATE.bt_saved and save_window:
             if save_ok:
                 prior  = US_STATE.bt_first_green.get(sym)
                 streak = (prior.get("count", 1) + 1) if (prior and prior["sig"] == s["sig"]) else 1

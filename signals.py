@@ -39,6 +39,8 @@ READY_AMBER_MIN = 55
 # MIN_RVOL_GREEN env (e.g. 120) if diagnostics show 'volume(...)' is the bottleneck.
 MIN_RVOL_GREEN  = int(os.environ.get("MIN_RVOL_GREEN", "150"))
 MIN_RR_SIGNAL   = 1.5   # hard R:R floor — below this the setup is mathematically poor
+# Confidence at/above this waives the pre-9:45 anti-fakeout time gate (see is_ready).
+HIGH_CONF_TIME_OVERRIDE = int(os.environ.get("HIGH_CONF_TIME_OVERRIDE", "80"))
 
 
 # ─── Nifty 50 stocks ──────────────────────────────────────────────────────────
@@ -870,15 +872,24 @@ def is_ready(s, ist_mins, market="NSE"):
       time_ok    = 570–960  (9:30 AM – 4:00 PM ET)
       time_prime = 585–660  (9:45 – 11:00 AM ET — ORB momentum window)
     market="NSE" → original IST windows unchanged.
+
+    A read at/above HIGH_CONF_TIME_OVERRIDE waives only the early side of time_ok
+    (not the late side) — a call that strong before the 9:45 anti-fakeout floor
+    opens is unlikely to be pure opening noise, and gating it out regardless of
+    confidence was burying good early reads (e.g. an 88% conf SELL at 9:19).
     """
     vp = round(s["tVpm"] / (s["aVpm"] or 1) * 100)
 
     if market == "US":
         time_ok    = 570 <= ist_mins <= 960   # 9:30 AM – 4:00 PM ET
         time_prime = 585 <= ist_mins <= 660   # 9:45 – 11:00 AM ET
+        too_early  = ist_mins < 570
     else:
         time_ok    = 585 <= ist_mins <= 900
         time_prime = 585 <= ist_mins <= 660  # 9:45–11:00 AM IST — ORB momentum window
+        too_early  = ist_mins < 585
+    if too_early and not time_ok and s["conf"] >= HIGH_CONF_TIME_OVERRIDE:
+        time_ok = True
     is_actual  = s["sig"] != "WATCH"
     orb_ok     = (
         (s["sig"] == "BUY"  and s["bo"]) or
