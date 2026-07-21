@@ -12,21 +12,20 @@ crons = [
   # 2. NSE EOD + evening scan — 9:00–10:57 UTC Mon–Fri (14:30–16:27 IST)
   "2,7,12,17,22,27,32,37,42,47,52,57 9-10 * * 1-5",
 
-  # 3. US pre-warm + US market — 12:47–15:57 UTC Mon–Fri (08:17–11:57 ET)
-  #    Covers the :47,:52,:57 pre-warm in hour 12, then every 5 min through 15:57
-  "47,52,57 12 * * 1-5",
+  # 3. US pre-warm + US market — 12:00–15:57 UTC Mon–Fri (08:00–11:57 ET)
+  #    (merged the old hour-12 pre-warm + hours 13-15 into one trigger to free a slot)
+  "2,7,12,17,22,27,32,37,42,47,52,57 12-15 * * 1-5",
 
-  # 4. US market — 13:00–15:57 UTC Mon–Fri
-  "2,7,12,17,22,27,32,37,42,47,52,57 13-15 * * 1-5",
-
-  # 5. US EOD (19:47–20:17 UTC Mon–Fri) + weekly LT scan (18:12–18:42 UTC Sat)
-  #    Uses day-of-week to distinguish: Mon-Fri fires at 19-20, Sat fires at 18
+  # 4. US EOD — 19:47–19:57 UTC Mon–Fri
   "47,52,57 19 * * 1-5",
+
+  # 5. Weekly LT scan — 18:12–18:42 UTC Saturday (wakes Render before the
+  #    in-process LT job that fires Sunday 00:00 IST = Saturday 18:30 UTC)
+  "12,17,22,27,32,37,42 18 * * 6",
 ]
 
-# NOTE: The following slots from the GitHub Actions schedule are NOT covered due to the 5-trigger
-# limit. GitHub Actions (backup) handles them:
-#   - US EOD: 20:02,07,12,17 UTC Mon–Fri  (last 15 min of the US EOD bracket)
-#   - Weekly LT scan: 18:12–18:42 UTC Saturday
-# To cover these, upgrade to the Workers Paid plan ($5/mo, unlimited triggers) or keep GitHub
-# Actions as the fallback for the gaps.
+# NOTE: One slot from the GitHub Actions schedule is NOT covered due to the 5-trigger limit.
+# GitHub Actions (backup) handles it:
+#   - US EOD tail: 20:02,07,12,17 UTC Mon–Fri  (last 15 min of the US EOD bracket)
+# To cover this too, upgrade to the Workers Paid plan ($5/mo, unlimited triggers) or keep
+# GitHub Actions as the fallback for the gap.
