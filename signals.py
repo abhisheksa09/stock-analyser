@@ -42,6 +42,21 @@ MIN_RR_SIGNAL   = 1.5   # hard R:R floor — below this the setup is mathematica
 # Confidence at/above this waives the pre-9:45 anti-fakeout time gate (see is_ready).
 HIGH_CONF_TIME_OVERRIDE = int(os.environ.get("HIGH_CONF_TIME_OVERRIDE", "80"))
 
+# RSI entry bands — these MUST stay consistent with _score_rsi(), which is momentum-aligned:
+# a breakout BUY is *confirmed* by RSI pushing up through 50–65 (scores 1.00), not by a low
+# mean-reversion RSI. The old entry gate contradicted that scorer: BUY required RSI < 55 and
+# SELL required RSI > 45. On a strong up day large-cap daily RSI sits at 55–70, so every clean
+# ORB breakout was demoted to WATCH — while composite breadth >= +1% simultaneously hard-blocks
+# every SELL. Result: a +1% market could produce zero picks by construction.
+# The gate now only vetoes blowoff extremes; everything inside the band is allowed through and
+# *graded* by _score_rsi() instead of being silently killed. Note the band is deliberately wider
+# than the scorer's "extended" tier (72/28): after two +1% index days a large cap's daily RSI14
+# genuinely sits in the low-to-mid 70s, so a 72 veto would still block the exact days we want to
+# trade. Above 72 the scorer already docks ~8 conf points — that dock is the intended handling of
+# an extended entry, not a veto. Only a parabolic read (>80) is refused outright.
+RSI_BUY_MAX  = float(os.environ.get("RSI_BUY_MAX",  "80"))   # above this: parabolic, no BUY
+RSI_SELL_MIN = float(os.environ.get("RSI_SELL_MIN", "20"))   # below this: capitulation, no SELL
+
 
 # ─── Nifty 50 stocks ──────────────────────────────────────────────────────────
 STOCKS = [
@@ -660,8 +675,8 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
     bd = ltp < orb_l
 
     # ── Base signal logic ────────────────────────────────────────────────────
-    # RSI < 55: not overbought — valid entry for an ORB breakout upward
-    # RSI > 45: not oversold — valid entry for an ORB breakdown downward
+    # RSI <= RSI_BUY_MAX  (80): not parabolic    — valid entry for an ORB breakout upward
+    # RSI >= RSI_SELL_MIN (20): not capitulating — valid entry for an ORB breakdown downward
     # Target: 1× ORB range; SL: ORB midpoint → ~2:1 R:R by construction.
     GAP_THRESHOLD = 1.5   # % gap needed to trigger gap-and-go signal
     actual_orb  = orb_h - orb_l
@@ -674,19 +689,19 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
     # Fix: when tight ORB, size the stop at 0.25×ATR so both sides scale together → true ~2:1.
     atr_sl_dist = round(0.25 * at, 2)
     gap_signal = False
-    if rs < 55 and av and bo:
+    if rs <= RSI_BUY_MAX and av and bo:
         sig    = "BUY"
         en     = round(orb_h + 0.05, 2)
         sl     = round(en - atr_sl_dist, 2) if tight_orb else round(orb_mid - 0.05, 2)
         tg     = round(en + orb_range, 2)
         reason = "Above VWAP with bullish momentum"
-    elif rs > 45 and (not av) and bd:
+    elif rs >= RSI_SELL_MIN and (not av) and bd:
         sig    = "SELL"
         en     = round(orb_l - 0.05, 2)
         sl     = round(en + atr_sl_dist, 2) if tight_orb else round(orb_mid + 0.05, 2)
         tg     = round(en - orb_range, 2)
         reason = "Below VWAP with bearish momentum"
-    elif gap_pct <= -GAP_THRESHOLD and (not av) and rs > 35:
+    elif gap_pct <= -GAP_THRESHOLD and (not av) and rs >= RSI_SELL_MIN:
         # Gap-down and-go: gap is the breakout, ORB low is the entry
         sig        = "SELL"
         gap_signal = True
@@ -695,7 +710,7 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         half_gap   = round(abs(gap_pct / 100 * pc) * 0.5, 2)
         tg         = round(en - max(half_gap, orb_range), 2)
         reason     = f"Gap-down {gap_pct:+.1f}% — gap-and-go SELL"
-    elif gap_pct >= GAP_THRESHOLD and av and rs < 65:
+    elif gap_pct >= GAP_THRESHOLD and av and rs <= RSI_BUY_MAX:
         # Gap-up and-go: gap is the breakout, ORB high is the entry
         sig        = "BUY"
         gap_signal = True
@@ -709,7 +724,16 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         en     = round(ltp, 2)
         sl     = round(ltp - at, 2)
         tg     = round(ltp + at, 2)
-        reason = "Mixed signals — wait for clear breakout or VWAP test"
+        # Name the actual blocker. A clean breakout rejected only by the RSI band is a very
+        # different diagnosis from "no breakout at all", and this string is what surfaces in
+        # the scan heartbeat and /dry-scan — a generic "mixed signals" hid the RSI gate for
+        # every strong up day.
+        if av and bo and rs > RSI_BUY_MAX:
+            reason = f"ORB breakout but RSI {rs:.0f} > {RSI_BUY_MAX:.0f} — overbought, BUY skipped"
+        elif (not av) and bd and rs < RSI_SELL_MIN:
+            reason = f"ORB breakdown but RSI {rs:.0f} < {RSI_SELL_MIN:.0f} — oversold, SELL skipped"
+        else:
+            reason = "Mixed signals — wait for clear breakout or VWAP test"
 
     rr = round(abs(tg - en) / max(abs(en - sl), 0.01), 2)
 
