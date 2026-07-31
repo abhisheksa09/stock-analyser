@@ -6,26 +6,32 @@ compatibility_date = "2024-01-01"
 # Free plan: 5 cron triggers max.
 # All times UTC. IST = UTC+5:30. ET (summer) = UTC-4.
 crons = [
-  # 1. NSE morning — 3:00–5:57 UTC Mon–Fri (08:30–11:27 IST)
-  "2,7,12,17,22,27,32,37,42,47,52,57 3-5 * * 1-5",
+  # 1. NSE full trading day, no gap — 3:00–10:57 UTC Mon–Fri (08:30–16:27 IST)
+  #    Previously split into a morning (3-5) and evening (9-10) window with a
+  #    ~3h hole between them (11:27-14:30 IST) that let Render sleep through
+  #    the back half of the NSE trading session. Merged into one continuous
+  #    window — this also frees a trigger slot (2 -> 1).
+  "2,7,12,17,22,27,32,37,42,47,52,57 3-10 * * 1-5",
 
-  # 2. NSE EOD + evening scan — 9:00–10:57 UTC Mon–Fri (14:30–16:27 IST)
-  "2,7,12,17,22,27,32,37,42,47,52,57 9-10 * * 1-5",
-
-  # 3. US pre-warm + US market — 12:00–15:57 UTC Mon–Fri (08:00–11:57 ET)
-  #    (merged the old hour-12 pre-warm + hours 13-15 into one trigger to free a slot)
+  # 2. US pre-warm + US market — 12:00–15:57 UTC Mon–Fri (08:00–11:57 ET)
   "2,7,12,17,22,27,32,37,42,47,52,57 12-15 * * 1-5",
 
-  # 4. US EOD — 19:47–19:57 UTC Mon–Fri
+  # 3. US EOD — 19:47–19:57 UTC Mon–Fri
   "47,52,57 19 * * 1-5",
 
-  # 5. Weekly LT scan — 18:12–18:42 UTC Saturday (wakes Render before the
-  #    in-process LT job that fires Sunday 00:00 IST = Saturday 18:30 UTC)
-  "12,17,22,27,32,37,42 18 * * 6",
+  # 4. Weekly LT scan — 18:02–20:57 UTC Saturday.
+  #    The in-process LT job fires Sunday 00:00 IST = Saturday 18:30 UTC and
+  #    takes 30–60 min to walk ~300 stocks. The old window stopped at 18:42 —
+  #    only 12 min after the scan started — so Render suspended the instance
+  #    ~18:57 and killed the scan mid-run. The digest email is sent at the very
+  #    end of the scan, which is why no alert ever arrived. Window now runs
+  #    ~2.5h past the scan start so the scan can finish and email.
+  "2,7,12,17,22,27,32,37,42,47,52,57 18-20 * * 6",
 ]
 
 # NOTE: One slot from the GitHub Actions schedule is NOT covered due to the 5-trigger limit.
 # GitHub Actions (backup) handles it:
 #   - US EOD tail: 20:02,07,12,17 UTC Mon–Fri  (last 15 min of the US EOD bracket)
 # To cover this too, upgrade to the Workers Paid plan ($5/mo, unlimited triggers) or keep
-# GitHub Actions as the fallback for the gap.
+# GitHub Actions as the fallback for the gap. We now have a free 5th slot available if another
+# gap turns up.
