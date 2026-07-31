@@ -2275,22 +2275,85 @@ def lt_picks_run():
         return jsonify({"error": str(e)}), 500
 
 
+def _start_keepalive_heartbeat(label: str):
+    """
+    Keep the Render instance awake for the duration of a long in-process job.
+
+    Render's free tier suspends a web service 15 min after its last *inbound*
+    HTTP request — CPU activity inside the process does not count. Long jobs
+    therefore die partway unless something keeps hitting the public URL. The
+    external keepalive crons only cover fixed windows, so a job that overruns
+    its window gets killed. This self-ping covers the job for as long as it
+    actually runs.
+
+    Returns a callable that stops the heartbeat.
+    """
+    import threading, time as _time
+
+    stop = threading.Event()
+
+    def _beat():
+        while not stop.wait(300):   # every 5 min, exits promptly when stopped
+            try:
+                req = urllib.request.Request(
+                    RENDER_BASE_URL + "/ping",
+                    headers={"User-Agent": "self-keepalive/1.0"},
+                )
+                with urllib.request.urlopen(req, timeout=30):
+                    pass
+                log.info("[keepalive] self-ping ok (%s still running)", label)
+            except Exception as e:
+                log.warning("[keepalive] self-ping failed (%s): %s", label, e)
+
+    if os.environ.get("DISABLE_SELF_PING"):
+        log.info("[keepalive] self-ping disabled via DISABLE_SELF_PING (%s)", label)
+        return lambda: None
+
+    threading.Thread(target=_beat, daemon=True, name=f"keepalive-{label}").start()
+    log.info("[keepalive] self-ping heartbeat started for %s (every 5 min)", label)
+    return stop.set
+
+
 def _lt_scan_job():
-    """APScheduler job — runs Sunday at 20:00 IST."""
+    """
+    APScheduler job — runs Sunday 00:00 IST (= Saturday 18:30 UTC).
+
+    Walks ~300 stocks and takes 30–60 min. The digest email is only sent once
+    the whole scan finishes, so anything that kills the process mid-scan means
+    no alert at all — hence the keepalive heartbeat and the partial-result
+    fallback below.
+    """
+    import time as _time
+
     log.info("Weekly LT scan job triggered")
+    t0    = _time.monotonic()
+    picks = []
+    stop_heartbeat = _start_keepalive_heartbeat("LT weekly scan")
     try:
         result = _lt.run_lt_scan()
-        log.info("Weekly LT scan done: %s", result.get("summary"))
-        # Send weekly email digest
-        picks = result.get("picks", [])
-        if picks:
-            try:
-                import email_alerts as _ea
-                _email.send_email(*_ea.format_weekly_lt_picks(picks))
-            except Exception as e:
-                log.warning("LT weekly email failed: %s", e)
+        picks  = result.get("picks", [])
+        log.info("Weekly LT scan done in %.1f min: %s",
+                 (_time.monotonic() - t0) / 60, result.get("summary"))
     except Exception as e:
-        log.error("_lt_scan_job failed: %s", e)
+        log.error("_lt_scan_job failed after %.1f min: %s", (_time.monotonic() - t0) / 60, e)
+        # run_lt_scan saves each segment to the DB as it completes, so read back
+        # whatever landed — a partial scan should still send an email, not silence.
+        try:
+            picks = _db_module.get_lt_picks(scan_date=datetime.now(IST).date().isoformat())
+            log.info("LT partial recovery: %d picks read back from DB", len(picks))
+        except Exception as e2:
+            log.warning("LT partial recovery failed: %s", e2)
+    finally:
+        stop_heartbeat()
+
+    if not picks:
+        log.warning("Weekly LT scan produced no picks — no email sent")
+        return
+    try:
+        _email.send_email(*_email.format_weekly_lt_picks(picks))
+        log.info("Weekly LT picks email sent (%d picks)", len(picks))
+    except Exception as e:
+        log.warning("LT weekly email failed: %s", e)
 
 
 @app.route("/ai/setup-insight", methods=["POST"])

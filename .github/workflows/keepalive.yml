@@ -1,45 +1,40 @@
 name: Render Keepalive (backup)
 
-# ── Why these schedules look the way they do ─────────────────────────────────
-# GitHub Actions scheduled workflows are BEST-EFFORT, not guaranteed:
-#   • They can be delayed 5–30+ min, or dropped entirely, under high load.
-#   • High load peaks at the TOP OF THE HOUR (:00) — the single worst slot.
-#     (Source: GitHub docs — "schedule your workflow to run at a different
-#      time of the hour" to decrease the chance of delay.)
+# PRIMARY keepalive is the Cloudflare Worker (keepalive-worker/wrangler.toml).
+# That worker fires reliably and waits 90s — long enough for Render's ~50s cold start.
 #
-# So we do TWO things:
-#   1. OFFSET the minutes off :00 and the round :05/:10/:15 marks (which collide
-#      with everyone else's */5 //10 //15 jobs). We fire at :02,:07,:12,... —
-#      this measurably lowers GitHub's drop rate. No extra cost.
-#   2. LEAD TIME: a short pre-warm ramp before the moment we actually need the
-#      service up, so a dropped run or two still leaves a later run to wake it.
+# This GitHub Actions workflow is the BACKUP. It covers two windows the
+# Cloudflare free plan's 5-trigger limit couldn't fit:
+#   - US EOD tail: 20:02–20:17 UTC Mon–Fri
+#   - Weekly LT scan: 18:12–18:42 UTC Saturday
+# It also duplicates the primary windows so a GitHub delay is caught by CF and vice versa.
 #
-# This account has MULTIPLE Render services sharing the free 750 instance-hrs/mo
-# pool, so we keep windows tight (no 24/7) to avoid burning the shared budget.
+# GitHub Actions schedule is BEST-EFFORT — can be delayed 5–30+ min under load.
+# Minutes are offset off :00/:05/:10 to reduce drop rate (see GitHub docs).
 #
-# All times UTC. IST = UTC+5:30 (no DST). Summer: ET = UTC-4, Amsterdam = UTC+2.
+# All times UTC. IST = UTC+5:30. ET (summer) = UTC-4.
 
 on:
   schedule:
-    # 1. NSE morning: pre-open 9:00 IST = 3:30 UTC, scan ~8:30–10:30 IST
-    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 3-5 * * 1-5'
+    # 1. NSE full trading day, no gap: 3:00–10:57 UTC Mon–Fri (08:30–16:27 IST)
+    #    Merged from separate morning/evening windows to close the midday gap
+    #    (11:27-14:30 IST) that let Render sleep through the trading session.
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 3-10 * * 1-5'
 
-    # 2. NSE EOD settlement 15:35 IST + evening scan = 10:00–10:59 UTC
-    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 9-10 * * 1-5'
-
-    # 3a. US pre-open WARMUP ramp — ~45 min before 13:30 UTC open (cheap lead time)
+    # 3a. US pre-open warmup: 12:47–12:57 UTC Mon–Fri
     - cron: '47,52,57 12 * * 1-5'
-    # 3b. US market: 9:30 ET open = 13:30 UTC; scan window 13:00–15:59 UTC
+    # 3b. US market: 13:00–15:57 UTC Mon–Fri
     - cron: '2,7,12,17,22,27,32,37,42,47,52,57 13-15 * * 1-5'
 
-    # 4. US EOD settlement ~16:05 ET = ~20:05 UTC — bracket it 19:47–20:17
+    # 4. US EOD bracket: 19:47–20:17 UTC Mon–Fri
     - cron: '47,52,57 19 * * 1-5'
     - cron: '2,7,12,17 20 * * 1-5'
 
-    # 5. Weekly LT scan: Sunday 00:00 IST = Saturday 18:30 UTC — bracket 18:12–18:42
-    - cron: '12,17,22,27,32,37,42 18 * * 6'
+    # 5. Weekly LT scan: 18:02–20:57 UTC Saturday (Sun 00:00–02:27 IST)
+    #    Must outlast the scan itself, not just its start — see wrangler.toml.
+    - cron: '2,7,12,17,22,27,32,37,42,47,52,57 18-20 * * 6'
 
-  # Manual trigger — use this from the Actions tab to wake the service on demand
+  # Manual trigger from the Actions tab
   workflow_dispatch:
 
 jobs:
