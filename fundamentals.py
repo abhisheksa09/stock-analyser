@@ -27,44 +27,211 @@ log = logging.getLogger("fundamentals")
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
+# ── yfinance log-noise cap ────────────────────────────────────────────────────
+class _YFNoiseFilter(logging.Filter):
+    """
+    yfinance logs one WARNING/ERROR line per failed symbol through its own
+    logger, which propagates to our root handler. When Yahoo rate-limits the
+    scan that is hundreds of near-identical '401 Unauthorized' lines that bury
+    every other scan message.
+
+    Let the first `cap` through (they carry the actual diagnosis), then swallow
+    the rest and report a single count via report_and_reset() at end of run.
+    Installed on the root handlers, not the yfinance logger, so it also catches
+    records from child loggers ('yfinance.data' etc.).
+    """
+    def __init__(self, cap: int = 12):
+        super().__init__()
+        self.cap        = cap
+        self.seen       = 0
+        self.suppressed = 0
+
+    def filter(self, record):
+        if not record.name.startswith("yfinance"):
+            return True
+        self.seen += 1
+        if self.seen <= self.cap:
+            return True
+        self.suppressed += 1
+        return False
+
+    def report_and_reset(self):
+        if self.suppressed:
+            log.warning(
+                "yfinance emitted %d error lines this run (%d suppressed after the first %d)",
+                self.seen, self.suppressed, self.cap,
+            )
+        self.seen = self.suppressed = 0
+
+
+_yf_noise = _YFNoiseFilter()
+
+
+def _install_yf_noise_filter():
+    """
+    Attach the filter to every root handler. Idempotent, and re-run at the top of
+    each scan because app.py installs its own handler after importing this module.
+    """
+    for h in logging.root.handlers:
+        if _yf_noise not in h.filters:
+            h.addFilter(_yf_noise)
+
+
+_install_yf_noise_filter()
+
+# ── yfinance rate-limit / crumb state ─────────────────────────────────────────
+# Yahoo's quoteSummary endpoint (ticker.info) and fundamentals-timeseries
+# endpoint (ticker.financials) both require a "crumb" token that yfinance
+# fetches once and caches in a process-global singleton. When the crumb endpoint
+# is itself rate-limited it returns the body "Too Many Requests\r\n" with HTTP
+# 200, and yfinance caches that string AS the crumb. Every subsequent call then
+# sends `crumb=Too+Many+Requests%0D%0A` and gets 401 Unauthorized — for the rest
+# of the process lifetime. It never self-heals. That is the 401 flood in the log.
+_YF_BAD_CRUMB_MARKERS = ("too many requests", "unauthorized", "edge:", "error")
+
+_yf_rl = {
+    "delay":          0.3,    # adaptive inter-symbol sleep (seconds)
+    "resets":         0,      # crumb resets attempted this run
+    "consec_fails":   0,      # consecutive rate-limited info/financials calls
+    "info_disabled":  False,  # circuit breaker — stop calling crumb endpoints
+}
+
+_YF_MAX_RESETS      = 3       # give up on the crumb after this many resets
+_YF_FAILS_TO_RESET  = 5       # consecutive failures before attempting a reset
+_YF_MAX_DELAY       = 4.0
+
+
+def _yf_reset_run_state():
+    """Reset per-run yfinance pacing state. Called at the top of run_lt_scan()."""
+    _yf_rl.update({"delay": 0.3, "resets": 0, "consec_fails": 0, "info_disabled": False})
+
+
+def _is_rate_limited(err) -> bool:
+    """True if an exception/message looks like Yahoo throttling or a bad crumb."""
+    msg = str(err).lower()
+    return any(t in msg for t in ("401", "429", "too many requests", "unauthorized"))
+
+
+def _yf_crumb_is_poisoned(yf) -> bool:
+    """True if yfinance's cached crumb is a rate-limit error body, not a token."""
+    try:
+        crumb = getattr(yf.data.YfData(session=None), "_crumb", None)
+    except Exception:
+        return False
+    if not crumb or not isinstance(crumb, str):
+        return False
+    low = crumb.lower()
+    # A real crumb is a short opaque token with no whitespace.
+    return any(m in low for m in _YF_BAD_CRUMB_MARKERS) or any(c.isspace() for c in crumb)
+
+
+def _yf_reset_crumb(yf, reason: str) -> bool:
+    """
+    Drop yfinance's cached cookie + crumb so the next call re-negotiates, and
+    back off before that happens. Returns False once we've given up.
+    """
+    if _yf_rl["resets"] >= _YF_MAX_RESETS:
+        return False
+    _yf_rl["resets"] += 1
+    backoff = 15 * _yf_rl["resets"]      # 15s, 30s, 45s
+    try:
+        yd = yf.data.YfData(session=None)
+        yd._crumb  = None
+        yd._cookie = None
+        # Toggle the strategy so the retry takes the other negotiation path.
+        strategy = getattr(yd, "_cookie_strategy", None)
+        if strategy in ("basic", "csrf") and hasattr(yd, "_set_cookie_strategy"):
+            yd._set_cookie_strategy("csrf" if strategy == "basic" else "basic")
+    except Exception as e:
+        log.warning("LT scan: could not reset yfinance crumb (%s) — %s", reason, e)
+        return False
+    log.warning(
+        "LT scan: yfinance crumb reset %d/%d (%s) — backing off %ds",
+        _yf_rl["resets"], _YF_MAX_RESETS, reason, backoff,
+    )
+    time.sleep(backoff)
+    return True
+
+
+def _yf_note_failure(yf, symbol: str, what: str, err) -> None:
+    """Record a rate-limited crumb-endpoint call; reset or trip the breaker."""
+    if _yf_rl["info_disabled"]:
+        return
+    _yf_rl["consec_fails"] += 1
+    _yf_rl["delay"] = min(_yf_rl["delay"] * 1.5, _YF_MAX_DELAY)
+    log.debug("yfinance %s %s rate-limited: %s", what, symbol, err)
+    if _yf_rl["consec_fails"] < _YF_FAILS_TO_RESET:
+        return
+    if not _yf_reset_crumb(yf, f"{_yf_rl['consec_fails']} consecutive {what} failures"):
+        _yf_rl["info_disabled"] = True
+        log.error(
+            "LT scan: Yahoo fundamentals endpoints unreachable after %d crumb resets — "
+            "continuing with price/technical data only (P/E, ROE, growth will be blank). "
+            "Set YF_PROXY to a working HTTP proxy to restore fundamentals.",
+            _YF_MAX_RESETS,
+        )
+        return
+    _yf_rl["consec_fails"] = 0
+
+
+def _yf_note_success() -> None:
+    """A crumb-endpoint call worked — decay the backoff back toward baseline."""
+    _yf_rl["consec_fails"] = 0
+    _yf_rl["delay"] = max(0.3, _yf_rl["delay"] * 0.8)
+
 # ── Index constituent lists (Nifty 100 / Midcap 150 / Smallcap 250) ──────────
 # Symbols as used by yfinance (.NS suffix added at fetch time)
 LARGE_CAP = [
-    "RELIANCE","TCS","HDFCBANK","BHARTIARTL","ICICIBANK","INFOSYS","SBIN","HINDUNILVR",
+    "RELIANCE","TCS","HDFCBANK","BHARTIARTL","ICICIBANK","INFY","SBIN","HINDUNILVR",
     "ITC","BAJFINANCE","KOTAKBANK","LT","HCLTECH","MARUTI","ASIANPAINT","AXISBANK",
     "TITAN","SUNPHARMA","ULTRACEMCO","BAJAJFINSV","NESTLEIND","WIPRO","POWERGRID",
-    "NTPC","ADANIENT","ADANIPORTS","TECHM","TATAMOTORS","DRREDDY","DIVISLAB",
+    "NTPC","ADANIENT","ADANIPORTS","TECHM","DRREDDY","DIVISLAB",
     "CIPLA","JSWSTEEL","TATASTEEL","COALINDIA","ONGC","BPCL","HEROMOTOCO",
     "EICHERMOT","GRASIM","SHREECEM","APOLLOHOSP","BRITANNIA","TATACONSUM","PIDILITIND",
     "DABUR","HAVELLS","GODREJCP","BOSCHLTD","MUTHOOTFIN","SIEMENS","INDIGO",
     "DLF","VEDL","HINDALCO","NMDC","SAIL","JINDALSTEL","LUPIN","AUROPHARMA",
     "TORNTPHARM","LICHSGFIN","CHOLAFIN","MFSL","SBILIFE","HDFCLIFE","ICICIPRULI",
-    "ICICIGI","BAJAJ-AUTO","TVSMOTORS","M&M","TVSMOTOR","ESCORTS","ASHOKLEY",
+    "ICICIGI","BAJAJ-AUTO","M&M","TVSMOTOR","ESCORTS","ASHOKLEY",
     "BERGEPAINT","KANSAINER","MARICO","COLPAL","EMAMILTD","VBL","TRENT","NYKAA",
     "DMART","ZOMATO","PAYTM","POLICYBZR","NAUKRI","INDIAMART","IRCTC","ZEEL",
-    "SUNTV","PVRINOX","JUBLFOOD","DEVYANI","WESTLIFE","MCDOWELL-N","UNITEDSPIRITS",
+    "SUNTV","PVRINOX","JUBLFOOD","DEVYANI","WESTLIFE","UNITDSPR",
     "GMRAIRPORT","AIAENG","CUMMINSIND","THERMAX","ABB","BHEL","BEL","HAL",
 ]
+# Removed / corrected (each was a guaranteed Yahoo error + 3 wasted requests):
+#   INFOSYS      → INFY       (NSE ticker)
+#   TVSMOTORS    → dropped    (duplicate of TVSMOTOR, which is the NSE ticker)
+#   MCDOWELL-N   → UNITDSPR   (NSE renamed the symbol)
+#   UNITEDSPIRITS→ dropped    (same company as above, never a valid ticker)
+#   TATAMOTORS   → dropped    (the "possibly delisted, no price data" line in the
+#                              log — the entity demerged and the old ticker is
+#                              retired. Add the successor ticker(s) once confirmed
+#                              against the NSE symbol list.)
 
 MIDCAP = [
     "PERSISTENT","MPHASIS","COFORGE","LTTS","KPITTECH","TATAELXSI","HEXAWARE",
-    "OFSS","CYIENT","ZENSAR","NIITTECH","MASTEK","RATEGAIN","TANLA",
+    "OFSS","CYIENT","ZENSAR","MASTEK","RATEGAIN","TANLA",
     "IDFCFIRSTB","FEDERALBNK","KARURVYSYA","CSBBANK","DCBBANK","RBLBANK",
     "BANDHANBNK","UJJIVANSFB","EQUITASBNK","SURYODAY","JKCEMENT","RAMCOCEM",
     "HEIDELBERG","BIRLACORPN","PRSMJOHNSN","ORIENTCEM","STARCEMENT",
     "APLAPOLLO","RATNAMANI","WELSPUNIND","TRIDENT","VARDHACRLC","ALOKTEXT",
     "PAGEIND","RAYMOND","SPENCERS","VMART","SHOPERSTOP","BATA","RELAXO",
     "CAMPUS","METROBRAND","KPRMILL","GOCOLORS","SUNDRMFAST","MOTHERSON",
-    "BALKRISIND","APOLLOTYRE","CEATLTD","MRFLTD","JKTYRE","GOODYEAR",
-    "CONCOR","BLUEDART","MAHINDCIE","ENDURANCE","SUPRAJIT","FIEM",
+    "BALKRISIND","APOLLOTYRE","CEATLTD","MRF","JKTYRE","GOODYEAR",
+    "CONCOR","BLUEDART","CIEINDIA","ENDURANCE","SUPRAJIT","FIEM",
     "LALPATHLAB","METROPOLIS","KRSNAA","VIJAYA","SUVENPHAR","AJANTPHARM",
     "ALKEM","GRANULES","LAURUSLABS","SOLARA","NATCOPHARM","GLAND",
     "SUDARSCHEM","AAVAS","HOMEFIRST","APTUS","CREDITACC","SPANDANA",
     "MUTHOOTMF","MANAPPURAM","IIFL","FIVE-STAR","UGROCAP","PAISALO",
     "CAMS","CDSL","BSE","MCX","ISEC","ANGELONE",
-    "IRFC","RECLTD","PFCLTD","HUDCO","NABARD","RVNL",
+    "IRFC","RECLTD","PFC","HUDCO","RVNL",
     "TTKPRESTIG","HAWKINCOOK","VSTIND","RADICO","GLOBUSSPR","KSCL",
 ]
+# Removed / corrected:
+#   NIITTECH  → dropped   (renamed COFORGE in 2020; COFORGE already in this list)
+#   MRFLTD    → MRF       (NSE ticker)
+#   MAHINDCIE → CIEINDIA  (NSE renamed the symbol)
+#   PFCLTD    → PFC       (NSE ticker)
+#   NABARD    → dropped   (a development bank — no NSE-listed equity)
 
 SMALLCAP = [
     "ROUTE","RPGLIFE","SEQUENT","LXCHEM","VALIANTORG","STARHEALTH","ACCELYA",
@@ -74,15 +241,20 @@ SMALLCAP = [
     "STLTECH","VINDHYATEL","TEJASNET","HFCL","ITI","TANGT","SPICEJET",
     "GLOBUSMED","CONTROLPRINT","PONDY","ANDHRAPET","LGBBROSEXP","SAFARI",
     "VIPIND","SKFINDIA","GRINDWELL","SCHAEFFLER","ELGIEQUIP","KIRLOSENG",
-    "THERMAX","INGERSRAND","KENNAMET","JYOTHYLAB","BAJAJCON","ZYDUSWELL",
-    "HONASA","VLCC","ARCHIES","NYKAA","SAPPHIRE","BIKAJI",
+    "INGERSRAND","KENNAMET","JYOTHYLAB","BAJAJCON","ZYDUSWELL",
+    "HONASA","VLCC","ARCHIES","SAPPHIRE","BIKAJI",
     "POKARNA","ASAHIINDIA","POLYPLEX","UFLEX","GPPL","SHREEPIPE",
     "PRINCEPIPE","ASTRAL","SUPREMEIND","NILKAMAL","PLASSON","SKIPPER",
     "KERNEX","TEXINFRA","HGINFRA","DBREALTY","ANANTRAJ","KOLTEPATIL",
     "SUNTECK","GODREJPROP","MAHLIFE","ARVIND","KIRIINDS","PNBHOUSING",
-    "CANFINHOME","GRUH","REPCO","AROGRANITE","ORIENTBELL","SOMANYCER",
-    "REGENCYCER","ASIANSTAR","THEJEWEL","TITAN","PCJEWELLER","SENCO",
+    "CANFINHOME","REPCO","AROGRANITE","ORIENTBELL","SOMANYCER",
+    "REGENCYCER","ASIANSTAR","THEJEWEL","PCJEWELLER","SENCO",
 ]
+# Removed:
+#   THERMAX, NYKAA, TITAN → duplicates of LARGE_CAP entries (they were scanned
+#                           twice per run: double the Yahoo requests, and the
+#                           same stock could surface in two segments' picks)
+#   GRUH                  → merged into Bandhan Bank in 2019, ticker retired
 
 # ── Segment scoring weights ────────────────────────────────────────────────────
 WEIGHTS = {
@@ -299,13 +471,10 @@ def _fetch_yf_inner(symbol: str, yf, nifty_hist=None) -> dict | None:
     """Inner implementation — called inside warnings.catch_warnings() block."""
     proxy = _get_yf_proxy()
     ticker = yf.Ticker(f"{symbol}.NS", **({"proxy": proxy} if proxy else {}))
-    try:
-        info = ticker.info or {}
-    except Exception as e:
-        log.debug("yfinance info %s: %s", symbol, e)
-        info = {}
 
-    # Price history for 200 DMA + 6-month relative strength
+    # Price history FIRST. The chart endpoint needs no crumb, so it keeps working
+    # when quoteSummary is 401-ing — this guarantees we still get CMP, 200 DMA
+    # and relative strength for every symbol even in a fully throttled run.
     hist = None
     try:
         hist = ticker.history(
@@ -314,6 +483,28 @@ def _fetch_yf_inner(symbol: str, yf, nifty_hist=None) -> dict | None:
         )
     except Exception as e:
         log.debug("yfinance history %s: %s", symbol, e)
+
+    # Fundamentals (quoteSummary — crumb-gated). Skipped entirely once the
+    # circuit breaker has tripped, which drops the per-symbol cost from 3 Yahoo
+    # requests to 1 and stops the 401 flood.
+    info = {}
+    if not _yf_rl["info_disabled"]:
+        if _yf_crumb_is_poisoned(yf):
+            _yf_reset_crumb(yf, "cached crumb is a rate-limit error body")
+        err = None
+        try:
+            info = ticker.info or {}
+        except Exception as e:
+            err = e
+            if not _is_rate_limited(e):
+                log.debug("yfinance info %s: %s", symbol, e)
+        # ticker.info swallows HTTP errors internally in some yfinance versions
+        # and returns a near-empty dict instead of raising, so treat "no usable
+        # keys at all" as a failure signal too — otherwise the breaker never trips.
+        if info.get("regularMarketPrice") or info.get("currentPrice") or info.get("trailingPE"):
+            _yf_note_success()
+        else:
+            _yf_note_failure(yf, symbol, "info", err or "empty quoteSummary response")
 
     cmp = info.get("currentPrice") or info.get("regularMarketPrice")
     if not cmp and hist is not None and not hist.empty:
@@ -347,8 +538,12 @@ def _fetch_yf_inner(symbol: str, yf, nifty_hist=None) -> dict | None:
     _REV_KEYS = ["Total Revenue", "Revenue", "TotalRevenue", "Operating Revenue"]
     eps_growth = None
     rev_growth = None
+    # Also crumb-gated (fundamentals-timeseries endpoint) — skip when the breaker
+    # is open rather than spend a request that can only 401.
     try:
-        fin = ticker.get_financials(proxy=proxy) if proxy else ticker.financials  # annual, most recent first
+        fin = None
+        if not _yf_rl["info_disabled"]:
+            fin = ticker.get_financials(proxy=proxy) if proxy else ticker.financials  # annual, most recent first
         if fin is not None and not fin.empty and fin.shape[1] >= 2:
             for key in _NI_KEYS:
                 if key in fin.index:
@@ -667,6 +862,8 @@ def run_lt_scan(segment: str = None) -> dict:
     """
     global _nse_blocked
     _nse_blocked = False  # reset per scan run — give NSE a fresh attempt each time
+    _yf_reset_run_state()          # fresh crumb/backoff budget each run
+    _install_yf_noise_filter()     # app.py may have replaced the root handler since import
 
     segments = [segment] if segment else ["large", "mid", "small"]
     universe = {"large": LARGE_CAP, "mid": MIDCAP, "small": SMALLCAP}
@@ -694,18 +891,28 @@ def run_lt_scan(segment: str = None) -> dict:
         except Exception:
             nifty_hist = None
 
-        # Step 1b: Fetch yfinance data for all stocks in segment
+        # Step 1b: Fetch yfinance data for all stocks in segment.
+        # Pace adaptively: _yf_rl["delay"] grows on rate-limit signals and decays
+        # on success, so a throttled run slows down instead of hammering Yahoo.
         stock_data = []
         for i, sym in enumerate(stocks, 1):
             try:
                 d = _fetch_yf(sym, nifty_hist=nifty_hist)
                 if d:
                     stock_data.append(d)
-                time.sleep(0.3)  # be gentle to yfinance
+                time.sleep(_yf_rl["delay"])  # be gentle to yfinance
             except Exception as e:
                 log.debug("fetch_yf %s: %s", sym, e)
             if i % 10 == 0:
-                log.info("LT scan %s: fetched %d/%d stocks (%d ok)", seg, i, len(stocks), len(stock_data))
+                # "priced" = has a CMP; "fund" = has fundamentals (P/E or ROE).
+                # A dict is returned even when every field is null, so a bare
+                # count of dicts says nothing about whether the fetch worked.
+                priced = sum(1 for d in stock_data if d.get("cmp"))
+                fund   = sum(1 for d in stock_data if d.get("pe") or d.get("roe"))
+                log.info(
+                    "LT scan %s: fetched %d/%d stocks (%d priced, %d with fundamentals, delay=%.1fs)",
+                    seg, i, len(stocks), priced, fund, _yf_rl["delay"],
+                )
 
         # Step 1c: Sanity-check — abort segment if >80% of stocks have no CMP.
         # This means yfinance is being blocked (Render IP rate-limited by Yahoo Finance).
@@ -726,6 +933,46 @@ def run_lt_scan(segment: str = None) -> dict:
                 log.warning(
                     "LT scan %s: %.0f%% of stocks have no CMP — partial yfinance failure, "
                     "proxy may be rate-limited.", seg, pct_missing * 100,
+                )
+
+            # Step 1d: Same guard for fundamentals. Prices can come from the
+            # crumb-free chart endpoint while quoteSummary is 401-ing, so a
+            # segment can be fully priced and still have no P/E, ROE or growth
+            # for anything. Six of eight scoring factors would then be the
+            # neutral 50 default and every stock lands at ~50 = a WATCH row that
+            # means nothing. Skip rather than persist that.
+            missing_fund = sum(1 for d in stock_data if not (d.get("pe") or d.get("roe")))
+            pct_no_fund  = missing_fund / len(stock_data)
+            if pct_no_fund > 0.80:
+                log.error(
+                    "LT scan %s: %.0f%% of stocks have no P/E or ROE — Yahoo quoteSummary "
+                    "is rate-limiting this IP (crumb resets tried: %d). Prices were fetched "
+                    "but scoring would be meaningless. Skipping segment. "
+                    "Set YF_PROXY env var to a working HTTP proxy.",
+                    seg, pct_no_fund * 100, _yf_rl["resets"],
+                )
+                summary[seg] = {"scanned": 0, "picks": 0, "error": "yf_fundamentals_blocked"}
+                continue
+            elif pct_no_fund > 0.30:
+                log.warning(
+                    "LT scan %s: %.0f%% of stocks have no P/E or ROE — partial quoteSummary "
+                    "failure, scores for those stocks lean on the neutral default.",
+                    seg, pct_no_fund * 100,
+                )
+
+            # Step 1e: Name the symbols that came back with nothing at all. When
+            # only a handful do so while the rest of the segment is fine, they are
+            # dead tickers (renamed, merged, delisted) rather than throttling —
+            # each one costs 3 wasted Yahoo requests and one "possibly delisted"
+            # error line per run. Listing them makes the universe self-auditing
+            # instead of needing a manual pass over 300 symbols.
+            dead = [d["symbol"] for d in stock_data
+                    if not d.get("cmp") and not d.get("pe") and not d.get("roe")]
+            if dead and pct_missing <= 0.30:
+                log.warning(
+                    "LT scan %s: %d symbols returned no data at all — likely renamed or "
+                    "delisted, consider pruning: %s",
+                    seg, len(dead), ", ".join(dead),
                 )
 
         # Step 2: Compute sector medians from this segment's data
@@ -823,4 +1070,5 @@ def run_lt_scan(segment: str = None) -> dict:
         except Exception:
             pass
 
+    _yf_noise.report_and_reset()
     return {"summary": summary, "picks": all_picks, "run_at": datetime.now(IST).isoformat()}
