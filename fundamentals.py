@@ -538,12 +538,14 @@ def _fetch_yf_inner(symbol: str, yf, nifty_hist=None) -> dict | None:
     _REV_KEYS = ["Total Revenue", "Revenue", "TotalRevenue", "Operating Revenue"]
     eps_growth = None
     rev_growth = None
-    # Also crumb-gated (fundamentals-timeseries endpoint) — skip when the breaker
-    # is open rather than spend a request that can only 401.
+    # NOT gated by the breaker. This hits fundamentals-timeseries, a different
+    # endpoint from quoteSummary, and it keeps returning data when quoteSummary is
+    # 401-ing on a poisoned crumb — the 2026-08-04 scan produced blank P/E and
+    # sector for every pick while EPS growth came through fine. So EPS/revenue
+    # growth are the only real fundamentals left in a throttled run; skipping this
+    # call would throw away the last two working factors.
     try:
-        fin = None
-        if not _yf_rl["info_disabled"]:
-            fin = ticker.get_financials(proxy=proxy) if proxy else ticker.financials  # annual, most recent first
+        fin = ticker.get_financials(proxy=proxy) if proxy else ticker.financials  # annual, most recent first
         if fin is not None and not fin.empty and fin.shape[1] >= 2:
             for key in _NI_KEYS:
                 if key in fin.index:
@@ -569,8 +571,13 @@ def _fetch_yf_inner(symbol: str, yf, nifty_hist=None) -> dict | None:
         "cmp":           cmp,
         "pe":            float(pe)     if pe else None,
         "eps":           float(eps)    if eps else None,
-        "roe":           float(info.get("returnOnEquity", 0) or 0) * 100,  # yf gives 0-1 scale
-        "debt_equity":   float(info.get("debtToEquity",  0) or 0) / 100,  # yf gives % form
+        # Keep these None when absent — never coerce to 0. A missing ROE used to
+        # read as 0% (scored 0, unfairly harsh) and a missing debt/equity as 0.00,
+        # which _score_factor read as zero debt and awarded a PERFECT 100 — so a
+        # stock with no data collected the full debt weighting for free. Both now
+        # fall through to the neutral 50 default like every other missing factor.
+        "roe":           float(info["returnOnEquity"]) * 100 if info.get("returnOnEquity") is not None else None,  # yf gives 0-1 scale
+        "debt_equity":   float(info["debtToEquity"]) / 100  if info.get("debtToEquity")  is not None else None,   # yf gives % form
         "eps_growth":    eps_growth,
         "rev_growth":    rev_growth,
         "sector":        info.get("sector")  or info.get("industry") or "",
@@ -627,9 +634,11 @@ def score_stock(data: dict, segment: str, sector_medians: dict) -> dict:
     factors["rev_growth"]  = _score_factor(data.get("rev_growth"),  -0.05,  0.05,  0.15,  0.25)
     # ROE: <8% = bad, 8-15% = ok, 15-25% = good, >25% = great
     factors["roe"]         = _score_factor(data.get("roe"),           5.0,  10.0,  18.0,  25.0)
-    # Debt/Equity: 0 = best, 0.5 = ok, 1.0 = limit, >2 = bad (inverted)
-    de = data.get("debt_equity", 0)
-    factors["debt_equity"] = _score_factor(-de,                      -2.0,  -1.0,  -0.5,   0.0)
+    # Debt/Equity: 0 = best, 0.5 = ok, 1.0 = limit, >2 = bad (inverted).
+    # None must stay None so it scores the neutral 50 — negating it would turn
+    # "unknown" into "zero debt" and hand out a free 100.
+    de = data.get("debt_equity")
+    factors["debt_equity"] = _score_factor(None if de is None else -de, -2.0, -1.0, -0.5, 0.0)
     # P/E vs sector: <0.8x median = great, 0.8-1.2x = ok, >1.5x = bad
     sector_median_pe = sector_medians.get(data.get("sector", ""), None)
     pe               = data.get("pe")
@@ -873,6 +882,22 @@ def run_lt_scan(segment: str = None) -> dict:
     proxy = _get_yf_proxy()
     log.info("LT scan: proxy=%s", proxy if proxy else "none (direct connection)")
 
+    # Pre-flight crumb check, once per run. The crumb lives in a process-global
+    # yfinance singleton shared with every other caller in this worker — notably
+    # the US intraday scanner via data_provider.py. If that job already poisoned
+    # it, this scan would start broken and burn its entire first segment finding
+    # out. Done before the segment loop so it can't consume the reset budget 3x.
+    try:
+        import yfinance as _yf0
+        if _yf_crumb_is_poisoned(_yf0):
+            log.warning(
+                "LT scan: yfinance crumb was already poisoned before this scan started "
+                "— another job in this worker hit Yahoo's rate limit. Resetting."
+            )
+            _yf_reset_crumb(_yf0, "poisoned before scan start")
+    except Exception as e:
+        log.debug("LT scan: crumb pre-flight skipped: %s", e)
+
     # Open a dedicated DB connection for this scan run — never shares with intraday thread
     lt_conn = _open_lt_db_conn()
     if not lt_conn:
@@ -1013,10 +1038,12 @@ def run_lt_scan(segment: str = None) -> dict:
                     "signal":          "STRONG_BUY" if final_score >= 70 else ("WATCH" if final_score >= 50 else "SKIP"),
                     "cmp":             d.get("cmp"),
                     "pe":              d.get("pe"),
-                    "roe":             round(d.get("roe") or 0, 1),
-                    "eps_growth":      round((d.get("eps_growth") or 0) * 100, 1),
-                    "rev_growth":      round((d.get("rev_growth") or 0) * 100, 1),
-                    "debt_equity":     round(d.get("debt_equity") or 0, 2),
+                    # Preserve None end-to-end so the UI renders "—" instead of a
+                    # fabricated 0.0% / 0.00 that reads as a real measurement.
+                    "roe":             None if d.get("roe")         is None else round(d["roe"], 1),
+                    "eps_growth":      None if d.get("eps_growth")  is None else round(d["eps_growth"] * 100, 1),
+                    "rev_growth":      None if d.get("rev_growth")  is None else round(d["rev_growth"] * 100, 1),
+                    "debt_equity":     None if d.get("debt_equity") is None else round(d["debt_equity"], 2),
                     "promoter_pct":    d.get("promoter_holding"),
                     "sector":          d.get("sector", ""),
                     "above_200dma":    d.get("above_200dma"),
