@@ -937,10 +937,21 @@ th[data-tip]{cursor:default;}
       </div>
     </div>
 
-    <!-- Accuracy bars by signal / confidence -->
+    <!-- Accuracy bars by signal / confidence / regime / VIX -->
     <div class="card" style="margin-bottom:14px;">
       <div class="acc-title">Accuracy breakdown</div>
       <div class="acc-rows" id="btAccRows">
+        <div style="color:#aaa;font-size:12px;">Loading…</div>
+      </div>
+    </div>
+
+    <!-- Walk-forward: per-month win-rate across market regimes -->
+    <div class="card" style="margin-bottom:14px;">
+      <div class="acc-title" style="margin-bottom:8px;">
+        Walk-forward validation
+        <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px;">monthly win-rate — consistency across months = robust, not lucky</span>
+      </div>
+      <div id="btWalkFwd" style="overflow-x:auto;">
         <div style="color:#aaa;font-size:12px;">Loading…</div>
       </div>
     </div>
@@ -1963,7 +1974,12 @@ function switchTab(t){
   if(t==='history')  renderHist();
   if(t==='admin')    checkAdminAccess();
   if(t==='backtest') loadPaperTrades();
-  if(t==='longterm') loadLongTermPicks();
+  if(t==='longterm'){
+    loadLongTermPicks();
+    // Pick up a scan already in flight — the weekly job, or one started from
+    // another browser — so the button shows as busy instead of inviting a click.
+    if(!_ltPollTimer) _ltPollStatus();
+  }
 }
 
 // ─── STOCK SELECTION ──────────────────────────────────────────────────────────
@@ -3084,20 +3100,23 @@ async function loadPaperTrades() {
   try {
     var tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
     const mktQs = (_mktFilterBacktest && _mktFilterBacktest !== 'all') ? '&market=' + encodeURIComponent(_mktFilterBacktest) : '';
-    var [trRes, stRes, bpRes] = await Promise.all([
+    var [trRes, stRes, bpRes, wfRes] = await Promise.all([
       fetch(BACKEND + '/paper-trades' + qs, { headers: appHeaders(), credentials: 'include' }),
       fetch(BACKEND + '/paper-trades/stats?days=60' + mktQs, { headers: appHeaders(), credentials: 'include' }),
-      fetch(BACKEND + '/paper-trades/best-pick-stats?days=60' + mktQs, { headers: appHeaders(), credentials: 'include' })
+      fetch(BACKEND + '/paper-trades/best-pick-stats?days=60' + mktQs, { headers: appHeaders(), credentials: 'include' }),
+      fetch(BACKEND + '/paper-trades/walk-forward?months=6', { headers: appHeaders(), credentials: 'include' })
     ]);
 
     var trData = await trRes.json();
     var stData = stRes.ok ? await stRes.json() : { stats: {} };
     var bpData = bpRes.ok ? await bpRes.json() : { stats: {} };
+    var wfData = wfRes.ok ? await wfRes.json() : { months: [] };
 
     _btTrades = trData.trades || [];
     _btSelectedIds.clear();
     renderBtStats(stData.stats || {});
-    renderBestPickStats(bpData.stats || {}, (stData.stats || {}).total);
+    renderBestPickStats(bpData.stats || {}, stData.stats || {});
+    renderWalkForward(wfData.months || []);
     renderBtTable();
 
     // Update tab badge with total trade count
@@ -3167,6 +3186,21 @@ function renderBtStats(stats) {
       groups.push({ lbl: 'Conf ' + name, won: s.won, total: s.total, rate: s.win_rate });
     });
   }
+  // By market regime — does the strategy hold up across bull / bear / sideways?
+  if(stats.by_regime) {
+    var regimeLbl = { bull_trend:'Bull trend', bear_trend:'Bear trend', gap_stall:'Gap-stall', mixed:'Mixed' };
+    Object.entries(stats.by_regime).forEach(function(pair) {
+      var name = pair[0], s = pair[1];
+      groups.push({ lbl: (regimeLbl[name] || name) + ' regime', won: s.won, total: s.total, rate: s.win_rate });
+    });
+  }
+  // By VIX — do losses cluster on high-volatility days?
+  if(stats.by_vix) {
+    Object.entries(stats.by_vix).forEach(function(pair) {
+      var name = pair[0], s = pair[1];
+      groups.push({ lbl: name, won: s.won, total: s.total, rate: s.win_rate });
+    });
+  }
 
   if(!groups.length || total === 0) {
     accEl.innerHTML = '<div style="color:#aaa;font-size:12px;padding:8px 0;">No settled trades yet. Accuracy will appear after market close.</div>';
@@ -3184,17 +3218,21 @@ function renderBtStats(stats) {
   }).join('');
 }
 
-function renderBestPickStats(stats, simTotal) {
+function renderBestPickStats(stats, overallStats) {
   function el(id, v, cls) {
     var e = document.getElementById(id);
     if(!e) return;
     e.textContent = v;
     if(cls !== undefined) e.className = 'hstat-n ' + (cls || '');
   }
-  var total    = stats.total || 0;
-  var won      = stats.won != null ? stats.won : null;
-  var lost     = (total && won != null) ? total - won : null;
-  var winRate  = stats.win_rate != null ? stats.win_rate : null;
+  overallStats = overallStats || {};
+  var total     = stats.total || 0;           // trade days (best pick per day)
+  var simTotal  = overallStats.total != null ? overallStats.total : null;
+  // Won/lost/win-rate reflect ALL simulated trades, not just the one-per-day subset.
+  var won      = overallStats.won != null ? overallStats.won : null;
+  var lost     = overallStats.lost != null ? overallStats.lost
+                 : (simTotal != null && won != null) ? simTotal - won : null;
+  var winRate  = overallStats.win_rate != null ? overallStats.win_rate : null;
   var lossRate = (winRate != null) ? Math.round((100 - winRate) * 10) / 10 : null;
 
   el('bpSimTotal', simTotal != null ? simTotal : '—');
@@ -3205,6 +3243,37 @@ function renderBestPickStats(stats, simTotal) {
      lossRate != null ? (lossRate <= 45 ? 'n-green' : lossRate <= 60 ? '' : 'n-red') : '');
   el('bpWon', won != null ? won : '—', won != null ? 'n-green' : '');
   el('bpLost', lost != null ? lost : '—', lost != null && lost > 0 ? 'n-red' : '');
+}
+
+function renderWalkForward(months) {
+  var box = document.getElementById('btWalkFwd');
+  if(!box) return;
+  if(!months || !months.length) {
+    box.innerHTML = '<div style="color:#aaa;font-size:12px;padding:8px 0;">No settled trades yet. Monthly breakdown appears once trades resolve.</div>';
+    return;
+  }
+  var head = '<tr style="text-align:left;color:#888;font-size:11px;">' +
+    '<th style="padding:4px 10px 4px 0;">Month</th>' +
+    '<th style="padding:4px 10px 4px 0;">Trades</th>' +
+    '<th style="padding:4px 10px 4px 0;">Win rate</th>' +
+    '<th style="padding:4px 10px 4px 0;">Avg P&L %</th>' +
+    '<th style="padding:4px 10px 4px 0;">Avg conf</th>' +
+    '<th style="padding:4px 10px 4px 0;">BUY / SELL</th></tr>';
+  var rows = months.map(function(m) {
+    var wr  = m.win_rate;
+    var col = wr >= 60 ? '#639922' : wr >= 40 ? '#EF9F27' : '#E24B4A';
+    var pnl = m.avg_pnl_pct;
+    var pnlCol = pnl > 0 ? '#639922' : pnl < 0 ? '#E24B4A' : '#888';
+    return '<tr style="font-size:12px;border-top:1px solid #eee;">' +
+      '<td style="padding:5px 10px 5px 0;font-weight:600;">' + m.month + '</td>' +
+      '<td style="padding:5px 10px 5px 0;">' + m.won + '/' + m.total + '</td>' +
+      '<td style="padding:5px 10px 5px 0;font-weight:600;color:' + col + ';">' + wr + '%</td>' +
+      '<td style="padding:5px 10px 5px 0;color:' + pnlCol + ';">' + (pnl >= 0 ? '+' : '') + pnl + '%</td>' +
+      '<td style="padding:5px 10px 5px 0;color:#888;">' + m.avg_conf + '%</td>' +
+      '<td style="padding:5px 10px 5px 0;color:#888;">' + m.buy_count + ' / ' + m.sell_count + '</td>' +
+      '</tr>';
+  }).join('');
+  box.innerHTML = '<table style="border-collapse:collapse;width:100%;min-width:420px;">' + head + rows + '</table>';
 }
 
 function toggleBtDateGroup(date, gid) {
@@ -3766,27 +3835,108 @@ function _fmt(v){
 }
 function _esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function triggerLtScan(){
+// ── Manual scan trigger ───────────────────────────────────────────────────────
+// A full scan walks ~300 stocks and takes 30–60 min, so the POST returns
+// immediately and we poll for progress. Without polling the button springs back
+// to idle while the scan is still running, which invites a second click.
+var _ltPollTimer = null;
+
+function _ltAuthHeaders(extra){
+  return Object.assign({}, extra || {},
+    _appSessionToken ? {'X-Session-Token': _appSessionToken} : {});
+}
+
+function _ltSetRunning(isRunning){
   var btn = document.getElementById('ltRunBtn');
-  btn.disabled = true; btn.textContent = 'Running…';
-  fetch('https://nse-proxy-mojx.onrender.com/api/long-term-picks/run', {
-    method: 'POST',
-    headers: Object.assign({'Content-Type':'application/json'},
-      _appSessionToken ? {'X-Session-Token': _appSessionToken} : {}),
-    credentials: 'include',
-    body: JSON.stringify({segment: document.getElementById('ltSegmentFilter').value || null})
+  if(!btn) return;
+  btn.disabled    = isRunning;
+  btn.textContent = isRunning ? 'Scanning…' : '▶ Run Scan';
+  btn.style.opacity = isRunning ? '0.6' : '1';
+  btn.style.cursor  = isRunning ? 'not-allowed' : 'pointer';
+}
+
+function _ltShowStatus(msg, tone){
+  var s = document.getElementById('ltStatus');
+  if(!s) return;
+  s.style.display = 'block';
+  s.style.color   = tone === 'error' ? '#dc2626' : (tone === 'ok' ? '#15803d' : '#888');
+  s.textContent   = msg;
+}
+
+// Poll the scan's progress until it finishes, then refresh the table.
+function _ltPollStatus(){
+  fetch('https://nse-proxy-mojx.onrender.com/api/long-term-picks/status', {
+    headers: _ltAuthHeaders(), credentials: 'include'
   })
   .then(function(r){ return r.json(); })
   .then(function(d){
-    btn.disabled = false; btn.textContent = '▶ Run Scan';
-    if(d.error){ alert('Error: ' + d.error); return; }
-    var s = document.getElementById('ltStatus');
-    s.style.display = 'block';
-    s.textContent = 'Scan started — this takes 5–10 minutes. Reload this tab when done.';
+    var st = (d && d.state) || {};
+    if(st.running){
+      var mins = st.started
+        ? Math.max(0, Math.round((Date.now() - new Date(st.started).getTime()) / 60000))
+        : 0;
+      _ltSetRunning(true);
+      _ltShowStatus('Scanning ' + (st.segment || 'all') + ' — running ' + mins
+                    + ' min so far. You can leave this tab; the email goes out when it finishes.');
+      _ltPollTimer = setTimeout(_ltPollStatus, 15000);
+      return;
+    }
+
+    // Finished (or nothing was running).
+    _ltSetRunning(false);
+    _ltPollTimer = null;
+    if(!st.finished) return;   // no run has happened this process lifetime
+
+    if(st.error){
+      _ltShowStatus('Scan ended with an error after ' + st.elapsed_min + ' min: ' + st.error
+                    + (st.picks ? ' — ' + st.picks + ' partial picks saved and emailed.' : ''),
+                    'error');
+    } else {
+      _ltShowStatus('Scan finished in ' + st.elapsed_min + ' min — ' + st.picks + ' picks'
+                    + (st.emailed ? ', digest emailed.' : ' (no email sent).'), 'ok');
+    }
+    loadLongTermPicks();   // pull in the freshly saved rows
+  })
+  .catch(function(){
+    // Transient failure (very likely a Render cold start) — keep polling.
+    _ltPollTimer = setTimeout(_ltPollStatus, 30000);
+  });
+}
+
+function triggerLtScan(){
+  var seg = document.getElementById('ltSegmentFilter').value || null;
+  if(!confirm('Run the long-term scan now?\n\n'
+      + (seg ? 'Segment: ' + seg : 'All segments (~300 stocks)') + '\n'
+      + 'Takes ' + (seg ? 'about 5–15 minutes' : 'about 30–60 minutes') + '.\n'
+      + 'The digest email is sent when it completes.')) return;
+
+  _ltSetRunning(true);
+  _ltShowStatus('Starting scan…');
+  fetch('https://nse-proxy-mojx.onrender.com/api/long-term-picks/run', {
+    method: 'POST',
+    headers: _ltAuthHeaders({'Content-Type':'application/json'}),
+    credentials: 'include',
+    body: JSON.stringify({segment: seg})
+  })
+  .then(function(r){ return r.json().then(function(d){ return {code: r.status, body: d}; }); })
+  .then(function(res){
+    if(res.code === 409){
+      // Someone else (or the weekly job) is already scanning — attach to it.
+      _ltShowStatus('A scan is already running — tracking that one.');
+      _ltPollStatus();
+      return;
+    }
+    if(res.body.error){
+      _ltSetRunning(false);
+      _ltShowStatus('Could not start: ' + res.body.error, 'error');
+      return;
+    }
+    _ltShowStatus(res.body.message || 'Scan started.');
+    _ltPollStatus();
   })
   .catch(function(e){
-    btn.disabled = false; btn.textContent = '▶ Run Scan';
-    alert('Failed: ' + e.message);
+    _ltSetRunning(false);
+    _ltShowStatus('Failed to start: ' + e.message, 'error');
   });
 }
 </script>
