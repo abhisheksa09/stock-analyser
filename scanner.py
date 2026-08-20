@@ -327,6 +327,26 @@ def format_alert(kind: str, s: dict, extra: str = "") -> str:
             f"⏰ {ist_time}"
         )
 
+    elif kind == "paper_trade":
+        sig_emoji = "🟢" if s["sig"] == "BUY" else "🔴"
+        return (
+            f"📝 <b>{mkt_name} — PAPER TRADE SAVED</b>\n"
+            f"\n"
+            f"<b>{s['sym']}</b>  <code>{s['sec']}</code>\n"
+            f"Signal  : <b>{s['sig']}</b>  |  Conf: <b>{s['conf']}%</b>  ({extra} setup)\n"
+            f"\n"
+            f"Entry   : <code>{cur} {s['en']}</code>\n"
+            f"Target  : <code>{cur} {s['tg']}</code>  (+{cur} {gain})\n"
+            f"Stop SL : <code>{cur} {s['sl']}</code>  (-{cur} {risk})\n"
+            f"\n"
+            f"LTP     : {cur} {s['ltp']} ({chg_str})\n"
+            + (f"Note    : below {READY_GREEN_MIN}% green bar — logged for backtest, watch it manually\n"
+               if extra == "amber" else
+               f"Note    : backtest-only symbol, not on the watch list — logged for backtest\n")
+            + f"\n"
+            f"⏰ {ist_time}"
+        )
+
     elif kind == "reversal":
         return (
             f"⚡ <b>{mkt_name} — SIGNAL REVERSAL</b>\n"
@@ -681,6 +701,19 @@ def run_scan(force: bool = False):
                         if _save_paper_trade(s, market="NSE"):
                             _check_real_trade_overlap(s)
                             STATE.bt_saved.add(sym)
+                            # Green symbols that are also in the watch list get the richer
+                            # "READY TO TRADE" alert below. Amber verdicts, and backtest-only
+                            # symbols that aren't in the watch list, would otherwise save
+                            # with no Telegram alert at all — notify here instead.
+                            if verdict == "amber" or not in_watch:
+                                _msg = format_alert("paper_trade", s, extra=verdict)
+                                if send_telegram(_msg):
+                                    sent += 1
+                                    try:
+                                        _db_module.log_alert(sym, f"paper_trade_{verdict}", int(s["conf"]), s["sig"], _msg, True,
+                                                             market="NSE")
+                                    except Exception as _le:
+                                        log.debug("log_alert failed for %s: %s", sym, _le)
                     STATE.bt_first_green.pop(sym, None)
                 else:
                     # Not yet confirmed — (re)start or extend the streak
@@ -920,6 +953,21 @@ def run_us_scan(force: bool = False):
                         US_STATE.bt_saved.add(sym)
                     elif _save_paper_trade(s, market="US"):
                         US_STATE.bt_saved.add(sym)
+                        # Green symbols that are also in the watch list get the richer
+                        # "READY TO TRADE" alert below. Amber verdicts, and backtest-only
+                        # symbols that aren't in the watch list, would otherwise save
+                        # with no Telegram alert at all — notify here instead.
+                        if verdict == "amber" or not in_watch:
+                            _msg = format_alert("paper_trade", s, extra=verdict)
+                            if send_telegram(_msg):
+                                sent += 1
+                                try:
+                                    _now_et = datetime.now(ET)
+                                    _db_module.log_alert(sym, f"paper_trade_{verdict}", int(s["conf"]), s["sig"], _msg, True,
+                                                         date_=_now_et.strftime("%Y-%m-%d"),
+                                                         time_=_now_et.strftime("%H:%M"), market="US")
+                                except Exception as _le:
+                                    log.debug("[US] log_alert failed for %s: %s", sym, _le)
                     US_STATE.bt_first_green.pop(sym, None)
                 else:
                     US_STATE.bt_first_green[sym] = {"sig": s["sig"], "count": streak, "mins": mins}

@@ -16,6 +16,7 @@ import os
 import uuid
 import json
 import logging
+import threading
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -1977,6 +1978,29 @@ def _send_target_hit_alert(trade: dict, exit_price: float, pnl_pts: float,
         log.warning("target-hit alert failed for %s: %s", trade.get("sym"), e)
 
 
+def _send_stop_loss_hit_alert(trade: dict, exit_price: float, pnl_pts: float,
+                              pnl_pct: float, market: str = "NSE"):
+    """Notify via Telegram when a paper-traded pick is stopped out (a LOST settle).
+    Best-effort: never raises, so it can't break the settlement loop."""
+    try:
+        cur   = "$" if market == "US" else "Rs"
+        tz    = "ET" if market == "US" else "IST"
+        flag  = "🇺🇸" if market == "US" else "🇮🇳"
+        now   = datetime.now(ET if market == "US" else IST)
+        conf  = trade.get("conf")
+        conf_str = f"  ·  conf {int(conf)}%" if conf is not None else ""
+        scanner.send_telegram(
+            f"🛑 <b>STOP LOSS HIT — {trade['sym']}</b> {flag}\n\n"
+            f"{trade['sig']} pick hit its stop loss.\n"
+            f"Entry  : {cur}{float(trade['entry']):.2f}\n"
+            f"Stop SL: {cur}{float(trade['stop_loss']):.2f}\n"
+            f"Loss   : -{abs(pnl_pts):.2f} ({abs(pnl_pct):.2f}%){conf_str}\n\n"
+            f"⏰ {now.strftime('%H:%M ' + tz)}  ·  settled @ {cur}{exit_price:.2f}"
+        )
+    except Exception as e:
+        log.warning("stop-loss alert failed for %s: %s", trade.get("sym"), e)
+
+
 def _settle_paper_trades_for_date(date_str: str = None):
     """
     Settle all open paper trades for date_str by replaying intraday 1-minute
@@ -2062,6 +2086,8 @@ def _settle_paper_trades_for_date(date_str: str = None):
                 )
                 if target_hit:
                     _send_target_hit_alert(trade, exit_price, pnl_pts, pnl_pct, market="NSE")
+                elif sl_hit:
+                    _send_stop_loss_hit_alert(trade, exit_price, pnl_pts, pnl_pct, market="NSE")
             else:
                 skipped += 1
                 errors.append(f"{sym}: DB update failed (already settled?)")
@@ -2185,6 +2211,8 @@ def _settle_us_paper_trades_for_date(date_str: str = None):
                 )
                 if target_hit:
                     _send_target_hit_alert(trade, exit_price, pnl_pts, pnl_pct, market="US")
+                elif sl_hit:
+                    _send_stop_loss_hit_alert(trade, exit_price, pnl_pts, pnl_pct, market="US")
             else:
                 skipped += 1
                 errors.append(f"{sym}: DB update failed (already settled?)")
@@ -2251,30 +2279,6 @@ def lt_picks():
     })
 
 
-@app.route("/api/long-term-picks/run", methods=["POST"])
-def lt_picks_run():
-    sess, err = _require_session(request)
-    if err:
-        return err
-    if sess.get("role") != "admin":
-        return jsonify({"error": "Admin only"}), 403
-    data    = request.get_json(silent=True) or {}
-    segment = data.get("segment")   # optional — run one segment or all
-    try:
-        import threading
-        def _run():
-            try:
-                result = _lt.run_lt_scan(segment)
-                log.info("Manual LT scan done: %s", result.get("summary"))
-            except Exception as e:
-                log.error("Manual LT scan error: %s", e)
-        threading.Thread(target=_run, daemon=True).start()
-        return jsonify({"status": "ok", "message": "Long-term scan started in background"})
-    except Exception as e:
-        log.error("lt_picks_run: %s", e)
-        return jsonify({"error": str(e)}), 500
-
-
 def _start_keepalive_heartbeat(label: str):
     """
     Keep the Render instance awake for the duration of a long in-process job.
@@ -2314,46 +2318,161 @@ def _start_keepalive_heartbeat(label: str):
     return stop.set
 
 
-def _lt_scan_job():
-    """
-    APScheduler job — runs Sunday 00:00 IST (= Saturday 18:30 UTC).
+# ── Long-term scan runner ─────────────────────────────────────────────────────
+# Shared by the weekly scheduler job and the manual "Run Scan" button so both
+# behave identically — same keepalive, same email, same partial-result fallback.
 
-    Walks ~300 stocks and takes 30–60 min. The digest email is only sent once
-    the whole scan finishes, so anything that kills the process mid-scan means
-    no alert at all — hence the keepalive heartbeat and the partial-result
-    fallback below.
+_lt_run_lock  = threading.Lock()
+_lt_run_state = {
+    "running":     False,
+    "label":       "",
+    "segment":     None,
+    "started":     "",
+    "finished":    "",
+    "elapsed_min": None,
+    "summary":     {},
+    "picks":       0,
+    "emailed":     False,
+    "error":       "",
+}
+
+
+def _lt_claim_run(segment, label) -> bool:
+    """
+    Atomically mark an LT scan as in-flight. Returns False if one already is.
+
+    Only one scan may run at a time: they take 30–60 min and all compete for the
+    same yfinance rate limit, so a second concurrent scan makes both slower and
+    more likely to get blocked. APScheduler's max_instances=1 only guards the
+    weekly job against itself — it does not know about manual runs.
+    """
+    with _lt_run_lock:
+        if _lt_run_state["running"]:
+            return False
+        _lt_run_state.update({
+            "running":     True,
+            "label":       label,
+            "segment":     segment or "all",
+            "started":     datetime.now(IST).isoformat(),
+            "finished":    "",
+            "elapsed_min": None,
+            "summary":     {},
+            "picks":       0,
+            "emailed":     False,
+            "error":       "",
+        })
+        return True
+
+
+def _run_lt_scan_with_alerts(segment: str = None, label: str = "LT scan"):
+    """
+    Run the long-term scan and email the digest. Caller must have already won
+    the slot via _lt_claim_run() — this function always releases it.
+
+    Wraps two things run_lt_scan() does not do on its own:
+      - a keepalive heartbeat, because Render suspends the instance 15 min after
+        the last inbound request no matter how busy the process is;
+      - a partial-result fallback, because the digest is only sent once all
+        segments finish, so a scan killed midway would otherwise be silent.
     """
     import time as _time
 
-    log.info("Weekly LT scan job triggered")
     t0    = _time.monotonic()
     picks = []
-    stop_heartbeat = _start_keepalive_heartbeat("LT weekly scan")
+    log.info("%s starting (segment=%s)", label, segment or "all")
+    stop_heartbeat = _start_keepalive_heartbeat(label)
     try:
-        result = _lt.run_lt_scan()
+        result = _lt.run_lt_scan(segment)
         picks  = result.get("picks", [])
-        log.info("Weekly LT scan done in %.1f min: %s",
+        _lt_run_state["summary"] = result.get("summary", {})
+        log.info("%s done in %.1f min: %s", label,
                  (_time.monotonic() - t0) / 60, result.get("summary"))
     except Exception as e:
-        log.error("_lt_scan_job failed after %.1f min: %s", (_time.monotonic() - t0) / 60, e)
+        _lt_run_state["error"] = str(e)
+        log.error("%s failed after %.1f min: %s", label, (_time.monotonic() - t0) / 60, e)
         # run_lt_scan saves each segment to the DB as it completes, so read back
         # whatever landed — a partial scan should still send an email, not silence.
         try:
-            picks = _db_module.get_lt_picks(scan_date=datetime.now(IST).date().isoformat())
-            log.info("LT partial recovery: %d picks read back from DB", len(picks))
+            picks = _db_module.get_lt_picks(
+                segment=segment,
+                scan_date=datetime.now(IST).date().isoformat(),
+            )
+            log.info("%s partial recovery: %d picks read back from DB", label, len(picks))
         except Exception as e2:
-            log.warning("LT partial recovery failed: %s", e2)
+            log.warning("%s partial recovery failed: %s", label, e2)
     finally:
         stop_heartbeat()
 
-    if not picks:
-        log.warning("Weekly LT scan produced no picks — no email sent")
-        return
     try:
-        _email.send_email(*_email.format_weekly_lt_picks(picks))
-        log.info("Weekly LT picks email sent (%d picks)", len(picks))
+        if picks:
+            _email.send_email(*_email.format_weekly_lt_picks(picks))
+            _lt_run_state["emailed"] = True
+            log.info("%s email sent (%d picks)", label, len(picks))
+        else:
+            log.warning("%s produced no picks — no email sent", label)
     except Exception as e:
-        log.warning("LT weekly email failed: %s", e)
+        log.warning("%s email failed: %s", label, e)
+    finally:
+        _lt_run_state.update({
+            "running":     False,
+            "finished":    datetime.now(IST).isoformat(),
+            "elapsed_min": round((_time.monotonic() - t0) / 60, 1),
+            "picks":       len(picks),
+        })
+    return picks
+
+
+def _lt_scan_job():
+    """APScheduler job — runs Sunday 00:00 IST (= Saturday 18:30 UTC)."""
+    if not _lt_claim_run(None, "Weekly LT scan"):
+        log.warning("Weekly LT scan skipped — a manual scan is already running")
+        return
+    _run_lt_scan_with_alerts(None, "Weekly LT scan")
+
+
+@app.route("/api/long-term-picks/run", methods=["POST"])
+def lt_picks_run():
+    sess, err = _require_session(request)
+    if err:
+        return err
+    if sess.get("role") != "admin":
+        return jsonify({"error": "Admin only"}), 403
+    data    = request.get_json(silent=True) or {}
+    segment = data.get("segment")   # optional — run one segment or all
+    if segment and segment not in ("large", "mid", "small"):
+        return jsonify({"error": "segment must be large, mid, or small"}), 400
+
+    if not _lt_claim_run(segment, "Manual LT scan"):
+        return jsonify({
+            "error": "A long-term scan is already running",
+            "state": _lt_run_state,
+        }), 409
+
+    def _run():
+        try:
+            _run_lt_scan_with_alerts(segment, "Manual LT scan")
+        except Exception as e:
+            # _run_lt_scan_with_alerts handles its own errors, but never leave
+            # the slot claimed if something escapes anyway.
+            _lt_run_state.update({"running": False, "error": str(e)})
+            log.error("Manual LT scan crashed: %s", e)
+
+    threading.Thread(target=_run, daemon=True, name="manual-lt-scan").start()
+    est = "5–15 min" if segment else "30–60 min"
+    return jsonify({
+        "status":  "ok",
+        "message": f"Long-term scan started — takes about {est}",
+        "state":   _lt_run_state,
+    })
+
+
+@app.route("/api/long-term-picks/status")
+def lt_picks_status():
+    """Progress of the current/last LT scan, so the UI can poll a running scan."""
+    sess, err = _require_session(request)
+    if err:
+        return err
+    return jsonify({"status": "ok", "state": _lt_run_state})
 
 
 @app.route("/ai/setup-insight", methods=["POST"])
