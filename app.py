@@ -1712,7 +1712,8 @@ def paper_trades_dry_test():
         })
 
     # Step 3 — pull back stats so we can show accuracy in the response
-    stats = _db_module.get_paper_trade_stats(days=1)
+    today_str = now.strftime("%Y-%m-%d")
+    stats = _db_module.get_paper_trade_stats(from_date=today_str, to_date=today_str)
 
     return jsonify({
         "status":   "ok",
@@ -1773,9 +1774,12 @@ def get_paper_trade_stats():
         return err
     if not _has_db():
         return jsonify({"stats": {}})
-    days = int(request.args.get("days", 30))
-    market = request.args.get("market") or None
-    stats = _db_module.get_paper_trade_stats(days=days, username=sess["username"], market=market)
+    from_date = request.args.get("from_date") or None
+    to_date   = request.args.get("to_date") or None
+    market    = request.args.get("market") or None
+    stats = _db_module.get_paper_trade_stats(
+        from_date=from_date, to_date=to_date, username=sess["username"], market=market
+    )
     return jsonify({"stats": stats})
 
 
@@ -1786,9 +1790,12 @@ def get_best_pick_stats():
         return err
     if not _has_db():
         return jsonify({"stats": {}})
-    days = int(request.args.get("days", 30))
-    market = request.args.get("market") or None
-    stats = _db_module.get_best_pick_stats(days=days, username=sess["username"], market=market)
+    from_date = request.args.get("from_date") or None
+    to_date   = request.args.get("to_date") or None
+    market    = request.args.get("market") or None
+    stats = _db_module.get_best_pick_stats(
+        from_date=from_date, to_date=to_date, username=sess["username"], market=market
+    )
     return jsonify({"stats": stats})
 
 
@@ -1849,7 +1856,8 @@ def _compute_outcome_intraday(sig: str, entry: float, target: float,
     exit point — the first candle where either the target or stop loss is touched.
 
     Candle format (Upstox): [timestamp, open, high, low, close, volume, ...]
-    Candles are chronological (9:15 first).
+    Candles may arrive in either order (Upstox returns newest-first) — this
+    function sorts them chronologically (9:15 first) before walking.
     Timestamp example: "2024-01-15T09:16:00+05:30"
 
     Rules:
@@ -1887,6 +1895,11 @@ def _compute_outcome_intraday(sig: str, entry: float, target: float,
         sig_mins = int(sh) * 60 + int(sm)
     except Exception:
         sig_mins = 9 * 60 + 15   # fallback: market open
+
+    # Upstox's intraday endpoint returns candles newest-first (same as its
+    # daily endpoint — see signals.py's reversed(daily)). Sort chronologically
+    # so the walk below actually starts at the signal time, not at EOD.
+    candles = sorted(candles, key=lambda c: str(c[0]))
 
     # Only candles at or after the signal time
     relevant = [c for c in candles if _candle_mins(c) >= sig_mins]

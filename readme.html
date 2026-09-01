@@ -936,10 +936,10 @@ Readiness verdict:
     <tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr>
     <tr><td>GET</td><td>/paper-trades</td><td>List paper trades. Params: from_date, to_date, sym, outcome, limit.</td></tr>
     <tr><td>GET</td><td>/paper-trades/count</td><td>Count of your paper trades.</td></tr>
-    <tr><td>GET</td><td>/paper-trades/stats?days=30</td><td>Aggregate accuracy stats for last N days.</td></tr>
+    <tr><td>GET</td><td>/paper-trades/stats?from_date=&to_date=</td><td>Aggregate accuracy stats. No params = all-time.</td></tr>
     <tr><td>GET</td><td>/paper-trades/walk-forward?months=6</td><td>Per-month accuracy — the robustness test.</td></tr>
     <tr><td>GET</td><td>/paper-trades/config</td><td>Active backtest symbols, min_conf, trades saved today.</td></tr>
-    <tr><td>GET</td><td>/paper-trades/best-pick-stats?days=30</td><td>Best-performing symbol stats.</td></tr>
+    <tr><td>GET</td><td>/paper-trades/best-pick-stats?from_date=&to_date=</td><td>Best-performing symbol stats. No params = all-time.</td></tr>
     <tr><td>DELETE</td><td>/paper-trades/&lt;id&gt;</td><td>Delete one paper trade.</td></tr>
     <tr><td>POST</td><td>/paper-trades/settle</td><td>Manually trigger EOD settlement (admin only).</td></tr>
     <tr><td>POST</td><td>/paper-trades/dry-test</td><td>Create + settle 4 synthetic test trades (admin only).</td></tr>
@@ -1018,7 +1018,7 @@ Readiness verdict:
   <table>
     <tr><th>Method</th><th>Endpoint</th><th>Purpose</th></tr>
     <tr><td>GET</td><td>/paper-trades</td><td>List paper trades. Params: from_date, to_date, sym, outcome, limit.</td></tr>
-    <tr><td>GET</td><td>/paper-trades/stats?days=30</td><td>Aggregate stats for the last N days.</td></tr>
+    <tr><td>GET</td><td>/paper-trades/stats?from_date=&to_date=</td><td>Aggregate stats. No params = all-time.</td></tr>
     <tr><td>GET</td><td>/paper-trades/walk-forward?months=6</td><td>Per-month accuracy breakdown.</td></tr>
     <tr><td>GET</td><td>/paper-trades/config</td><td>Active backtest symbols, min_conf, trades saved today.</td></tr>
     <tr><td>GET</td><td>/paper-trades/count</td><td>Count of your paper trades.</td></tr>

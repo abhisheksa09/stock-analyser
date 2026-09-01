@@ -959,11 +959,18 @@ th[data-tip]{cursor:default;}
     <!-- Toolbar -->
     <div class="hist-toolbar" style="margin-bottom:10px;">
       <div class="hist-toolbar-left" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <select id="btRangeFilter" class="token-inp" style="font-size:12px;padding:4px 8px;" onchange="applyBtRange()">
+          <option value="">All time</option>
+          <option value="30">Last 30 days</option>
+          <option value="60">Last 60 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="365">Last 1 year</option>
+        </select>
         <label style="font-size:12px;color:#666;">From
-          <input type="date" id="btFrom" class="token-inp" style="margin-left:4px;padding:4px 8px;font-size:12px;width:130px;" onchange="loadPaperTrades()"/>
+          <input type="date" id="btFrom" class="token-inp" style="margin-left:4px;padding:4px 8px;font-size:12px;width:130px;" onchange="btDatesEdited()"/>
         </label>
         <label style="font-size:12px;color:#666;">To
-          <input type="date" id="btTo" class="token-inp" style="margin-left:4px;padding:4px 8px;font-size:12px;width:130px;" onchange="loadPaperTrades()"/>
+          <input type="date" id="btTo" class="token-inp" style="margin-left:4px;padding:4px 8px;font-size:12px;width:130px;" onchange="btDatesEdited()"/>
         </label>
         <select id="btSigFilter" class="token-inp" style="font-size:12px;padding:4px 8px;" onchange="loadPaperTrades()">
           <option value="">All signals</option>
@@ -3082,6 +3089,32 @@ function mktPillsHTML(prefix, activeVal) {
 var _btTrades = [];   // cached raw paper trade rows
 var _btSelectedIds = new Set();
 
+function _isoDate(d) { return d.toISOString().slice(0, 10); }
+
+// Quick-range dropdown: fills From/To from "N days ago" → today, then reloads.
+function applyBtRange() {
+  var days = (document.getElementById('btRangeFilter') || {}).value || '';
+  var fromEl = document.getElementById('btFrom'), toEl = document.getElementById('btTo');
+  if (!days) {
+    if (fromEl) fromEl.value = '';
+    if (toEl)   toEl.value   = '';
+  } else {
+    var to = new Date();
+    var from = new Date();
+    from.setDate(from.getDate() - parseInt(days, 10));
+    if (fromEl) fromEl.value = _isoDate(from);
+    if (toEl)   toEl.value   = _isoDate(to);
+  }
+  loadPaperTrades();
+}
+
+// Manually editing From/To overrides whatever quick-range was selected.
+function btDatesEdited() {
+  var rangeEl = document.getElementById('btRangeFilter');
+  if (rangeEl) rangeEl.value = '';
+  loadPaperTrades();
+}
+
 async function loadPaperTrades() {
   const tb   = document.getElementById('btBody');
   const rows = document.getElementById('btAccRows');
@@ -3099,11 +3132,17 @@ async function loadPaperTrades() {
 
   try {
     var tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
-    const mktQs = (_mktFilterBacktest && _mktFilterBacktest !== 'all') ? '&market=' + encodeURIComponent(_mktFilterBacktest) : '';
+    // Stats cards must reflect the same From/To/market range as the table
+    // below — no hardcoded day window, so the two never disagree on trade counts.
+    var statsParts = [];
+    if(from) statsParts.push('from_date=' + encodeURIComponent(from));
+    if(to)   statsParts.push('to_date='   + encodeURIComponent(to));
+    if(_mktFilterBacktest && _mktFilterBacktest !== 'all') statsParts.push('market=' + encodeURIComponent(_mktFilterBacktest));
+    const statsQs = statsParts.length ? '?' + statsParts.join('&') : '';
     var [trRes, stRes, bpRes, wfRes] = await Promise.all([
       fetch(BACKEND + '/paper-trades' + qs, { headers: appHeaders(), credentials: 'include' }),
-      fetch(BACKEND + '/paper-trades/stats?days=60' + mktQs, { headers: appHeaders(), credentials: 'include' }),
-      fetch(BACKEND + '/paper-trades/best-pick-stats?days=60' + mktQs, { headers: appHeaders(), credentials: 'include' }),
+      fetch(BACKEND + '/paper-trades/stats' + statsQs, { headers: appHeaders(), credentials: 'include' }),
+      fetch(BACKEND + '/paper-trades/best-pick-stats' + statsQs, { headers: appHeaders(), credentials: 'include' }),
       fetch(BACKEND + '/paper-trades/walk-forward?months=6', { headers: appHeaders(), credentials: 'include' })
     ]);
 

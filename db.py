@@ -1028,8 +1028,8 @@ def get_walk_forward_stats(months: int = 6, username: str = None) -> list:
         return []
 
 
-def get_paper_trade_stats(days: int = 30, username: str = None, market: str = None) -> dict:
-    """Accuracy metrics over the last N calendar days."""
+def get_paper_trade_stats(from_date=None, to_date=None, username: str = None, market: str = None) -> dict:
+    """Accuracy metrics, optionally bounded to [from_date, to_date] (inclusive). No bound = all-time."""
     conn = db()
     if not conn:
         return {}
@@ -1039,10 +1039,13 @@ def get_paper_trade_stats(days: int = 30, username: str = None, market: str = No
                    pnl_pts, pnl_pct, target_hit, sl_hit,
                    regime, vix
             FROM paper_trades
-            WHERE trade_date >= CURRENT_DATE - %s
-              AND outcome <> 'open'
+            WHERE outcome <> 'open'
         """
-        params = [days]
+        params = []
+        if from_date:
+            sql += " AND trade_date >= %s"; params.append(from_date)
+        if to_date:
+            sql += " AND trade_date <= %s"; params.append(to_date)
         if username:
             sql += " AND (created_by IS NULL OR created_by = %s)"
             params.append(username)
@@ -1126,15 +1129,15 @@ def get_paper_trade_stats(days: int = 30, username: str = None, market: str = No
         "by_conf":     buckets,
         "by_regime":   by_regime,
         "by_vix":      by_vix,
-        "days":        days,
     }
 
 
-def get_best_pick_stats(days: int = 30, username: str = None, market: str = None) -> dict:
+def get_best_pick_stats(from_date=None, to_date=None, username: str = None, market: str = None) -> dict:
     """
     Per-day best pick: selects the single trade with highest conf*rr score
     for each trading day, then returns aggregate stats across those picks.
     Models a strategy where you place exactly one ₹1L trade per day.
+    Optionally bounded to [from_date, to_date] (inclusive). No bound = all-time.
     """
     conn = db()
     if not conn:
@@ -1148,8 +1151,9 @@ def get_best_pick_stats(days: int = 30, username: str = None, market: str = None
                            ORDER BY (conf * COALESCE(rr, 0)) DESC
                        ) AS rn
                 FROM paper_trades
-                WHERE trade_date >= CURRENT_DATE - %s
-                  AND outcome <> 'open'
+                WHERE outcome <> 'open'
+                  {from_filter}
+                  {to_filter}
                   {user_filter}
                   {market_filter}
             )
@@ -1157,7 +1161,15 @@ def get_best_pick_stats(days: int = 30, username: str = None, market: str = None
             FROM ranked
             WHERE rn = 1
         """
-        params = [days]
+        params = []
+        from_f = ""
+        if from_date:
+            from_f = "AND trade_date >= %s"
+            params.append(from_date)
+        to_f = ""
+        if to_date:
+            to_f = "AND trade_date <= %s"
+            params.append(to_date)
         user_f = ""
         if username:
             user_f = "AND (created_by IS NULL OR created_by = %s)"
@@ -1166,7 +1178,7 @@ def get_best_pick_stats(days: int = 30, username: str = None, market: str = None
         if market:
             market_f = "AND market = %s"
             params.append(market.upper())
-        sql = sql.format(user_filter=user_f, market_filter=market_f)
+        sql = sql.format(from_filter=from_f, to_filter=to_f, user_filter=user_f, market_filter=market_f)
         with conn.cursor() as cur:
             cur.execute(sql, params)
             rows = [dict(r) for r in cur.fetchall()]
@@ -1188,7 +1200,6 @@ def get_best_pick_stats(days: int = 30, username: str = None, market: str = None
         "target_hit_rate": round(len(tgt_hit) / len(rows) * 100, 1) if rows else 0,
         "avg_pnl_pct":     round(sum(pnl_pct) / len(pnl_pct), 2) if pnl_pct else 0,
         "total_pnl_pct":   round(sum(pnl_pct), 2) if pnl_pct else 0,
-        "days":            days,
     }
 
 
