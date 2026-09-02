@@ -636,7 +636,8 @@ th.r{text-align:right;}td{padding:10px 12px;border-bottom:1px solid #f0f0f0;vert
 .data-row td{padding:7px 10px;}.data-row.hidden{display:none;}
 .empty-hist{text-align:center;padding:3rem;color:#aaa;font-size:13px;line-height:1.9;}
 .hist-toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;width:100%;box-sizing:border-box;}
-.hist-toolbar-left{display:flex;gap:8px;flex-wrap:wrap;}
+.hist-toolbar-left{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.hist-toolbar-right{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 .cloud-notice{background:#E6F1FB;border:1px solid #85B7EB;border-radius:8px;padding:10px 14px;font-size:12px;color:#185FA5;margin-bottom:12px;}
 [data-tip]{cursor:help;}
 th[data-tip]{cursor:default;}
@@ -655,6 +656,8 @@ th[data-tip]{cursor:default;}
   .hist-toolbar{flex-direction:column;align-items:stretch;}
   .hist-toolbar-left .btn,.hist-toolbar-left label{flex:1;text-align:center;}
   .hist-toolbar > .btn{width:100%;}
+  .hist-toolbar-right{justify-content:center;}
+  .hist-toolbar-right .btn{flex:1;}
   .nav-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;
    border-radius:6px;border:1px solid #e0e0e0;background:#fafafa;
    color:#555;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;
@@ -985,11 +988,13 @@ th[data-tip]{cursor:default;}
           <option value="partial_loss">Partial loss</option>
           <option value="lost">Lost</option>
         </select>
-        <span class="fchip on" id="mktBt_all" onclick="setMktFilter('backtest','all')" style="margin-left:8px;">All mkts</span>
+      </div>
+      <div class="hist-toolbar-right">
+        <span class="fchip on" id="mktBt_all" onclick="setMktFilter('backtest','all')">All mkts</span>
         <span class="fchip"    id="mktBt_NSE" onclick="setMktFilter('backtest','NSE')">NSE</span>
         <span class="fchip"    id="mktBt_US"  onclick="setMktFilter('backtest','US')">US</span>
+        <button class="btn" onclick="loadPaperTrades()" style="font-size:12px;padding:6px 14px;">&#8635; Refresh</button>
       </div>
-      <button class="btn" onclick="loadPaperTrades()" style="font-size:12px;padding:6px 14px;">&#8635; Refresh</button>
     </div>
 
     <!-- Notice about how it works -->
