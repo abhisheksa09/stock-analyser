@@ -3140,10 +3140,10 @@ async function loadPaperTrades() {
     if(_mktFilterBacktest && _mktFilterBacktest !== 'all') statsParts.push('market=' + encodeURIComponent(_mktFilterBacktest));
     const statsQs = statsParts.length ? '?' + statsParts.join('&') : '';
     var [trRes, stRes, bpRes, wfRes] = await Promise.all([
-      fetch(BACKEND + '/paper-trades' + qs, { headers: appHeaders(), credentials: 'include' }),
-      fetch(BACKEND + '/paper-trades/stats' + statsQs, { headers: appHeaders(), credentials: 'include' }),
-      fetch(BACKEND + '/paper-trades/best-pick-stats' + statsQs, { headers: appHeaders(), credentials: 'include' }),
-      fetch(BACKEND + '/paper-trades/walk-forward?months=6', { headers: appHeaders(), credentials: 'include' })
+      fetch(BACKEND + '/paper-trades' + qs, { headers: appHeaders(), credentials: 'include', cache: 'no-store' }),
+      fetch(BACKEND + '/paper-trades/stats' + statsQs, { headers: appHeaders(), credentials: 'include', cache: 'no-store' }),
+      fetch(BACKEND + '/paper-trades/best-pick-stats' + statsQs, { headers: appHeaders(), credentials: 'include', cache: 'no-store' }),
+      fetch(BACKEND + '/paper-trades/walk-forward?months=6', { headers: appHeaders(), credentials: 'include', cache: 'no-store' })
     ]);
 
     var trData = await trRes.json();
@@ -3500,29 +3500,49 @@ function clearBtSelection() {
   if (bar) bar.classList.remove('show');
 }
 
+// Returns true on success. Surfaces failures instead of swallowing them —
+// a silently-failed delete looks identical to "the totals didn't update".
+async function _deleteBtTrade(id) {
+  try {
+    var r = await fetch(BACKEND + '/paper-trades/' + encodeURIComponent(id), {
+      method: 'DELETE', headers: appHeaders(), credentials: 'include'
+    });
+    if (!r.ok) {
+      var d = {};
+      try { d = await r.json(); } catch(e) {}
+      return { ok: false, error: d.error || ('HTTP ' + r.status) };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.message || 'Network error' };
+  }
+}
+
 async function deleteBtSelected() {
   if (!_btSelectedIds.size) return;
   var count = _btSelectedIds.size;
   if (!confirm('Delete ' + count + ' selected trade' + (count > 1 ? 's' : '') + '? This cannot be undone.')) return;
   var ids = [..._btSelectedIds];
-  await Promise.all(ids.map(function(id) {
-    return fetch(BACKEND + '/paper-trades/' + encodeURIComponent(id), {
-      method: 'DELETE', headers: appHeaders(), credentials: 'include'
-    }).catch(function(){});
-  }));
+  var results = await Promise.all(ids.map(_deleteBtTrade));
+  var failed = results.filter(function(r) { return !r.ok; });
   _btSelectedIds.clear();
   await loadPaperTrades();
+  if (failed.length) {
+    alert(failed.length + ' of ' + ids.length + ' deletes failed (' + failed[0].error + '). ' +
+          'The table has been refreshed with the current server state.');
+  }
 }
 
 async function deleteBtRow(id) {
   var trade = _btTrades.find(function(t) { return t.id === id; });
   if (!trade) return;
   if (!confirm('Delete ' + trade.sym + ' (' + fmtDate(trade.trade_date) + ')? This cannot be undone.')) return;
-  await fetch(BACKEND + '/paper-trades/' + encodeURIComponent(id), {
-    method: 'DELETE', headers: appHeaders(), credentials: 'include'
-  }).catch(function(){});
+  var result = await _deleteBtTrade(id);
   _btSelectedIds.delete(id);
   await loadPaperTrades();
+  if (!result.ok) {
+    alert('Delete failed: ' + result.error + '. The table has been refreshed with the current server state.');
+  }
 }
 
 async function loadBtConfig() {
