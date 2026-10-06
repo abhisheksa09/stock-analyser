@@ -1756,7 +1756,9 @@ def get_walk_forward_stats():
     if not _has_db():
         return jsonify({"months": [], "note": "No DB"})
     months = min(int(request.args.get("months", 6)), 24)
-    data   = _db_module.get_walk_forward_stats(months=months, username=sess["username"])
+    data   = _db_module.get_walk_forward_stats(months=months, username=sess["username"],
+                                               from_date=request.args.get("from_date") or None,
+                                               market=request.args.get("market") or None)
     return jsonify({
         "months":       data,
         "total_months": len(data),
@@ -1868,9 +1870,7 @@ def _compute_outcome_intraday(sig: str, entry: float, target: float,
       - If candle open already past a level (gap through) → that level is hit at open
       - Otherwise assume the adverse move (SL) happened first — conservative
 
-    If neither level is hit before session end:
-      - BUY: exit at the highest intraday high (closest price reached toward target)
-      - SELL: exit at the lowest intraday low  (closest price reached toward target)
+    If neither level is hit before session end: exit at the last candle's close.
 
     Returns: (exit_price, outcome, pnl_pts, pnl_pct, target_hit, sl_hit)
     """
@@ -1955,17 +1955,13 @@ def _compute_outcome_intraday(sig: str, entry: float, target: float,
                 pts, pct = _pnl(target)
                 return target, "won", pts, pct, True, False
 
-    # Neither level hit — exit at the closest price reached towards the target.
-    # For BUY: highest intraday high is the peak move toward the target.
-    # For SELL: lowest intraday low is the furthest move toward the target.
-    if sig == "BUY":
-        best_price = max(float(c[2]) for c in relevant)   # max high
-    else:
-        best_price = min(float(c[3]) for c in relevant)   # min low
-
-    pts, pct = _pnl(best_price)
+    # Neither level hit — square off at the last candle's close, as a real intraday
+    # position would be. (Exiting at the day's best high/low assumed perfect foresight and
+    # turned almost every unresolved trade into a "partial_win", inflating the win rate.)
+    exit_price = float(relevant[-1][4])
+    pts, pct = _pnl(exit_price)
     outcome  = "partial_win" if pts > 0 else "partial_loss"
-    return best_price, outcome, pts, pct, False, False
+    return exit_price, outcome, pts, pct, False, False
 
 
 def _send_target_hit_alert(trade: dict, exit_price: float, pnl_pts: float,

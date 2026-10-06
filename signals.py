@@ -39,6 +39,7 @@ READY_AMBER_MIN = 55
 # MIN_RVOL_GREEN env (e.g. 120) if diagnostics show 'volume(...)' is the bottleneck.
 MIN_RVOL_GREEN  = int(os.environ.get("MIN_RVOL_GREEN", "150"))
 MIN_RR_SIGNAL   = 1.5   # hard R:R floor — below this the setup is mathematically poor
+ORB_CANDLES     = 15    # opening range = first 15 one-minute candles
 # Confidence at/above this waives the pre-9:45 anti-fakeout time gate (see is_ready).
 HIGH_CONF_TIME_OVERRIDE = int(os.environ.get("HIGH_CONF_TIME_OVERRIDE", "80"))
 
@@ -645,7 +646,13 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
     market_ctx — dict from get_market_context(). If None, filters are skipped
                  (backwards compatible with existing calls that don't pass context).
     """
-    orb   = intra[:15]
+    # Upstox intraday candles arrive newest-first; yfinance/Alpaca arrive oldest-first.
+    # Everything below (ORB = first 15 candles, today_open = intra[0], candle confirmation
+    # and RVOL = last candles) assumes chronological order, so normalise here. Without this
+    # the NSE "ORB" was the most recent 15 minutes and confirmation checked the 9:15 candles.
+    intra = sorted(intra, key=lambda c: str(c[0])) if intra else []
+    orb_complete = len(intra) >= ORB_CANDLES
+    orb   = intra[:ORB_CANDLES]
     orb_h = round(max((c[2] for c in orb), default=ltp * 1.005), 2)
     orb_l = round(min((c[3] for c in orb), default=ltp * 0.995), 2)
     vw    = vwap(intra) if intra else ltp
@@ -741,6 +748,13 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
     if sig != "WATCH" and rr < MIN_RR_SIGNAL:
         sig    = "WATCH"
         reason = f"R:R {rr:.1f}:1 below minimum {MIN_RR_SIGNAL}:1 — setup skipped"
+
+    # An opening-range breakout needs a complete opening range. Before 15 candles exist the
+    # "ORB" is a 1–2 minute range and any tick beyond it reads as a breakout — pre-9:30 NSE
+    # picks (fired via HIGH_CONF_TIME_OVERRIDE) hit SL 56% of the time vs 33% after 9:45.
+    if sig != "WATCH" and not orb_complete:
+        sig    = "WATCH"
+        reason = f"Opening range still forming ({len(intra)}/{ORB_CANDLES} candles) — setup skipped"
 
     # ── Market / sector / gap / day-trend penalties ─────────────────────────
     conf_penalties = 0

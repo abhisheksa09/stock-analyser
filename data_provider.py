@@ -155,15 +155,20 @@ def get_ltp_price(sym, market, token=None, ikey=None):
 
 def _alpaca_pct_change(sym):
     """% change of an ETF vs its previous session close using Alpaca daily bars."""
+    # Compare the live price against the last *completed* session. Using the last two daily
+    # bars returned yesterday-vs-day-before during market hours (today's IEX daily bar isn't
+    # in the range yet), so regime / bias / hard-block were acting on stale data — the
+    # market_snapshot table shows identical US values repeated across consecutive days.
     try:
-        end   = datetime.now(ET).date().isoformat()
+        today = datetime.now(ET).date()
         start = (datetime.now(ET) - timedelta(days=10)).date().isoformat()
-        bars  = _alpaca_bars(sym, "1Day", start, end, limit=5)
-        if len(bars) < 2:
+        bars  = _alpaca_bars(sym, "1Day", start, today.isoformat(), limit=10)
+        prior = [b for b in bars if b[0][:10] < today.isoformat()]
+        if not prior:
             return 0.0
-        prev_close = float(bars[-2][4])
-        curr_close = float(bars[-1][4])
-        return round((curr_close - prev_close) / prev_close * 100, 2)
+        prev_close = float(prior[-1][4])
+        curr_price = _alpaca_ltp(sym)
+        return round((curr_price - prev_close) / prev_close * 100, 2)
     except Exception as e:
         log.warning("[Alpaca] pct_change %s failed: %s", sym, e)
         return 0.0
