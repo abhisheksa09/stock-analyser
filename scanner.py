@@ -462,6 +462,33 @@ def _save_paper_trade(s: dict, market: str = "NSE"):
             "sector_chg":    mctx.get("sector_chg"),
             "market_bias":   mctx.get("market_bias"),
         })
+        # Diagnostics for later analysis. extension_pct = how far price had already run
+        # past the planned entry when the signal fired, as % of the entry→SL distance
+        # (settlement fills at signal_price, so this is the "chase" being paid).
+        risk = abs(float(s["en"]) - float(s["sl"]))
+        run  = (float(s["ltp"]) - float(s["en"])) if s["sig"] == "BUY" else (float(s["en"]) - float(s["ltp"]))
+        broad = mctx.get("broad_chgs") or {}
+        trade.update({
+            "extension_pct": round(run / risk * 100, 1) if risk else None,
+            "verdict":       s.get("_verdict"),
+            "gap_pct":       s.get("gap_pct"),
+            "day_chg_pct":   s.get("chg"),
+            "rvol_pct":      round(s["tVpm"] / (s["aVpm"] or 1) * 100) if s.get("tVpm") is not None else None,
+            "ctx_ok":        bool(mctx) and any(v for v in broad.values()),
+            "features": {
+                "scores":        s.get("feature_scores"),
+                "signal_conf":   s.get("signal_conf"),
+                "risk_penalty":  s.get("risk_penalty"),
+                "warnings":      s.get("ctx_warnings"),
+                "confirm_count": s.get("confirm_count"),
+                "gap_signal":    s.get("gap_signal"),
+                "orb_h": s.get("orb_h"), "orb_l": s.get("orb_l"),
+                "vwap":  s.get("vwap"),  "atr":   s.get("atr"),
+                "rvol_spike":    s.get("rvol_spike"),
+                "macd_hist":     s.get("macd_hist"),
+                "bb_squeeze":    s.get("bb_squeeze"),
+            },
+        })
         saved = _db_module.save_paper_trade(trade)
         if saved:
             log.info("[%s] Paper trade saved: %s %s @ %.2f (conf %d%%)",
@@ -664,6 +691,7 @@ def run_scan(force: bool = False):
             continue
 
         verdict, _ = is_ready(s, mins)
+        s["_verdict"] = verdict   # persisted on the paper trade
         prev_conf  = STATE.prev_conf.get(sym)
         locked     = STATE.locked_sig.get(sym)
         if in_bt:
@@ -934,6 +962,7 @@ def run_us_scan(force: bool = False):
             continue
 
         verdict, _ = is_ready(s, mins, market="US")
+        s["_verdict"] = verdict   # persisted on the paper trade
         US_STATE.bt_last_verdict[sym] = verdict if in_bt else verdict
 
         if sym not in US_STATE.locked_sig and s["sig"] != "WATCH":

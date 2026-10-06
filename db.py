@@ -232,6 +232,18 @@ _MIGRATIONS = [
     "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS vix           NUMERIC",
     "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS sector_chg    NUMERIC",
     "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS market_bias   TEXT",
+    # Signal diagnostics (Oct 2026) — let us recalibrate conf, tune SL/target and decide
+    # on a no-chase rule from real data. Nullable: older rows simply stay NULL.
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS extension_pct NUMERIC",  # price past entry at signal, % of SL distance
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS verdict       TEXT",     # green / amber
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS gap_pct       NUMERIC",
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS day_chg_pct   NUMERIC",
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS rvol_pct      NUMERIC",
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS ctx_ok        BOOLEAN",  # market context loaded (not all zeros)
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS features      JSONB",    # per-factor conf scores, penalties, levels
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS mfe_pct       NUMERIC",  # max favourable excursion before exit
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS mae_pct       NUMERIC",  # max adverse excursion before exit
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS exit_time     TEXT",
 ]
 
 def init_db():
@@ -795,13 +807,16 @@ def save_paper_trade(trade: dict) -> bool:
                     (id, trade_date, signal_time, sym, sec, sig, conf,
                      signal_price, entry, target, stop_loss, rr, rsi, reason,
                      created_by, market,
-                     regime, composite_chg, vix, sector_chg, market_bias)
+                     regime, composite_chg, vix, sector_chg, market_bias,
+                     extension_pct, verdict, gap_pct, day_chg_pct, rvol_pct, ctx_ok, features)
                 VALUES
                     (%(id)s, %(trade_date)s, %(signal_time)s, %(sym)s, %(sec)s,
                      %(sig)s, %(conf)s, %(signal_price)s, %(entry)s, %(target)s,
                      %(stop_loss)s, %(rr)s, %(rsi)s, %(reason)s,
                      %(created_by)s, %(market)s,
-                     %(regime)s, %(composite_chg)s, %(vix)s, %(sector_chg)s, %(market_bias)s)
+                     %(regime)s, %(composite_chg)s, %(vix)s, %(sector_chg)s, %(market_bias)s,
+                     %(extension_pct)s, %(verdict)s, %(gap_pct)s, %(day_chg_pct)s,
+                     %(rvol_pct)s, %(ctx_ok)s, %(features)s::jsonb)
                 ON CONFLICT (id) DO NOTHING
             """, {
                 **trade,
@@ -812,6 +827,13 @@ def save_paper_trade(trade: dict) -> bool:
                 "vix":           trade.get("vix"),
                 "sector_chg":    trade.get("sector_chg"),
                 "market_bias":   trade.get("market_bias"),
+                "extension_pct": trade.get("extension_pct"),
+                "verdict":       trade.get("verdict"),
+                "gap_pct":       trade.get("gap_pct"),
+                "day_chg_pct":   trade.get("day_chg_pct"),
+                "rvol_pct":      trade.get("rvol_pct"),
+                "ctx_ok":        trade.get("ctx_ok"),
+                "features":      json.dumps(trade["features"], default=str) if trade.get("features") else None,
             })
         return True
     except Exception as e:
@@ -901,7 +923,9 @@ def delete_paper_trade(trade_id: str, username: str) -> bool:
 def settle_paper_trade(trade_id: str, close_price: float,
                        outcome: str, pnl_pts: float, pnl_pct: float,
                        target_hit: bool, sl_hit: bool,
-                       day_high: float = None, day_low: float = None) -> bool:
+                       day_high: float = None, day_low: float = None,
+                       mfe_pct: float = None, mae_pct: float = None,
+                       exit_time: str = None) -> bool:
     """Update a paper trade with end-of-day settlement data."""
     conn = db()
     if not conn:
@@ -912,10 +936,12 @@ def settle_paper_trade(trade_id: str, close_price: float,
                 UPDATE paper_trades
                 SET close_price=%s, settled_at=NOW(), outcome=%s,
                     pnl_pts=%s, pnl_pct=%s, target_hit=%s, sl_hit=%s,
-                    day_high=%s, day_low=%s
+                    day_high=%s, day_low=%s,
+                    mfe_pct=%s, mae_pct=%s, exit_time=%s
                 WHERE id=%s AND outcome='open'
             """, (close_price, outcome, pnl_pts, pnl_pct,
-                  target_hit, sl_hit, day_high, day_low, trade_id))
+                  target_hit, sl_hit, day_high, day_low,
+                  mfe_pct, mae_pct, exit_time, trade_id))
         return True
     except Exception as e:
         log.warning("settle_paper_trade: %s", e)

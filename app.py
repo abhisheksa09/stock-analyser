@@ -1852,7 +1852,7 @@ def _compute_outcome(sig: str, entry: float, target: float,
 
 def _compute_outcome_intraday(sig: str, entry: float, target: float,
                                stop_loss: float, candles: list,
-                               signal_time_str: str):
+                               signal_time_str: str, fill: float = None):
     """
     Walk 1-minute intraday candles from signal_time forward to find the actual
     exit point — the first candle where either the target or stop loss is touched.
@@ -1861,6 +1861,12 @@ def _compute_outcome_intraday(sig: str, entry: float, target: float,
     Candles may arrive in either order (Upstox returns newest-first) — this
     function sorts them chronologically (9:15 first) before walking.
     Timestamp example: "2024-01-15T09:16:00+05:30"
+
+    fill — the price the position is opened at: the price when the signal fired
+    (paper_trades.signal_price). Target/SL stay as planned from `entry`, but P&L is
+    measured from `fill`. By the time the scanner sees a breakout, price is often well
+    past the ORB entry; scoring from `entry` credited trades with a price no one could
+    have got. Defaults to `entry`.
 
     Rules:
       BUY  — check low  <= stop_loss first (adverse), then high >= target
@@ -1872,11 +1878,15 @@ def _compute_outcome_intraday(sig: str, entry: float, target: float,
 
     If neither level is hit before session end: exit at the last candle's close.
 
-    Returns: (exit_price, outcome, pnl_pts, pnl_pct, target_hit, sl_hit)
+    Returns: (exit_price, outcome, pnl_pts, pnl_pct, target_hit, sl_hit, extra)
+      extra = {"mfe_pct", "mae_pct", "exit_time"}: max favourable / adverse move from
+      `fill` (in %) up to the exit, and the HH:MM of the exit candle.
     """
+    base = fill if fill else entry
+
     def _pnl(exit_px):
-        pts = round((exit_px - entry) if sig == "BUY" else (entry - exit_px), 2)
-        pct = round(pts / entry * 100, 3) if entry else 0.0
+        pts = round((exit_px - base) if sig == "BUY" else (base - exit_px), 2)
+        pct = round(pts / base * 100, 3) if base else 0.0
         return pts, pct
 
     def _candle_mins(c):
@@ -1908,60 +1918,64 @@ def _compute_outcome_intraday(sig: str, entry: float, target: float,
         # Signal fired after all available candles; use last candle's close
         relevant = candles
 
-    for c in relevant:
-        o = float(c[1])
-        h = float(c[2])
-        l = float(c[3])
-
+    # ── Walk: find the exit candle ────────────────────────────────────────────
+    # exit_side: "adverse" (SL), "favourable" (target), None (squared off at close)
+    exit_px, outcome, tgt_hit, sl_hit, exit_idx, exit_side = None, None, False, False, None, None
+    for i, c in enumerate(relevant):
+        o, h, l = float(c[1]), float(c[2]), float(c[3])
         if sig == "BUY":
-            # ── Gap open past a level ────────────────────────────────────────
-            if o <= stop_loss:                          # gapped through SL
-                pts, pct = _pnl(o)
-                return o, "lost", pts, pct, False, True
-            if o >= target:                             # gapped through target
-                pts, pct = _pnl(o)
-                return o, "won", pts, pct, True, False
+            gap_sl, gap_tg = o <= stop_loss, o >= target
+            hit_sl, hit_tg = l <= stop_loss, h >= target
+        else:
+            gap_sl, gap_tg = o >= stop_loss, o <= target
+            hit_sl, hit_tg = h >= stop_loss, l <= target
 
-            # ── Both levels hit within same candle → SL first (conservative) ─
-            if l <= stop_loss and h >= target:
-                pts, pct = _pnl(stop_loss)
-                return stop_loss, "lost", pts, pct, False, True
+        if gap_sl:                       # gapped through SL
+            exit_px, outcome, sl_hit, exit_side = o, "lost", True, "adverse"
+        elif gap_tg:                     # gapped through target
+            exit_px, outcome, tgt_hit, exit_side = o, "won", True, "favourable"
+        elif hit_sl:                     # SL — also when both touched (SL first, conservative)
+            exit_px, outcome, sl_hit, exit_side = stop_loss, "lost", True, "adverse"
+        elif hit_tg:
+            exit_px, outcome, tgt_hit, exit_side = target, "won", True, "favourable"
+        if outcome:
+            exit_idx = i
+            break
 
-            if l <= stop_loss:
-                pts, pct = _pnl(stop_loss)
-                return stop_loss, "lost", pts, pct, False, True
+    if outcome is None:
+        # Neither level hit — square off at the last candle's close, as a real intraday
+        # position would be. (Exiting at the day's best high/low assumed perfect foresight
+        # and turned almost every unresolved trade into a "partial_win".)
+        exit_idx = len(relevant) - 1
+        exit_px  = float(relevant[-1][4])
 
-            if h >= target:
-                pts, pct = _pnl(target)
-                return target, "won", pts, pct, True, False
+    pts, pct = _pnl(exit_px)
+    if outcome is None:
+        outcome = "partial_win" if pts > 0 else "partial_loss"
 
-        else:  # SELL
-            if o >= stop_loss:
-                pts, pct = _pnl(o)
-                return o, "lost", pts, pct, False, True
-            if o <= target:
-                pts, pct = _pnl(o)
-                return o, "won", pts, pct, True, False
-
-            if h >= stop_loss and l <= target:
-                pts, pct = _pnl(stop_loss)
-                return stop_loss, "lost", pts, pct, False, True
-
-            if h >= stop_loss:
-                pts, pct = _pnl(stop_loss)
-                return stop_loss, "lost", pts, pct, False, True
-
-            if l <= target:
-                pts, pct = _pnl(target)
-                return target, "won", pts, pct, True, False
-
-    # Neither level hit — square off at the last candle's close, as a real intraday
-    # position would be. (Exiting at the day's best high/low assumed perfect foresight and
-    # turned almost every unresolved trade into a "partial_win", inflating the win rate.)
-    exit_price = float(relevant[-1][4])
-    pts, pct = _pnl(exit_price)
-    outcome  = "partial_win" if pts > 0 else "partial_loss"
-    return exit_price, outcome, pts, pct, False, False
+    # ── MFE / MAE from the fill, up to the exit ───────────────────────────────
+    # Candles before the exit count in full. On the exit candle only the side that
+    # caused the exit counts — its other extreme can't be ordered relative to the exit.
+    fav_px, adv_px = [base], [base]
+    for i, c in enumerate(relevant[:exit_idx + 1]):
+        h, l = float(c[2]), float(c[3])
+        up, down = (h, l) if sig == "BUY" else (l, h)
+        last = i == exit_idx and exit_side is not None
+        if not last or exit_side == "favourable":
+            fav_px.append(exit_px if last else up)
+        if not last or exit_side == "adverse":
+            adv_px.append(exit_px if last else down)
+    if sig == "BUY":
+        mfe, mae = max(fav_px) - base, base - min(adv_px)
+    else:
+        mfe, mae = base - min(fav_px), max(adv_px) - base
+    ts = str(relevant[exit_idx][0])
+    extra = {
+        "mfe_pct":   round(max(mfe, 0) / base * 100, 3) if base else None,
+        "mae_pct":   round(max(mae, 0) / base * 100, 3) if base else None,
+        "exit_time": ts[11:16] if len(ts) >= 16 else None,
+    }
+    return exit_px, outcome, pts, pct, tgt_hit, sl_hit, extra
 
 
 def _send_target_hit_alert(trade: dict, exit_price: float, pnl_pts: float,
@@ -2058,7 +2072,7 @@ def _settle_paper_trades_for_date(date_str: str = None):
             if not candles:
                 raise ValueError("Empty intraday candle data")
 
-            exit_price, outcome, pnl_pts, pnl_pct, target_hit, sl_hit = \
+            exit_price, outcome, pnl_pts, pnl_pct, target_hit, sl_hit, extra = \
                 _compute_outcome_intraday(
                     sig             = trade["sig"],
                     entry           = float(trade["entry"]),
@@ -2066,6 +2080,7 @@ def _settle_paper_trades_for_date(date_str: str = None):
                     stop_loss       = float(trade["stop_loss"]),
                     candles         = candles,
                     signal_time_str = trade.get("signal_time", "09:15"),
+                    fill            = float(trade["signal_price"]) if trade.get("signal_price") else None,
                 )
 
             day_high = round(max(float(c[2]) for c in candles), 2)
@@ -2081,6 +2096,9 @@ def _settle_paper_trades_for_date(date_str: str = None):
                 sl_hit      = sl_hit,
                 day_high    = day_high,
                 day_low     = day_low,
+                mfe_pct     = extra["mfe_pct"],
+                mae_pct     = extra["mae_pct"],
+                exit_time   = extra["exit_time"],
             )
 
             if ok:
@@ -2183,7 +2201,7 @@ def _settle_us_paper_trades_for_date(date_str: str = None):
             if not candles:
                 raise ValueError(f"Empty intraday candle data for {sym}")
 
-            exit_price, outcome, pnl_pts, pnl_pct, target_hit, sl_hit = \
+            exit_price, outcome, pnl_pts, pnl_pct, target_hit, sl_hit, extra = \
                 _compute_outcome_intraday(
                     sig             = trade["sig"],
                     entry           = float(trade["entry"]),
@@ -2191,6 +2209,7 @@ def _settle_us_paper_trades_for_date(date_str: str = None):
                     stop_loss       = float(trade["stop_loss"]),
                     candles         = candles,
                     signal_time_str = trade.get("signal_time", "09:30"),
+                    fill            = float(trade["signal_price"]) if trade.get("signal_price") else None,
                 )
 
             day_high = round(max(float(c[2]) for c in candles), 2)
@@ -2206,6 +2225,9 @@ def _settle_us_paper_trades_for_date(date_str: str = None):
                 sl_hit      = sl_hit,
                 day_high    = day_high,
                 day_low     = day_low,
+                mfe_pct     = extra["mfe_pct"],
+                mae_pct     = extra["mae_pct"],
+                exit_time   = extra["exit_time"],
             )
 
             if ok:
