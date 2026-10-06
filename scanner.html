@@ -963,6 +963,7 @@ th[data-tip]{cursor:default;}
     <div class="hist-toolbar" style="margin-bottom:10px;">
       <div class="hist-toolbar-left" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <select id="btRangeFilter" class="token-inp" style="font-size:12px;padding:4px 8px;" onchange="applyBtRange()">
+          <option value="fix" selected>Since algo fix (7 Oct 2026)</option>
           <option value="">All time</option>
           <option value="30">Last 30 days</option>
           <option value="60">Last 60 days</option>
@@ -970,7 +971,7 @@ th[data-tip]{cursor:default;}
           <option value="365">Last 1 year</option>
         </select>
         <label style="font-size:12px;color:#666;">From
-          <input type="date" id="btFrom" class="token-inp" style="margin-left:4px;padding:4px 8px;font-size:12px;width:130px;" onchange="btDatesEdited()"/>
+          <input type="date" id="btFrom" value="2026-10-07" class="token-inp" style="margin-left:4px;padding:4px 8px;font-size:12px;width:130px;" onchange="btDatesEdited()"/>
         </label>
         <label style="font-size:12px;color:#666;">To
           <input type="date" id="btTo" class="token-inp" style="margin-left:4px;padding:4px 8px;font-size:12px;width:130px;" onchange="btDatesEdited()"/>
@@ -3096,11 +3097,19 @@ var _btSelectedIds = new Set();
 
 function _isoDate(d) { return d.toISOString().slice(0, 10); }
 
+// First trading day after the Oct 2026 signal/settlement fixes. Trades before this
+// were scored with the best-price partial exit and (NSE) reversed-candle signals, so
+// the Backtest tab defaults to excluding them. Keep in sync with btFrom's value attr.
+var BT_CLEAN_FROM = '2026-10-07';
+
 // Quick-range dropdown: fills From/To from "N days ago" → today, then reloads.
 function applyBtRange() {
   var days = (document.getElementById('btRangeFilter') || {}).value || '';
   var fromEl = document.getElementById('btFrom'), toEl = document.getElementById('btTo');
-  if (!days) {
+  if (days === 'fix') {
+    if (fromEl) fromEl.value = BT_CLEAN_FROM;
+    if (toEl)   toEl.value   = '';
+  } else if (!days) {
     if (fromEl) fromEl.value = '';
     if (toEl)   toEl.value   = '';
   } else {
@@ -3148,7 +3157,7 @@ async function loadPaperTrades() {
       fetch(BACKEND + '/paper-trades' + qs, { headers: appHeaders(), credentials: 'include', cache: 'no-store' }),
       fetch(BACKEND + '/paper-trades/stats' + statsQs, { headers: appHeaders(), credentials: 'include', cache: 'no-store' }),
       fetch(BACKEND + '/paper-trades/best-pick-stats' + statsQs, { headers: appHeaders(), credentials: 'include', cache: 'no-store' }),
-      fetch(BACKEND + '/paper-trades/walk-forward?months=6', { headers: appHeaders(), credentials: 'include', cache: 'no-store' })
+      fetch(BACKEND + '/paper-trades/walk-forward?months=6' + (statsParts.length ? '&' + statsParts.join('&') : ''), { headers: appHeaders(), credentials: 'include', cache: 'no-store' })
     ]);
 
     var trData = await trRes.json();

@@ -969,7 +969,8 @@ def get_evening_picks(date_: str) -> list:
         log.warning("get_evening_picks: %s", e)
         return []
 
-def get_walk_forward_stats(months: int = 6, username: str = None) -> list:
+def get_walk_forward_stats(months: int = 6, username: str = None,
+                           from_date: str = None, market: str = None) -> list:
     """
     Per-month accuracy breakdown for the last N months.
     Used for walk-forward validation — proves the strategy works across
@@ -999,6 +1000,12 @@ def get_walk_forward_stats(months: int = 6, username: str = None) -> list:
         if username:
             sql += " AND (created_by IS NULL OR created_by = %s)"
             params.append(username)
+        if from_date:
+            sql += " AND trade_date >= %s"
+            params.append(from_date)
+        if market:
+            sql += " AND market = %s"
+            params.append(market.upper())
         sql += " GROUP BY month ORDER BY month DESC"
 
         with conn.cursor() as cur:
