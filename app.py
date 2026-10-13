@@ -15,6 +15,9 @@ New endpoints for alert system:
 import os
 import uuid
 import json
+import hmac
+import html
+import hashlib
 import logging
 import threading
 import urllib.request
@@ -366,7 +369,7 @@ def test_email():
         "reversal":       lambda: _email.format_reversal({**_dummy_s, "sig": "SELL"}, locked_sig="BUY"),
         "token_expiry":   lambda: _email.format_token_expiry(401, login_url),
         "login_reminder": lambda: _email.format_login_reminder(login_url),
-        "news_digest":    lambda: _email.format_news_digest(_news.build_digest()),  # live feeds
+        "news_digest":    lambda: _email.format_news_digest(_news.build_digest(), refresh_url=_news_refresh_url()),  # live feeds
         "eod_settlement": lambda: _email.format_eod_settlement(
             trades=[
                 {"sym": "HDFCBANK", "sig": "BUY",  "entry": 1520.5, "close_price": 1540.0,
@@ -1038,14 +1041,125 @@ def auth_callback():
 
 # ─── Daily news digest (email) ────────────────────────────────────────────────
 
+NEWS_LINK_TTL_DAYS   = 7      # "Get latest news" links in emails stop working after this
+NEWS_SEND_COOLDOWN_S = 60     # min gap between on-demand digests (double-clicks, spam)
+_news_last_sent      = {"ts": 0.0}
+_news_send_lock      = threading.Lock()
+
+
+def _news_link_secret() -> bytes:
+    # NEWS_LINK_SECRET if set; otherwise reuse the Resend key, which is already a
+    # server-only secret whenever email works at all.
+    return (os.environ.get("NEWS_LINK_SECRET") or os.environ.get("RESEND_API_KEY", "")).encode()
+
+
+def _news_link_sig(exp: int) -> str:
+    return hmac.new(_news_link_secret(), f"news-refresh:{exp}".encode(), hashlib.sha256).hexdigest()
+
+
+def _news_refresh_url() -> str | None:
+    """Signed, expiring link for the email's 'Get latest news' button."""
+    base = (os.environ.get("RENDER_BASE_URL") or os.environ.get("RENDER_EXTERNAL_URL", "")).rstrip("/")
+    if not base or not _news_link_secret():
+        return None
+    exp = int(datetime.now(timezone.utc).timestamp()) + NEWS_LINK_TTL_DAYS * 86400
+    return f"{base}/news-digest/refresh?exp={exp}&sig={_news_link_sig(exp)}"
+
+
+def _send_news_digest(enforce_cooldown: bool = False) -> tuple:
+    """Build and email a fresh digest. Returns (ok, detail, subject)."""
+    with _news_send_lock:
+        now  = datetime.now(timezone.utc).timestamp()
+        wait = NEWS_SEND_COOLDOWN_S - (now - _news_last_sent["ts"])
+        if enforce_cooldown and wait > 0:
+            return False, f"A digest was just sent — try again in {int(wait) + 1}s", ""
+        _news_last_sent["ts"] = now
+    subject, body = _email.format_news_digest(_news.build_digest(), refresh_url=_news_refresh_url())
+    ok, detail = _email.send_email(subject, body)
+    return ok, detail, subject
+
+
 def _news_digest_job():
     """Scheduled job — 08:45 IST weekdays. Emails the day's financial headlines."""
     if datetime.now(IST).weekday() >= 5:
         return
     try:
-        _email.send_email(*_email.format_news_digest(_news.build_digest()))
+        _send_news_digest()
     except Exception as e:
         log.error("News digest job failed: %s", e)
+
+
+@app.route("/news-digest/send", methods=["POST"])
+def news_digest_send():
+    """On-demand digest from the app's 'Latest news' button (admin only)."""
+    _, err = _require_admin(request)
+    if err:
+        return err
+    if not _email.is_configured():
+        return jsonify({"status": "error", "message": "Email not configured"}), 503
+    try:
+        ok, detail, subject = _send_news_digest(enforce_cooldown=True)
+    except Exception as e:
+        log.error("On-demand news digest failed: %s", e)
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if ok:
+        return jsonify({"status": "ok", "subject": subject})
+    return jsonify({"status": "error", "message": detail}), 429 if "try again" in detail else 500
+
+
+def _news_page(title: str, body_html: str, status: int = 200) -> Response:
+    page = (
+        '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+        '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f'<title>{title}</title></head>'
+        '<body style="margin:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">'
+        '<div style="max-width:420px;margin:60px auto;background:#fff;border-radius:10px;'
+        'padding:28px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.08);">'
+        f'<h2 style="margin:0 0 12px;color:#0f766e;">{title}</h2>{body_html}</div></body></html>'
+    )
+    return Response(page, status=status, mimetype="text/html")
+
+
+@app.route("/news-digest/refresh", methods=["GET", "POST"])
+def news_digest_refresh():
+    """
+    'Get latest news' link from the digest email. Authorised by an HMAC-signed,
+    expiring link instead of a login. GET only shows a confirm button — mail
+    providers pre-open links in emails, so a GET that sent mail would fire by itself.
+    """
+    src = request.form if request.method == "POST" else request.args
+    exp, sig = src.get("exp", ""), src.get("sig", "")
+    valid = (
+        exp.isdigit() and _news_link_secret()
+        and hmac.compare_digest(sig, _news_link_sig(int(exp)))
+    )
+    if not valid:
+        return _news_page("Invalid link", '<p style="color:#6b7280;">This link is not valid.</p>', 403)
+    if int(exp) < datetime.now(timezone.utc).timestamp():
+        return _news_page("Link expired",
+                          '<p style="color:#6b7280;">Use the link in a newer digest email, '
+                          'or the &#128240; button in the NSE Scanner app.</p>', 410)
+
+    if request.method == "GET":
+        return _news_page(
+            "Get latest news",
+            '<p style="color:#374151;">Send yourself a fresh digest with the last 24 hours of headlines?</p>'
+            '<form method="POST" style="margin-top:20px;">'
+            f'<input type="hidden" name="exp" value="{exp}"><input type="hidden" name="sig" value="{sig}">'
+            '<button type="submit" style="background:#0f766e;color:#fff;border:none;padding:12px 26px;'
+            'border-radius:6px;font-size:15px;font-weight:600;cursor:pointer;">&#128240; Send me the latest news</button>'
+            '</form>',
+        )
+
+    try:
+        ok, detail, subject = _send_news_digest(enforce_cooldown=True)
+    except Exception as e:
+        log.error("News digest refresh failed: %s", e)
+        ok, detail, subject = False, "Something went wrong while building the digest.", ""
+    if ok:
+        return _news_page("&#10003; On its way",
+                          f'<p style="color:#374151;">Check your inbox for<br><b>{html.escape(subject)}</b></p>')
+    return _news_page("Not sent", f'<p style="color:#b91c1c;">{html.escape(detail)}</p>', 429 if "try again" in detail else 500)
 
 
 # ─── Morning login reminder (Telegram) ────────────────────────────────────────

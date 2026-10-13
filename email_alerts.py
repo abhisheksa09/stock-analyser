@@ -750,9 +750,10 @@ def _sector_pill(sector: str, label: str = "") -> str:
     )
 
 
-def format_news_digest(digest: dict) -> tuple:
+def format_news_digest(digest: dict, refresh_url: str = None) -> tuple:
     """Returns (subject, html_body) for the daily financial-news headline digest.
-    digest is the dict returned by news_digest.build_digest()."""
+    digest is the dict returned by news_digest.build_digest().
+    refresh_url, when given, adds a "Get latest news" button (signed link from app.py)."""
     date_str = datetime.now(IST).strftime("%d %b %Y")
     total    = digest["total"]
 
@@ -850,6 +851,22 @@ def format_news_digest(digest: dict) -> tuple:
         '</style>'
     )
 
+    refresh_top = refresh_bottom = ""
+    if refresh_url:
+        link = html.escape(refresh_url, quote=True)
+        refresh_top = (
+            '<p style="margin:12px 0 0;font-size:12px;">'
+            f'<a href="{link}" style="color:#0f766e;font-weight:600;text-decoration:none;">'
+            '&#128260; Get the latest news now &rarr;</a></p>'
+        )
+        refresh_bottom = (
+            '<div style="text-align:center;">'
+            + _btn("&#128260; Get the latest news now", link, color="#0f766e")
+            + '<p style="margin:6px 0 0;font-size:11px;color:#9ca3af;">'
+            'Sends a fresh digest with the last 24 hours of headlines. Link valid for 7 days.</p>'
+            '</div>'
+        )
+
     n_in, n_gl = counts.get("India", 0), counts.get("Global", 0)
     body = (
         toggle_css +
@@ -857,7 +874,7 @@ def format_news_digest(digest: dict) -> tuple:
         f'<b>{total}</b> headlines from the last 24 hours, newest first: '
         f'<b style="color:{_NEWS_SECTIONS["India"][1]};">{n_in} India</b> &middot; '
         f'<b style="color:{_NEWS_SECTIONS["Global"][1]};">{n_gl} Global</b></p>'
-        + focus_html + sections_html + sources_note + failed_note
+        + focus_html + refresh_top + sections_html + sources_note + failed_note + refresh_bottom
     )
     subject = f"Market News Digest — {date_str} | India {n_in} · Global {n_gl}"
     return subject, _wrap(

@@ -206,6 +206,7 @@ function applyRoleUI(role){
   const adminTab = document.getElementById('tab-admin-btn');
   const proxyBtn = document.getElementById('proxyNavBtn');
   const tokenBtn = document.getElementById('tokenNavBtn');
+  const newsBtn  = document.getElementById('newsNavBtn');
 
   const isAdmin = role === 'admin';
 
@@ -214,6 +215,7 @@ function applyRoleUI(role){
   // Proxy and token controls visible only to admin users
   if(proxyBtn) proxyBtn.style.display = isAdmin ? 'inline-flex' : 'none';
   if(tokenBtn) tokenBtn.style.display = isAdmin ? 'inline-flex' : 'none';
+  if(newsBtn)  newsBtn.style.display  = isAdmin ? '' : 'none';
 }
 
 // ── Logout ────────────────────────────────────────────────────────────────────
@@ -681,6 +683,9 @@ th[data-tip]{cursor:default;}
       style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Build history">Journey &#8599;</a>
       <a href="https://abhisheksa09.github.io/stock-analyser/readme.html" target="_blank"
          style="font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;" title="Open user guide">Docs &#8599;</a>
+      <a href="#" id="newsNavBtn" onclick="sendLatestNews(); return false;"
+         style="display:none;font-size:11px;color:#0f766e;font-weight:600;text-decoration:none;padding:3px 10px;border:1px solid #99d6cc;border-radius:20px;background:#f0fdfa;"
+         title="Email me a fresh news digest (last 24 hours of headlines)">&#128240; Latest news</a>
       <span class="top-link" style="border:none;background:transparent;font-size:11px;color:#888;text-decoration:none;padding:3px 10px;border:1px solid #ddd;border-radius:20px;background:#fff;">
           👤 <span id="usernameDisplay"></span>
       </span>
@@ -928,10 +933,10 @@ th[data-tip]{cursor:default;}
     <div class="card" style="margin-bottom:14px;">
       <div class="acc-title" style="margin-bottom:8px;">
         Best single pick per day
-        <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px;">1 trade/day · full ₹1L · ranked by confidence × R:R</span>
+        <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px;">★ Pick rows only · 1 trade/day per market · full capital · ranked by confidence × R:R</span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;">
-        <div class="hstat-card"><div class="hstat-l">Simulated Trades</div><div class="hstat-n" id="bpSimTotal">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">★ Picks</div><div class="hstat-n" id="bpSimTotal">—</div></div>
         <div class="hstat-card"><div class="hstat-l">Trade Days</div><div class="hstat-n" id="bpTotal">—</div></div>
         <div class="hstat-card"><div class="hstat-l">Win Rate</div><div class="hstat-n" id="bpWinRate">—</div></div>
         <div class="hstat-card"><div class="hstat-l">Loss Rate</div><div class="hstat-n" id="bpLossRate">—</div></div>
@@ -989,6 +994,9 @@ th[data-tip]{cursor:default;}
           <option value="partial_loss">Partial loss</option>
           <option value="lost">Lost</option>
         </select>
+        <label style="font-size:12px;color:#666;display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+          <input type="checkbox" id="btPicksOnly" onchange="renderBtTable()"/> ★ Picks only
+        </label>
       </div>
       <div class="hist-toolbar-right">
         <span class="fchip on" id="mktBt_all" onclick="setMktFilter('backtest','all')">All mkts</span>
@@ -1269,6 +1277,7 @@ th[data-tip]{cursor:default;}
             <option value="eod_settlement">EOD Settlement</option>
             <option value="token_reminder">Token Reminder</option>
             <option value="login_reminder">Login Reminder</option>
+            <option value="news_digest">News Digest</option>
           </select>
         </div>
         <button class="btn" id="emailTestBtn" onclick="sendTestEmail()"
@@ -2325,6 +2334,32 @@ async function sendTestEmail(){
   }
 }
 
+// ─── On-demand news digest ────────────────────────────────────────────────────
+async function sendLatestNews(){
+  const btn = document.getElementById('newsNavBtn');
+  if(btn.dataset.busy) return;
+  btn.dataset.busy = '1';
+  const label = btn.innerHTML;
+  btn.textContent = 'Sending…';
+  let result = '', colour = '#0f766e';
+  try {
+    const tok = _appSessionToken || localStorage.getItem('nse_app_token') || '';
+    const res = await fetch(BACKEND + '/news-digest/send', {
+      method: 'POST',
+      credentials: 'include',
+      headers: (function(){ var h={'Content-Type':'application/json'}; if(tok) h['X-Session-Token']=tok; return h; })(),
+    });
+    const d = await res.json();
+    if(res.ok){ result = '✓ Sent — check your inbox'; }
+    else      { result = '✗ ' + (d.message || d.error || 'Failed'); colour = '#A32D2D'; }
+  } catch(e) {
+    result = '✗ ' + e.message; colour = '#A32D2D';
+  }
+  btn.textContent = result;
+  btn.style.color = colour;
+  setTimeout(function(){ btn.innerHTML = label; btn.style.color = '#0f766e'; delete btn.dataset.busy; }, 5000);
+}
+
 // ─── Auto-Login ───────────────────────────────────────────────────────────────
 async function loadAutoLoginStatus(){
   try {
@@ -3278,18 +3313,17 @@ function renderBestPickStats(stats, overallStats) {
     e.textContent = v;
     if(cls !== undefined) e.className = 'hstat-n ' + (cls || '');
   }
-  overallStats = overallStats || {};
-  var total     = stats.total || 0;           // trade days (best pick per day)
-  var simTotal  = overallStats.total != null ? overallStats.total : null;
-  // Won/lost/win-rate reflect ALL simulated trades, not just the one-per-day subset.
-  var won      = overallStats.won != null ? overallStats.won : null;
-  var lost     = overallStats.lost != null ? overallStats.lost
-                 : (simTotal != null && won != null) ? simTotal - won : null;
-  var winRate  = overallStats.win_rate != null ? overallStats.win_rate : null;
+  // Every figure here is for the ★ Pick trades only (one per day per market, settled);
+  // all-trade stats live in the accuracy breakdown below.
+  var picks    = stats.total || 0;
+  var days     = stats.days != null ? stats.days : null;
+  var won      = picks ? (stats.won || 0) : null;
+  var lost     = picks ? (stats.lost != null ? stats.lost : picks - (stats.won || 0)) : null;
+  var winRate  = picks && stats.win_rate != null ? stats.win_rate : null;
   var lossRate = (winRate != null) ? Math.round((100 - winRate) * 10) / 10 : null;
 
-  el('bpSimTotal', simTotal != null ? simTotal : '—');
-  el('bpTotal', total || '—');
+  el('bpSimTotal', picks || '—');
+  el('bpTotal', days || '—');
   el('bpWinRate', winRate != null ? winRate + '%' : '—',
      winRate != null ? (winRate >= 55 ? 'n-green' : winRate >= 40 ? '' : 'n-red') : '');
   el('bpLossRate', lossRate != null ? lossRate + '%' : '—',
@@ -3341,14 +3375,36 @@ function toggleBtDateGroup(date, gid) {
   });
 }
 
+// ★ Pick = per trade_date AND market, the trade with the highest conf × R:R; ties go to
+// the earliest trade. Computed over all loaded trades *before* the outcome / picks-only
+// filters so filtering never moves the star. Mirrors db.get_best_pick_stats().
+function bestPickIds(trades) {
+  var best = {};
+  trades.forEach(function(t) {
+    var key   = (t.trade_date || '') + '|' + (t.market || 'NSE');
+    var score = (t.conf || 0) * (parseFloat(t.rr) || 0);
+    var cur   = best[key];
+    if (!cur || score > cur.score ||
+        (score === cur.score && String(t.created_at || '') < String(cur.t.created_at || ''))) {
+      best[key] = { t: t, score: score };
+    }
+  });
+  var ids = new Set();
+  Object.keys(best).forEach(function(k) { ids.add(best[k].t.id); });
+  return ids;
+}
+
 function renderBtTable() {
   var tb      = document.getElementById('btBody');
   var emptyEl = document.getElementById('btEmpty');
   if(!tb) return;
 
   var ocFilter  = (document.getElementById('btOcFilter') || {}).value || '';
+  var picksOnly = !!(document.getElementById('btPicksOnly') || {}).checked;
   var mktFilter = (_mktFilterBacktest || 'all').toUpperCase();
+  var pickIds   = bestPickIds(_btTrades);
   var rows = _btTrades.filter(function(t) {
+    if(picksOnly && !pickIds.has(t.id)) return false;
     if(ocFilter && t.outcome !== ocFilter) return false;
     if(mktFilter !== 'ALL' && (t.market||'NSE').toUpperCase() !== mktFilter) return false;
     return true;
@@ -3411,11 +3467,6 @@ function renderBtTable() {
     hdr.innerHTML = '<td colspan="15" style="padding:0;"><div style="display:flex;align-items:center;justify-content:space-between;padding:9px 14px;flex-wrap:wrap;gap:6px;"><div class="dg-title"><span class="dg-arrow' + (isOpen ? ' open' : '') + '" id="btarr_' + gid + '">&#9658;</span><span>' + fmtDate(date) + '</span></div><div class="dg-meta">' + meta + '</div></div></td>';
     tb.appendChild(hdr);
 
-    // Best pick for the day = highest conf × R:R score
-    var bestPick = dayRows.reduce(function(best, t) {
-      return ((t.conf || 0) * (parseFloat(t.rr) || 0)) > ((best.conf || 0) * (parseFloat(best.rr) || 0)) ? t : best;
-    }, dayRows[0]);
-
     dayRows.forEach(function(t) {
       var sigCls  = t.sig === 'BUY' ? 'buy' : 'sell';
       var ocLabel = { won: 'Won', lost: 'Lost', partial_win: 'Partial +', partial_loss: 'Partial −', open: 'Open' }[t.outcome] || t.outcome;
@@ -3431,7 +3482,7 @@ function renderBtTable() {
       var closePx = t.close_price != null ? _sym + fc(t.close_price) : '—';
       var confMt  = confMeta(t.conf || 0);
       var isSel   = _btSelectedIds.has(t.id);
-      var isBest  = (t === bestPick);
+      var isBest  = pickIds.has(t.id);
 
       var tr = document.createElement('tr');
       tr.className = (isSel ? 'row-sel ' : '') + 'data-row' + (isOpen ? '' : ' hidden');
