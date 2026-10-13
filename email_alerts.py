@@ -29,6 +29,7 @@ Fires for all 5 event types:
 
 import os
 import json
+import html
 import logging
 import urllib.request
 import urllib.error
@@ -110,6 +111,7 @@ _HEADER_COLORS = {
     "evening_picks":        "#7c3aed",
     "real_trade_candidate": "#b45309",
     "weekly_lt_picks":      "#0f4c81",
+    "news_digest":          "#0f766e",
 }
 
 
@@ -709,4 +711,123 @@ def format_weekly_lt_picks(picks: list) -> tuple:
         "Weekly Long-Term Picks",
         f"{date_str} · {len(picks)} picks across Large / Mid / Small cap",
         body, "weekly_lt_picks",
+    )
+
+
+# section -> (banner title, accent colour)
+_NEWS_SECTIONS = {
+    "India":  ("&#127470;&#127475; INDIA &mdash; Markets &amp; Economy", "#c2410c"),
+    "Global": ("&#127760; GLOBAL &mdash; Markets &amp; Economy",         "#1d4ed8"),
+}
+
+# sector tag -> (text colour, background) for the per-headline pill
+_SECTOR_PILL = {
+    "Banking & Finance":       ("#1e40af", "#dbeafe"),
+    "IT & Tech":               ("#6d28d9", "#ede9fe"),
+    "Energy & Oil":            ("#b45309", "#fef3c7"),
+    "Industrials & Cap Goods": ("#475569", "#e2e8f0"),
+    "Agri & Chemicals":        ("#3f6212", "#ecfccb"),
+    "Auto":                    ("#0e7490", "#cffafe"),
+    "Pharma & Healthcare":     ("#be123c", "#ffe4e6"),
+    "Metals & Mining":         ("#57534e", "#e7e5e4"),
+    "Commodities & Gold":      ("#a16207", "#fef9c3"),
+    "FMCG & Consumer":         ("#15803d", "#dcfce7"),
+    "Telecom & Media":         ("#9d174d", "#fce7f3"),
+    "Real Estate & Infra":     ("#9a3412", "#ffedd5"),
+    "Defence":                 ("#365314", "#d9f99d"),
+    "Crypto":                  ("#c2410c", "#fff7ed"),
+    "Economy & Policy":        ("#0f766e", "#ccfbf1"),
+    "Broad Market":            ("#374151", "#f3f4f6"),
+}
+
+
+def _sector_pill(sector: str, label: str = "") -> str:
+    fg, bg = _SECTOR_PILL.get(sector, ("#374151", "#f3f4f6"))
+    return (
+        f'<span style="display:inline-block;background:{bg};color:{fg};padding:2px 8px;'
+        f'margin:0 4px 0 0;border-radius:10px;font-size:11px;font-weight:600;">'
+        f'{html.escape(label or sector)}</span>'
+    )
+
+
+def format_news_digest(digest: dict) -> tuple:
+    """Returns (subject, html_body) for the daily financial-news headline digest.
+    digest is the dict returned by news_digest.build_digest()."""
+    date_str = datetime.now(IST).strftime("%d %b %Y")
+    total    = digest["total"]
+
+    counts = {sec: len(items) for sec, items in digest["sections"].items()}
+
+    sections_html = ""
+    for section, items in digest["sections"].items():
+        if not items:
+            continue
+        title, accent = _NEWS_SECTIONS.get(section, (html.escape(section), "#374151"))
+        rows = []
+        for i in items:
+            when = i["published"].astimezone(IST).strftime("%d %b, %H:%M") if i["published"] else ""
+            summary = i["summary"]
+            if len(summary) > 180:
+                summary = summary[:177].rsplit(" ", 1)[0] + "…"
+            rows.append(
+                f'<tr><td style="padding:10px 0 10px 12px;border-bottom:1px solid #e5e7eb;'
+                f'border-left:3px solid {accent};">'
+                + (f'<p style="margin:0 0 5px;">{"".join(_sector_pill(s) for s in i.get("sectors", []))}</p>'
+                   if i.get("sectors") else '')
+                + f'<a href="{html.escape(i["link"], quote=True)}" '
+                'style="color:#111827;font-size:14px;font-weight:600;text-decoration:none;">'
+                f'{html.escape(i["title"])}</a>'
+                + (f'<p style="margin:4px 0 0;color:#4b5563;font-size:12px;line-height:1.4;">'
+                   f'{html.escape(summary)}</p>' if summary else '')
+                + f'<p style="margin:4px 0 0;color:#9ca3af;font-size:11px;">'
+                f'{html.escape(i["source"])}{" &middot; " + when + " IST" if when else ""}</p>'
+                '</td></tr>'
+            )
+        banner = (
+            '<table cellpadding="0" cellspacing="0" style="width:100%;margin:28px 0 6px;">'
+            f'<tr><td style="background:{accent};padding:10px 14px;border-radius:6px;">'
+            f'<span style="color:#ffffff;font-size:14px;font-weight:700;letter-spacing:0.5px;">{title}</span>'
+            f'<span style="color:#ffffff;font-size:12px;opacity:0.85;float:right;">'
+            f'{len(items)} headlines</span>'
+            '</td></tr></table>'
+        )
+        sections_html += banner + _table(*rows)
+
+    if not total:
+        sections_html = (
+            '<p style="margin:0;font-size:14px;color:#6b7280;">'
+            'No fresh headlines found in the last 24 hours.</p>'
+        )
+
+    failed_note = ""
+    if digest.get("failed"):
+        failed_note = (
+            '<p style="margin:16px 0 0;font-size:11px;color:#9ca3af;">'
+            f'Unavailable today: {html.escape(", ".join(digest["failed"]))}</p>'
+        )
+
+    # "Sectors in focus" — most-covered sectors across both sections
+    focus = [(s, n) for s, n in (digest.get("sector_counts") or {}).items() if s != "Broad Market"][:6]
+    focus_html = ""
+    if focus:
+        focus_html = (
+            '<p style="margin:12px 0 0;font-size:12px;color:#6b7280;line-height:2;">'
+            'Sectors in focus: '
+            + "".join(_sector_pill(s, f"{s} · {n}") for s, n in focus)
+            + '</p>'
+        )
+
+    n_in, n_gl = counts.get("India", 0), counts.get("Global", 0)
+    body = (
+        f'<p style="margin:0;font-size:14px;color:#374151;">'
+        f'<b>{total}</b> headlines from the last 24 hours, newest first: '
+        f'<b style="color:{_NEWS_SECTIONS["India"][1]};">{n_in} India</b> &middot; '
+        f'<b style="color:{_NEWS_SECTIONS["Global"][1]};">{n_gl} Global</b></p>'
+        + focus_html + sections_html + failed_note
+    )
+    subject = f"Market News Digest — {date_str} | India {n_in} · Global {n_gl}"
+    return subject, _wrap(
+        "Daily News Digest",
+        f"{date_str} · India {n_in} · Global {n_gl}",
+        body, "news_digest",
     )

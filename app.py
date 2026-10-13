@@ -32,6 +32,7 @@ import macro as macro_module
 import db as _db_module
 import auto_login as _auto_login
 import email_alerts as _email
+import news_digest as _news
 
 # ── Triple-timezone log formatter (IST + CET/CEST + ET) ──────────────────────
 class _DualTZFormatter(logging.Formatter):
@@ -334,7 +335,7 @@ def test_email():
     Send a test email. Only fires on POST (never on admin panel load).
     Optional query params:
       ?kind=green_ready | conf_crossed | reversal | token_expiry |
-            eod_settlement | login_reminder
+            eod_settlement | login_reminder | news_digest
       &to=override@example.com
     Defaults to green_ready when kind is omitted.
     """
@@ -365,6 +366,7 @@ def test_email():
         "reversal":       lambda: _email.format_reversal({**_dummy_s, "sig": "SELL"}, locked_sig="BUY"),
         "token_expiry":   lambda: _email.format_token_expiry(401, login_url),
         "login_reminder": lambda: _email.format_login_reminder(login_url),
+        "news_digest":    lambda: _email.format_news_digest(_news.build_digest()),  # live feeds
         "eod_settlement": lambda: _email.format_eod_settlement(
             trades=[
                 {"sym": "HDFCBANK", "sig": "BUY",  "entry": 1520.5, "close_price": 1540.0,
@@ -1032,6 +1034,18 @@ def auth_callback():
             title="Unexpected error",
             message=str(e),
         )
+
+
+# ─── Daily news digest (email) ────────────────────────────────────────────────
+
+def _news_digest_job():
+    """Scheduled job — 08:45 IST weekdays. Emails the day's financial headlines."""
+    if datetime.now(IST).weekday() >= 5:
+        return
+    try:
+        _email.send_email(*_email.format_news_digest(_news.build_digest()))
+    except Exception as e:
+        log.error("News digest job failed: %s", e)
 
 
 # ─── Morning login reminder (Telegram) ────────────────────────────────────────
@@ -2572,6 +2586,19 @@ def start_scheduler():
     else:
         _last_auto_login["next_run"] = "not scheduled — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing"
         log.warning("Login reminder not scheduled — Telegram not configured")
+
+    # Daily news digest — 08:45 IST weekdays. Must stay inside the keepalive
+    # window (starts 08:30 IST Mon–Fri) or Render will be asleep when it fires.
+    sched.add_job(
+        _news_digest_job,
+        trigger="cron",
+        day_of_week="mon-fri",
+        hour=8, minute=45,
+        id="news_digest",
+        max_instances=1,
+        misfire_grace_time=600,
+    )
+    log.info("News digest email scheduled at 08:45 IST Mon–Fri")
 
     # US market scan — every N minutes (runs on ET timezone, 9:30–11:00 AM ET weekdays)
     sched.add_job(scanner.run_us_scan, trigger="interval", minutes=interval,
