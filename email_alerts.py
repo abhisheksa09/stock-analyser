@@ -783,15 +783,23 @@ def format_news_digest(digest: dict) -> tuple:
                 f'{html.escape(i["source"])}{" &middot; " + when + " IST" if when else ""}</p>'
                 '</td></tr>'
             )
+        # Collapsible via <details>: works in Apple Mail / iOS / Thunderbird.
+        # Gmail and Outlook ignore it and simply show the section expanded.
         banner = (
-            '<table cellpadding="0" cellspacing="0" style="width:100%;margin:28px 0 6px;">'
-            f'<tr><td style="background:{accent};padding:10px 14px;border-radius:6px;">'
-            f'<span style="color:#ffffff;font-size:14px;font-weight:700;letter-spacing:0.5px;">{title}</span>'
+            f'<summary class="nd-sum" style="list-style:none;cursor:pointer;display:block;'
+            f'background:{accent};padding:10px 14px;border-radius:6px;">'
+            f'<span style="color:#ffffff;font-size:14px;font-weight:700;letter-spacing:0.5px;">'
+            f'<span class="nd-arrow">&#9662;</span> {title}</span>'
             f'<span style="color:#ffffff;font-size:12px;opacity:0.85;float:right;">'
             f'{len(items)} headlines</span>'
-            '</td></tr></table>'
+            '</summary>'
         )
-        sections_html += banner + _table(*rows)
+        sections_html += (
+            '<details open style="margin:28px 0 0;">'
+            + banner
+            + '<div style="margin-top:6px;">' + _table(*rows) + '</div>'
+            + '</details>'
+        )
 
     if not total:
         sections_html = (
@@ -817,8 +825,17 @@ def format_news_digest(digest: dict) -> tuple:
             + '</p>'
         )
 
+    # Hide the default disclosure triangle and flip our own arrow when collapsed
+    toggle_css = (
+        '<style>'
+        '.nd-sum::-webkit-details-marker{display:none;}'
+        'details:not([open]) .nd-arrow{display:inline-block;transform:rotate(-90deg);}'
+        '</style>'
+    )
+
     n_in, n_gl = counts.get("India", 0), counts.get("Global", 0)
     body = (
+        toggle_css +
         f'<p style="margin:0;font-size:14px;color:#374151;">'
         f'<b>{total}</b> headlines from the last 24 hours, newest first: '
         f'<b style="color:{_NEWS_SECTIONS["India"][1]};">{n_in} India</b> &middot; '
