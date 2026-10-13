@@ -37,15 +37,15 @@ _UA = (
 
 # (section, source label, url)
 FEEDS = [
-    ("India",  "Economic Times",    "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"),
-    ("India",  "ET Stocks",         "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms"),
-    ("India",  "ET Economy",        "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms"),
+    ("India",  "Economic Times · Markets", "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"),
+    ("India",  "Economic Times · Stocks",  "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms"),
+    ("India",  "Economic Times · Economy", "https://economictimes.indiatimes.com/news/economy/rssfeeds/1373380680.cms"),
     ("India",  "Mint",              "https://www.livemint.com/rss/markets"),
     ("India",  "Business Standard", "https://www.business-standard.com/rss/markets-106.rss"),
     ("Global", "Financial Times",   "https://www.ft.com/markets?format=rss"),
     ("Global", "Yahoo Finance",     "https://feeds.finance.yahoo.com/rss/2.0/headline?s=^NSEI,^GSPC&region=US&lang=en-US"),
-    ("Global", "CNBC Markets",      "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258"),
-    ("Global", "CNBC Top News",     "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"),
+    ("Global", "CNBC · Markets",           "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258"),
+    ("Global", "CNBC · Top News",          "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"),
 ]
 
 SECTIONS = ["India", "Global"]

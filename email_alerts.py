@@ -779,8 +779,9 @@ def format_news_digest(digest: dict) -> tuple:
                 f'{html.escape(i["title"])}</a>'
                 + (f'<p style="margin:4px 0 0;color:#4b5563;font-size:12px;line-height:1.4;">'
                    f'{html.escape(summary)}</p>' if summary else '')
-                + f'<p style="margin:4px 0 0;color:#9ca3af;font-size:11px;">'
-                f'{html.escape(i["source"])}{" &middot; " + when + " IST" if when else ""}</p>'
+                + f'<p style="margin:5px 0 0;font-size:11px;color:#9ca3af;">'
+                f'Source: <b style="color:#374151;">{html.escape(i["source"])}</b>'
+                f'{" &middot; " + when + " IST" if when else ""}</p>'
                 '</td></tr>'
             )
         # Collapsible via <details>: works in Apple Mail / iOS / Thunderbird.
@@ -805,6 +806,22 @@ def format_news_digest(digest: dict) -> tuple:
         sections_html = (
             '<p style="margin:0;font-size:14px;color:#6b7280;">'
             'No fresh headlines found in the last 24 hours.</p>'
+        )
+
+    # Footer: every publisher used today, with headline counts
+    by_pub = {}
+    for items in digest["sections"].values():
+        for i in items:
+            pub = i["source"].split(" · ")[0]
+            by_pub[pub] = by_pub.get(pub, 0) + 1
+    sources_note = ""
+    if by_pub:
+        sources_note = (
+            '<p style="margin:20px 0 0;padding-top:12px;border-top:1px solid #e5e7eb;'
+            'font-size:12px;color:#6b7280;line-height:1.6;"><b>Sources today:</b> '
+            + " &middot; ".join(f'{html.escape(p)} ({n})'
+                                for p, n in sorted(by_pub.items(), key=lambda kv: -kv[1]))
+            + '</p>'
         )
 
     failed_note = ""
@@ -840,7 +857,7 @@ def format_news_digest(digest: dict) -> tuple:
         f'<b>{total}</b> headlines from the last 24 hours, newest first: '
         f'<b style="color:{_NEWS_SECTIONS["India"][1]};">{n_in} India</b> &middot; '
         f'<b style="color:{_NEWS_SECTIONS["Global"][1]};">{n_gl} Global</b></p>'
-        + focus_html + sections_html + failed_note
+        + focus_html + sections_html + sources_note + failed_note
     )
     subject = f"Market News Digest — {date_str} | India {n_in} · Global {n_gl}"
     return subject, _wrap(
