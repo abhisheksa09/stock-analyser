@@ -5,19 +5,20 @@ compatibility_date = "2024-01-01"
 [triggers]
 # Free plan: 5 cron triggers max.
 # All times UTC. IST = UTC+5:30. ET (summer) = UTC-4.
+# Use day NAMES: Cloudflare numbers days from Sunday = 1, so "1-5" means Sun–Thu, not Mon–Fri.
 crons = [
   # 1. NSE full trading day, no gap — 3:00–10:57 UTC Mon–Fri (08:30–16:27 IST)
   #    Previously split into a morning (3-5) and evening (9-10) window with a
   #    ~3h hole between them (11:27-14:30 IST) that let Render sleep through
   #    the back half of the NSE trading session. Merged into one continuous
   #    window — this also frees a trigger slot (2 -> 1).
-  "2,7,12,17,22,27,32,37,42,47,52,57 3-10 * * 1-5",
+  "2,7,12,17,22,27,32,37,42,47,52,57 3-10 * * MON-FRI",
 
   # 2. US pre-warm + US market — 12:00–15:57 UTC Mon–Fri (08:00–11:57 ET)
-  "2,7,12,17,22,27,32,37,42,47,52,57 12-15 * * 1-5",
+  "2,7,12,17,22,27,32,37,42,47,52,57 12-15 * * MON-FRI",
 
   # 3. US EOD — 19:47–19:57 UTC Mon–Fri
-  "47,52,57 19 * * 1-5",
+  "47,52,57 19 * * MON-FRI",
 
   # 4. Weekly LT scan — 18:02–20:57 UTC Saturday.
   #    The in-process LT job fires Sunday 00:00 IST = Saturday 18:30 UTC and
@@ -26,7 +27,7 @@ crons = [
   #    ~18:57 and killed the scan mid-run. The digest email is sent at the very
   #    end of the scan, which is why no alert ever arrived. Window now runs
   #    ~2.5h past the scan start so the scan can finish and email.
-  "2,7,12,17,22,27,32,37,42,47,52,57 18-20 * * 6",
+  "2,7,12,17,22,27,32,37,42,47,52,57 18-20 * * SAT",
 ]
 
 # NOTE: One slot from the GitHub Actions schedule is NOT covered due to the 5-trigger limit.
