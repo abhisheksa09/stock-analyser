@@ -3188,22 +3188,20 @@ async function loadPaperTrades() {
     if(to)   statsParts.push('to_date='   + encodeURIComponent(to));
     if(_mktFilterBacktest && _mktFilterBacktest !== 'all') statsParts.push('market=' + encodeURIComponent(_mktFilterBacktest));
     const statsQs = statsParts.length ? '?' + statsParts.join('&') : '';
-    var [trRes, stRes, bpRes, wfRes] = await Promise.all([
+    var [trRes, stRes, wfRes] = await Promise.all([
       fetch(BACKEND + '/paper-trades' + qs, { headers: appHeaders(), credentials: 'include', cache: 'no-store' }),
       fetch(BACKEND + '/paper-trades/stats' + statsQs, { headers: appHeaders(), credentials: 'include', cache: 'no-store' }),
-      fetch(BACKEND + '/paper-trades/best-pick-stats' + statsQs, { headers: appHeaders(), credentials: 'include', cache: 'no-store' }),
       fetch(BACKEND + '/paper-trades/walk-forward?months=6' + (statsParts.length ? '&' + statsParts.join('&') : ''), { headers: appHeaders(), credentials: 'include', cache: 'no-store' })
     ]);
 
     var trData = await trRes.json();
     var stData = stRes.ok ? await stRes.json() : { stats: {} };
-    var bpData = bpRes.ok ? await bpRes.json() : { stats: {} };
     var wfData = wfRes.ok ? await wfRes.json() : { months: [] };
 
     _btTrades = trData.trades || [];
     _btSelectedIds.clear();
     renderBtStats(stData.stats || {});
-    renderBestPickStats(bpData.stats || {}, stData.stats || {});
+    renderBestPickStats(bestPickStatsFromTrades(_btTrades));
     renderWalkForward(wfData.months || []);
     renderBtTable();
 
@@ -3306,7 +3304,20 @@ function renderBtStats(stats) {
   }).join('');
 }
 
-function renderBestPickStats(stats, overallStats) {
+// Stats for the settled ★ Pick rows, computed from the loaded trades so the card always
+// matches the stars in the table and the current market / date / signal filters.
+function bestPickStatsFromTrades(trades) {
+  var pickIds = bestPickIds(trades);
+  var picks = trades.filter(function(t) { return pickIds.has(t.id) && t.outcome && t.outcome !== 'open'; });
+  if (!picks.length) return { total: 0 };
+  var won  = picks.filter(function(t) { return t.outcome === 'won'  || t.outcome === 'partial_win';  }).length;
+  var lost = picks.filter(function(t) { return t.outcome === 'lost' || t.outcome === 'partial_loss'; }).length;
+  var days = new Set(picks.map(function(t) { return t.trade_date; })).size;
+  return { total: picks.length, days: days, won: won, lost: lost,
+           win_rate: Math.round(won / picks.length * 1000) / 10 };
+}
+
+function renderBestPickStats(stats) {
   function el(id, v, cls) {
     var e = document.getElementById(id);
     if(!e) return;
