@@ -20,7 +20,16 @@ import json
 UPSTOX_BASE = "https://api.upstox.com"
 
 # ─── Tunable constants ────────────────────────────────────────────────────────
-MARKET_HARD_BLOCK_PCT   = 1.0
+# Market-direction filter. Below the hard block there used to be NO market-level penalty
+# at all, so a BUY on a -0.9% composite day scored exactly like one on a flat day — every
+# ORB long on a broad sell-off sailed through (19 Oct 2026: Sensex -900, 4 of 5 BUYs hit SL).
+MARKET_HARD_BLOCK_PCT   = float(os.environ.get("MARKET_HARD_BLOCK_PCT", "0.75"))
+MARKET_HEADWIND_PCT     = 0.3    # composite move against the trade that starts costing conf
+MARKET_HEADWIND_PENALTY = 15
+# Nifty LTP vs today's open. Catches the flat/gap-up open that bleeds all session — % vs
+# previous close still looks benign while the index is falling minute after minute.
+INTRADAY_SELLOFF_PCT    = float(os.environ.get("INTRADAY_SELLOFF_PCT", "0.4"))
+BREADTH_MISSING_PENALTY = 10     # index fetch failed — unknown market must not read as neutral
 SECTOR_HEADWIND_PENALTY = 15
 SECTOR_TAILWIND_BONUS   = 5
 GAP_PENALTY             = 10
@@ -239,27 +248,49 @@ def get_daily(ikey, token):
 
 _DEAD_IKEYS: set = set()  # instrument keys that returned UDAPI100011; skip silently after first hit
 
-def get_index_change(index_name, token):
-    """Returns % change of an index vs previous close. Falls back to 0.0 on any error."""
+def _index_change_or_none(index_name, token):
+    """% change of an index vs previous close, or None when it couldn't be fetched."""
     import logging as _logging
     _log = _logging.getLogger("scanner")
     ikey = INDEX_KEYS.get(index_name)
     if not ikey or ikey in _DEAD_IKEYS:
-        return 0.0
+        return None
     try:
         daily  = get_daily(ikey, token)
         prev_c = daily[0][4] if daily else None
         if not prev_c:
-            return 0.0
+            return None
         ltp = get_ltp(ikey, token)
         return round((ltp - prev_c) / prev_c * 100, 2)
     except urllib.error.HTTPError as e:
         if e.code == 400:
             _DEAD_IKEYS.add(ikey)
             _log.warning("Invalid instrument key %r (%s) — update INDEX_KEYS in signals.py", ikey, index_name)
-        return 0.0
+        else:
+            _log.warning("Index %s fetch failed: HTTP %s", index_name, e.code)
+        return None
+    except Exception as e:
+        _log.warning("Index %s fetch failed: %s", index_name, e)
+        return None
+
+def get_index_change(index_name, token):
+    """Returns % change of an index vs previous close. Falls back to 0.0 on any error."""
+    chg = _index_change_or_none(index_name, token)
+    return 0.0 if chg is None else chg
+
+def get_index_intraday_change(index_name, token):
+    """% move of an index from today's open to its latest 1-min close, or None on error."""
+    ikey = INDEX_KEYS.get(index_name)
+    if not ikey or ikey in _DEAD_IKEYS:
+        return None
+    try:
+        candles = sorted(get_intraday(ikey, token), key=lambda c: str(c[0]))
+        if not candles or not candles[0][1]:
+            return None
+        day_open = candles[0][1]
+        return round((candles[-1][4] - day_open) / day_open * 100, 2)
     except Exception:
-        return 0.0
+        return None
 
 def get_vix(token):
     """Returns India VIX absolute level (not % change). Falls back to 0.0 on error."""
@@ -283,20 +314,31 @@ def get_market_context(sec, token):
         if chg >= +0.5: return "bullish"
         return "neutral"
 
-    broad_chgs = {idx: get_index_change(idx, token) for idx in BROAD_MARKET_WEIGHTS}
+    raw = {idx: _index_change_or_none(idx, token) for idx in BROAD_MARKET_WEIGHTS}
+    # Weight only the indices that actually came back. A failed fetch used to count as
+    # 0.0%, so a rate-limited scan saw a "neutral" market and every filter switched off.
+    got = {idx: chg for idx, chg in raw.items() if chg is not None}
+    got_w = sum(BROAD_MARKET_WEIGHTS[idx] for idx in got)
     composite_chg = round(
-        sum(broad_chgs[idx] * wt for idx, wt in BROAD_MARKET_WEIGHTS.items()), 2
-    )
+        sum(chg * BROAD_MARKET_WEIGHTS[idx] for idx, chg in got.items()) / got_w, 2
+    ) if got_w else 0.0
+    broad_chgs   = {idx: (chg if chg is not None else 0.0) for idx, chg in raw.items()}
+    breadth_miss = [idx for idx, chg in raw.items() if chg is None]
 
     vix = get_vix(token)
+    nifty_intraday_chg = get_index_intraday_change("NIFTY50", token)
 
     sector_idx = SECTOR_INDEX.get(sec)
     sector_chg = get_index_change(sector_idx, token) if sector_idx else 0.0
 
     return {
-        "nifty_chg":     broad_chgs["NIFTY50"],
+        "nifty_chg":     broad_chgs["NIFTY50"] if raw["NIFTY50"] is not None else composite_chg,
         "composite_chg": composite_chg,
         "broad_chgs":    broad_chgs,
+        # Breadth is usable when Nifty50 itself or at least half the weight came back
+        "breadth_ok":    raw["NIFTY50"] is not None or got_w >= 0.5,
+        "breadth_missing": breadth_miss,
+        "nifty_intraday_chg": nifty_intraday_chg,
         "vix":           vix,
         "sector_chg":    sector_chg,
         "market_bias":   bias(composite_chg),
@@ -766,20 +808,46 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         composite_chg = market_ctx.get("composite_chg", nifty_chg) or nifty_chg
         sector_chg    = market_ctx.get("sector_chg", 0.0) or 0.0
         vix           = market_ctx.get("vix", 0.0) or 0.0
+        intraday_chg  = market_ctx.get("nifty_intraday_chg")   # None when unavailable
+        breadth_ok    = market_ctx.get("breadth_ok", True)
 
-        # Market hard block — uses composite breadth, not just Nifty50
-        if sig == "BUY" and composite_chg <= -MARKET_HARD_BLOCK_PCT:
-            sig = "WATCH"
-            market_blocked = True
-            ctx_warnings.append(f"Composite {composite_chg:+.1f}% — BUY blocked")
-            reason = "Blocked by broad market weakness"
-        elif sig == "SELL" and composite_chg >= MARKET_HARD_BLOCK_PCT:
-            sig = "WATCH"
-            market_blocked = True
-            ctx_warnings.append(f"Composite {composite_chg:+.1f}% — SELL blocked")
-            reason = "Blocked by broad market strength"
+        # Signed so that negative always means "market moving against this trade"
+        if sig in ("BUY", "SELL"):
+            side         = 1 if sig == "BUY" else -1
+            mkt_with     = composite_chg * side
+            intraday_with = intraday_chg * side if intraday_chg is not None else None
+            against_word = "weakness" if sig == "BUY" else "strength"
+            # Market hard block — composite breadth beyond the threshold, or the index
+            # trending against the trade since the open while also on the wrong side of
+            # yesterday's close (a genuine one-way session, not just a gap reversal).
+            if mkt_with <= -MARKET_HARD_BLOCK_PCT:
+                market_blocked = True
+                ctx_warnings.append(f"Composite {composite_chg:+.1f}% — {sig} blocked")
+            elif (intraday_with is not None and intraday_with <= -INTRADAY_SELLOFF_PCT
+                  and mkt_with < 0):
+                market_blocked = True
+                ctx_warnings.append(
+                    f"Nifty {intraday_chg:+.1f}% from open, composite {composite_chg:+.1f}% — {sig} blocked")
+            if market_blocked:
+                sig    = "WATCH"
+                reason = f"Blocked by broad market {against_word}"
 
         if not market_blocked and sig != "WATCH":
+            # Market headwind — trading against the broad tape below the hard block
+            if mkt_with <= -MARKET_HEADWIND_PCT:
+                conf_penalties += MARKET_HEADWIND_PENALTY
+                ctx_warnings.append(
+                    f"Market against {sig} (composite {composite_chg:+.1f}%) (-{MARKET_HEADWIND_PENALTY}% conf)")
+            elif intraday_with is not None and intraday_with <= -INTRADAY_SELLOFF_PCT:
+                conf_penalties += MARKET_HEADWIND_PENALTY
+                ctx_warnings.append(
+                    f"Nifty {intraday_chg:+.1f}% from open — against {sig} (-{MARKET_HEADWIND_PENALTY}% conf)")
+            if not breadth_ok:
+                conf_penalties += BREADTH_MISSING_PENALTY
+                ctx_warnings.append(
+                    f"Market breadth unavailable ({', '.join(market_ctx.get('breadth_missing', []))}) "
+                    f"(-{BREADTH_MISSING_PENALTY}% conf)")
+
             # Sector headwind / tailwind
             if sig == "BUY" and sector_chg <= -0.5:
                 conf_penalties += SECTOR_HEADWIND_PENALTY
@@ -839,6 +907,12 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         elif regime == "bear_trend" and sig == "SELL":
             conf_penalties -= 8
             ctx_warnings.append("Bear trend regime — tailwind for SELL (+8% conf)")
+        elif regime == "bear_trend" and sig == "BUY":
+            conf_penalties += 10
+            ctx_warnings.append("Bear trend regime — headwind for BUY (-10% conf)")
+        elif regime == "bull_trend" and sig == "SELL":
+            conf_penalties += 10
+            ctx_warnings.append("Bull trend regime — headwind for SELL (-10% conf)")
         elif regime == "gap_stall":
             conf_penalties += 10
             ctx_warnings.append("Gap-stall regime — price stalled after gap, caution (-10% conf)")
