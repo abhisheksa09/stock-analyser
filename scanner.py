@@ -75,11 +75,11 @@ def _get_backtest_min_conf() -> int:
 
 def _get_allow_amber() -> bool:
     """When true, amber setups (all hard gates pass, conf in the 55–74 band) may be
-    auto-saved too — not just full-green (conf >= READY_GREEN_MIN). Historically only
-    green saved, which buried every borderline setup and made BACKTEST_MIN_CONF a no-op.
-    Default on so the Backtest tab fills on marginal days; set BACKTEST_ALLOW_AMBER=0 to
-    restore green-only behaviour."""
-    return os.environ.get("BACKTEST_ALLOW_AMBER", "1").strip() not in ("0", "false", "False", "")
+    auto-saved too — not just full-green (conf >= READY_GREEN_MIN).
+    Default OFF: amber saves were Telegram-only (no email), so the Backtest tab filled with
+    trades never alerted by email — and those were where the losers kept showing up.
+    Paper trades now mirror exactly the green alerts; set BACKTEST_ALLOW_AMBER=1 to re-enable."""
+    return os.environ.get("BACKTEST_ALLOW_AMBER", "0").strip() not in ("0", "false", "False", "")
 
 def _get_confirm_scans() -> int:
     """Consecutive qualifying scans (same direction, in the prime window) required before
@@ -718,7 +718,8 @@ def run_scan(force: bool = False):
         confirm_needed = _get_confirm_scans()
         early_high_conf = mins < 585 and s["conf"] >= HIGH_CONF_TIME_OVERRIDE
         save_window     = bool(s.get("_time_prime")) or early_high_conf
-        if in_bt and sym not in STATE.bt_saved and save_window:
+        # in_watch: only stocks that also get the green alert/email may be paper-traded
+        if in_bt and in_watch and sym not in STATE.bt_saved and save_window:
             if save_ok:
                 prior  = STATE.bt_first_green.get(sym)
                 streak = (prior.get("count", 1) + 1) if (prior and prior["sig"] == s["sig"]) else 1
@@ -975,7 +976,8 @@ def run_us_scan(force: bool = False):
         confirm_needed = _get_confirm_scans()
         early_high_conf = mins < 570 and s["conf"] >= HIGH_CONF_TIME_OVERRIDE
         save_window     = bool(s.get("_time_prime")) or early_high_conf
-        if in_bt and sym not in US_STATE.bt_saved and save_window:
+        # in_watch: only stocks that also get the green alert may be paper-traded
+        if in_bt and in_watch and sym not in US_STATE.bt_saved and save_window:
             if save_ok:
                 prior  = US_STATE.bt_first_green.get(sym)
                 streak = (prior.get("count", 1) + 1) if (prior and prior["sig"] == s["sig"]) else 1
