@@ -138,9 +138,15 @@ def get_intraday_candles(sym, market, token=None, ikey=None):
 
 
 def get_daily_candles(sym, market, token=None, ikey=None):
-    """Daily candles. Returns newest-first list (matches Upstox format)."""
+    """Daily candles for completed sessions only. Returns newest-first list (matches Upstox format)."""
     if market == MARKET_US:
-        return _alpaca_daily(sym) if _alpaca_configured() else _yf_daily(sym)
+        daily = _alpaca_daily(sym) if _alpaca_configured() else _yf_daily(sym)
+        # Both feeds include today's in-progress bar, whose close is the live price. build_setup
+        # reads daily[0] as the previous close, so every US setup had chg = 0 and gap_pct measured
+        # open-vs-now — the day-trend filter and gap-stall regime were dead for US. Upstox's
+        # historical endpoint already excludes today, so this matches NSE behaviour.
+        today = datetime.now(ET).date().isoformat()
+        return [c for c in daily if c[0][:10] < today]
     from signals import get_daily
     return get_daily(ikey, token)
 

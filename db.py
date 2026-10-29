@@ -1168,8 +1168,10 @@ def get_paper_trade_stats(from_date=None, to_date=None, username: str = None, ma
 def get_best_pick_stats(from_date=None, to_date=None, username: str = None, market: str = None) -> dict:
     """
     Per-day best pick: selects the single trade with highest conf*rr score
-    for each trading day, then returns aggregate stats across those picks.
-    Models a strategy where you place exactly one ₹1L trade per day.
+    for each trading day *per market* (the "★ Pick" rows on the Backtest tab),
+    then returns aggregate stats across those picks. Ties go to the earliest trade.
+    Models a strategy where you place exactly one full-capital trade per day per market.
+    Keep the ranking in sync with bestPickIds() in scanner.html.
     Optionally bounded to [from_date, to_date] (inclusive). No bound = all-time.
     """
     conn = db()
@@ -1178,10 +1180,10 @@ def get_best_pick_stats(from_date=None, to_date=None, username: str = None, mark
     try:
         sql = """
             WITH ranked AS (
-                SELECT outcome, conf, rr, pnl_pts, pnl_pct, target_hit, sl_hit,
+                SELECT trade_date, outcome, conf, rr, pnl_pts, pnl_pct, target_hit, sl_hit,
                        ROW_NUMBER() OVER (
-                           PARTITION BY trade_date
-                           ORDER BY (conf * COALESCE(rr, 0)) DESC
+                           PARTITION BY trade_date, market
+                           ORDER BY (conf * COALESCE(rr, 0)) DESC, created_at ASC
                        ) AS rn
                 FROM paper_trades
                 WHERE outcome <> 'open'
@@ -1190,7 +1192,7 @@ def get_best_pick_stats(from_date=None, to_date=None, username: str = None, mark
                   {user_filter}
                   {market_filter}
             )
-            SELECT outcome, conf, rr, pnl_pts, pnl_pct, target_hit, sl_hit
+            SELECT trade_date, outcome, conf, rr, pnl_pts, pnl_pct, target_hit, sl_hit
             FROM ranked
             WHERE rn = 1
         """
@@ -1223,12 +1225,15 @@ def get_best_pick_stats(from_date=None, to_date=None, username: str = None, mark
         return {"total": 0}
 
     won     = [r for r in rows if r["outcome"] in ("won", "partial_win")]
+    lost    = [r for r in rows if r["outcome"] in ("lost", "partial_loss")]
     tgt_hit = [r for r in rows if r.get("target_hit")]
     pnl_pct = [float(r["pnl_pct"]) for r in rows if r.get("pnl_pct") is not None]
 
     return {
         "total":           len(rows),
+        "days":            len({r["trade_date"] for r in rows}),
         "won":             len(won),
+        "lost":            len(lost),
         "win_rate":        round(len(won) / len(rows) * 100, 1),
         "target_hit_rate": round(len(tgt_hit) / len(rows) * 100, 1) if rows else 0,
         "avg_pnl_pct":     round(sum(pnl_pct) / len(pnl_pct), 2) if pnl_pct else 0,

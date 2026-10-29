@@ -49,8 +49,13 @@ READY_AMBER_MIN = 55
 MIN_RVOL_GREEN  = int(os.environ.get("MIN_RVOL_GREEN", "150"))
 MIN_RR_SIGNAL   = 1.5   # hard R:R floor — below this the setup is mathematically poor
 ORB_CANDLES     = 15    # opening range = first 15 one-minute candles
-# Confidence at/above this waives the pre-9:45 anti-fakeout time gate (see is_ready).
-HIGH_CONF_TIME_OVERRIDE = int(os.environ.get("HIGH_CONF_TIME_OVERRIDE", "80"))
+# Direction gate (see is_ready). Post-7-Oct backtest: trades against the composite won 30%
+# (7/23) vs 62% with it; NSE trades with both composite and the stock's own day move behind
+# them won 71%. Below the 0.3% headwind penalty these used to pass untouched.
+ALIGN_MIN_PCT = float(os.environ.get("ALIGN_MIN_PCT", "0.0"))
+# Follow-through gate: price must have run past the entry by at least this % of the
+# entry→SL distance. Setups barely poking through the ORB won 29% (7/24); 50–100% won 80%.
+MIN_FOLLOW_THROUGH_PCT = float(os.environ.get("MIN_FOLLOW_THROUGH_PCT", "25"))
 
 # RSI entry bands — these MUST stay consistent with _score_rsi(), which is momentum-aligned:
 # a breakout BUY is *confirmed* by RSI pushing up through 50–65 (scores 1.00), not by a low
@@ -238,7 +243,9 @@ def get_intraday(ikey, token):
 def get_daily(ikey, token):
     from datetime import datetime, timedelta
     to  = datetime.utcnow().strftime("%Y-%m-%d")
-    frm = (datetime.utcnow() - timedelta(days=35)).strftime("%Y-%m-%d")
+    # 90 calendar days ≈ 60 sessions. 35 days gave ~24 closes — below the 35 MACD(12,26,9)
+    # needs, so every NSE setup had macd_hist = 0 and a meaningless MACD score.
+    frm = (datetime.utcnow() - timedelta(days=90)).strftime("%Y-%m-%d")
     d = _upstox_get(
         f"/v2/historical-candle/{urllib.parse.quote(ikey)}/day/{to}/{frm}", token
     )
@@ -793,7 +800,7 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
 
     # An opening-range breakout needs a complete opening range. Before 15 candles exist the
     # "ORB" is a 1–2 minute range and any tick beyond it reads as a breakout — pre-9:30 NSE
-    # picks (fired via HIGH_CONF_TIME_OVERRIDE) hit SL 56% of the time vs 33% after 9:45.
+    # picks (fired via the old high-conf early override) hit SL 56% of the time vs 33% after 9:45.
     if sig != "WATCH" and not orb_complete:
         sig    = "WATCH"
         reason = f"Opening range still forming ({len(intra)}/{ORB_CANDLES} candles) — setup skipped"
@@ -985,24 +992,34 @@ def is_ready(s, ist_mins, market="NSE"):
       time_prime = 585–660  (9:45 – 11:00 AM ET — ORB momentum window)
     market="NSE" → original IST windows unchanged.
 
-    A read at/above HIGH_CONF_TIME_OVERRIDE waives only the early side of time_ok
-    (not the late side) — a call that strong before the 9:45 anti-fakeout floor
-    opens is unlikely to be pure opening noise, and gating it out regardless of
-    confidence was burying good early reads (e.g. an 88% conf SELL at 9:19).
+    No confidence level waives the 9:45 floor: the old high-conf early override let
+    09:3x NSE reads through, and those won 42% vs 60% for reads after 10:00.
+
+    Two direction/quality gates (hard fails):
+      align      — composite and the stock's own day move must both favour the trade
+      followthru — price has run >= MIN_FOLLOW_THROUGH_PCT of the risk past the entry
     """
     vp = round(s["tVpm"] / (s["aVpm"] or 1) * 100)
 
     if market == "US":
         time_ok    = 570 <= ist_mins <= 960   # 9:30 AM – 4:00 PM ET
         time_prime = 585 <= ist_mins <= 660   # 9:45 – 11:00 AM ET
-        too_early  = ist_mins < 570
     else:
         time_ok    = 585 <= ist_mins <= 900
         time_prime = 585 <= ist_mins <= 660  # 9:45–11:00 AM IST — ORB momentum window
-        too_early  = ist_mins < 585
-    if too_early and not time_ok and s["conf"] >= HIGH_CONF_TIME_OVERRIDE:
-        time_ok = True
     is_actual  = s["sig"] != "WATCH"
+
+    side = 1 if s["sig"] == "BUY" else -1
+    mctx = s.get("market_ctx") or {}
+    comp = mctx.get("composite_chg", mctx.get("nifty_chg"))
+    # No context at all (evening scan, legacy callers) → only the stock's own move is checked.
+    align_ok = not is_actual or (
+        (comp is None or comp * side > ALIGN_MIN_PCT) and (s.get("chg") or 0) * side > ALIGN_MIN_PCT
+    )
+    risk = abs(s["en"] - s["sl"])
+    run  = (s["ltp"] - s["en"]) * side
+    follow_pct    = round(run / risk * 100, 1) if risk else 0.0
+    followthru_ok = not is_actual or follow_pct >= MIN_FOLLOW_THROUGH_PCT
     orb_ok     = (
         (s["sig"] == "BUY"  and s["bo"]) or
         (s["sig"] == "SELL" and s["bd"]) or
@@ -1022,6 +1039,9 @@ def is_ready(s, ist_mins, market="NSE"):
         "candle":     candle_ok,
         "vol":        vol_ok,
         "orb":        orb_ok,
+        "align":      align_ok,
+        "followthru": followthru_ok,
+        "follow_pct": follow_pct,
         "conf_green": conf_ok,
         "conf_amber": conf_warn,
         "rvol_pct":   vp,
@@ -1040,16 +1060,18 @@ def is_ready(s, ist_mins, market="NSE"):
         not conf_ok and not conf_warn,
         not vol_ok,
         not orb_ok,
+        not align_ok,
+        not followthru_ok,
     ])
     warnings = sum([not time_prime and time_ok, conf_warn])
 
     if not is_actual:
         return "watch", 0
     if hard_fails > 0:
-        return "red", 6 - hard_fails
+        return "red", 8 - hard_fails
     if warnings > 0:
-        return "amber", 6
-    return "green", 6
+        return "amber", 8
+    return "green", 8
 
 
 def failing_gates(s):
@@ -1074,6 +1096,10 @@ def failing_gates(s):
         fails.append(f"volume({g.get('rvol_pct', '?')}%<{MIN_RVOL_GREEN}%)")
     if not g.get("orb"):
         fails.append("no-ORB-breakout")
+    if not g.get("align", True):
+        fails.append("market/day-move-against-trade")
+    if not g.get("followthru", True):
+        fails.append(f"follow-through({g.get('follow_pct', '?')}%<{MIN_FOLLOW_THROUGH_PCT:.0f}%)")
     if not g.get("conf_green") and not g.get("conf_amber"):
         fails.append(f"conf({s.get('conf', '?')}%<{READY_AMBER_MIN}%)")
     elif not g.get("conf_green"):

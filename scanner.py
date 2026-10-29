@@ -39,7 +39,7 @@ import urllib.error
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
-from signals import STOCKS, US_STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, detect_regime, get_index_change, SECTOR_INDEX, READY_GREEN_MIN, failing_gates, HIGH_CONF_TIME_OVERRIDE
+from signals import STOCKS, US_STOCKS, build_setup, get_ltp, get_intraday, get_daily, is_ready, get_market_context, get_market_depth, detect_regime, get_index_change, SECTOR_INDEX, READY_GREEN_MIN, failing_gates
 from data_provider import get_intraday_candles, get_daily_candles, get_ltp_price, get_market_context_us, _alpaca_configured
 from macro import get_full_macro_context, apply_all_macro_penalties
 import db as _db_module
@@ -712,12 +712,10 @@ def run_scan(force: bool = False):
         # Save when the setup qualifies (green, or amber when BACKTEST_ALLOW_AMBER)
         # for BACKTEST_CONFIRM_SCANS consecutive scans in the same direction.
         # Default confirm=1 → save on the first qualifying scan. The prime-window
-        # gate (>= 9:45) still filters first-30-min fakeouts, except for a read at/above
-        # HIGH_CONF_TIME_OVERRIDE conf — that strong a signal saves immediately.
+        # gate (9:45–11:00) filters first-30-min fakeouts with no confidence override.
         save_ok        = _save_verdict_ok(verdict, s["conf"], bt_min_conf)
         confirm_needed = _get_confirm_scans()
-        early_high_conf = mins < 585 and s["conf"] >= HIGH_CONF_TIME_OVERRIDE
-        save_window     = bool(s.get("_time_prime")) or early_high_conf
+        save_window    = bool(s.get("_time_prime"))
         # in_watch: only stocks that also get the green alert/email may be paper-traded
         if in_bt and in_watch and sym not in STATE.bt_saved and save_window:
             if save_ok:
@@ -974,8 +972,7 @@ def run_us_scan(force: bool = False):
         # Auto paper trade (same qualifying-verdict + confirm-streak logic as NSE)
         save_ok        = _save_verdict_ok(verdict, s["conf"], bt_min_conf)
         confirm_needed = _get_confirm_scans()
-        early_high_conf = mins < 570 and s["conf"] >= HIGH_CONF_TIME_OVERRIDE
-        save_window     = bool(s.get("_time_prime")) or early_high_conf
+        save_window    = bool(s.get("_time_prime"))
         # in_watch: only stocks that also get the green alert may be paper-traded
         if in_bt and in_watch and sym not in US_STATE.bt_saved and save_window:
             if save_ok:
