@@ -932,16 +932,24 @@ th[data-tip]{cursor:default;}
     <!-- Best Single Pick stats -->
     <div class="card" style="margin-bottom:14px;">
       <div class="acc-title" style="margin-bottom:8px;">
-        Best single pick per day
-        <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px;">★ Pick rows only · 1 trade/day per market · full capital · ranked by confidence × R:R</span>
+        Settled trades summary
+        <span style="font-size:11px;color:#999;font-weight:400;margin-left:6px;">open trades excluded · partial win/loss counted as won/lost · follows the filters below</span>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;">
-        <div class="hstat-card"><div class="hstat-l">★ Picks</div><div class="hstat-n" id="bpSimTotal">—</div></div>
+      <div style="font-size:11px;color:#666;font-weight:600;margin:4px 0 6px;">All signals — every trade fired</div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+        <div class="hstat-card"><div class="hstat-l">Trade Days</div><div class="hstat-n" id="atDays">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">Trades</div><div class="hstat-n" id="atTotal">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">Won</div><div class="hstat-n" id="atWon">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">Lost</div><div class="hstat-n" id="atLost">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">Win Rate</div><div class="hstat-n" id="atWinRate">—</div></div>
+      </div>
+      <div style="font-size:11px;color:#666;font-weight:600;margin:12px 0 6px;">★ Best pick only — 1 trade per day per market (NSE + US), ranked by confidence × R:R</div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
         <div class="hstat-card"><div class="hstat-l">Trade Days</div><div class="hstat-n" id="bpTotal">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">★ Pick Trades</div><div class="hstat-n" id="bpSimTotal">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">Won</div><div class="hstat-n" id="bpWon">—</div></div>
+        <div class="hstat-card"><div class="hstat-l">Lost</div><div class="hstat-n" id="bpLost">—</div></div>
         <div class="hstat-card"><div class="hstat-l">Win Rate</div><div class="hstat-n" id="bpWinRate">—</div></div>
-        <div class="hstat-card"><div class="hstat-l">Loss Rate</div><div class="hstat-n" id="bpLossRate">—</div></div>
-        <div class="hstat-card"><div class="hstat-l">Trades Won</div><div class="hstat-n" id="bpWon">—</div></div>
-        <div class="hstat-card"><div class="hstat-l">Trades Lost</div><div class="hstat-n" id="bpLost">—</div></div>
       </div>
     </div>
 
@@ -3306,41 +3314,43 @@ function renderBtStats(stats) {
 
 // Stats for the settled ★ Pick rows, computed from the loaded trades so the card always
 // matches the stars in the table and the current market / date / signal filters.
-function bestPickStatsFromTrades(trades) {
-  var pickIds = bestPickIds(trades);
-  var picks = trades.filter(function(t) { return pickIds.has(t.id) && t.outcome && t.outcome !== 'open'; });
-  if (!picks.length) return { total: 0 };
-  var won  = picks.filter(function(t) { return t.outcome === 'won'  || t.outcome === 'partial_win';  }).length;
-  var lost = picks.filter(function(t) { return t.outcome === 'lost' || t.outcome === 'partial_loss'; }).length;
-  var days = new Set(picks.map(function(t) { return t.trade_date; })).size;
-  return { total: picks.length, days: days, won: won, lost: lost,
-           win_rate: Math.round(won / picks.length * 1000) / 10 };
+function settledStats(trades) {
+  var settled = trades.filter(function(t) { return t.outcome && t.outcome !== 'open'; });
+  if (!settled.length) return { total: 0 };
+  var won  = settled.filter(function(t) { return t.outcome === 'won'  || t.outcome === 'partial_win';  }).length;
+  var lost = settled.filter(function(t) { return t.outcome === 'lost' || t.outcome === 'partial_loss'; }).length;
+  var days = new Set(settled.map(function(t) { return t.trade_date; })).size;
+  return { total: settled.length, days: days, won: won, lost: lost,
+           win_rate: Math.round(won / settled.length * 1000) / 10 };
 }
 
-function renderBestPickStats(stats) {
+function bestPickStatsFromTrades(trades) {
+  var pickIds = bestPickIds(trades);
+  return settledStats(trades.filter(function(t) { return pickIds.has(t.id); }));
+}
+
+// Fills one row of the summary card: prefix 'at' = all settled trades, 'bp' = ★ Pick trades only.
+function renderSummaryRow(prefix, daysId, totalId, stats) {
   function el(id, v, cls) {
     var e = document.getElementById(id);
     if(!e) return;
     e.textContent = v;
     if(cls !== undefined) e.className = 'hstat-n ' + (cls || '');
   }
-  // Every figure here is for the ★ Pick trades only (one per day per market, settled);
-  // all-trade stats live in the accuracy breakdown below.
-  var picks    = stats.total || 0;
-  var days     = stats.days != null ? stats.days : null;
-  var won      = picks ? (stats.won || 0) : null;
-  var lost     = picks ? (stats.lost != null ? stats.lost : picks - (stats.won || 0)) : null;
-  var winRate  = picks && stats.win_rate != null ? stats.win_rate : null;
-  var lossRate = (winRate != null) ? Math.round((100 - winRate) * 10) / 10 : null;
+  var n       = stats.total || 0;
+  var winRate = n && stats.win_rate != null ? stats.win_rate : null;
 
-  el('bpSimTotal', picks || '—');
-  el('bpTotal', days || '—');
-  el('bpWinRate', winRate != null ? winRate + '%' : '—',
+  el(totalId, n || '—');
+  el(daysId, n ? stats.days : '—');
+  el(prefix + 'Won',  n ? stats.won  : '—', n ? 'n-green' : '');
+  el(prefix + 'Lost', n ? stats.lost : '—', n && stats.lost > 0 ? 'n-red' : '');
+  el(prefix + 'WinRate', winRate != null ? winRate + '%' : '—',
      winRate != null ? (winRate >= 55 ? 'n-green' : winRate >= 40 ? '' : 'n-red') : '');
-  el('bpLossRate', lossRate != null ? lossRate + '%' : '—',
-     lossRate != null ? (lossRate <= 45 ? 'n-green' : lossRate <= 60 ? '' : 'n-red') : '');
-  el('bpWon', won != null ? won : '—', won != null ? 'n-green' : '');
-  el('bpLost', lost != null ? lost : '—', lost != null && lost > 0 ? 'n-red' : '');
+}
+
+function renderBestPickStats(stats) {
+  renderSummaryRow('at', 'atDays', 'atTotal', settledStats(_btTrades));
+  renderSummaryRow('bp', 'bpTotal', 'bpSimTotal', stats);
 }
 
 function renderWalkForward(months) {
