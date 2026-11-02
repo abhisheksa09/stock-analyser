@@ -244,6 +244,7 @@ _MIGRATIONS = [
     "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS mfe_pct       NUMERIC",  # max favourable excursion before exit
     "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS mae_pct       NUMERIC",  # max adverse excursion before exit
     "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS exit_time     TEXT",
+    "ALTER TABLE paper_trades ADD COLUMN IF NOT EXISTS path          JSONB",    # 1-min [mins, hi%, lo%, close%] signal→close
 ]
 
 def init_db():
@@ -860,7 +861,10 @@ def count_paper_trades(username=None) -> int:
         return 0
 
 def get_paper_trades(from_date=None, to_date=None, sym=None,
-                     outcome=None, limit=500, username=None, market=None) -> list:
+                     outcome=None, limit=500, username=None, market=None,
+                     include_path=False) -> list:
+    """`path` (~375 points per settled trade) is dropped unless include_path — the Backtest
+    tab loads hundreds of trades and never reads it."""
     for attempt in range(2):
         conn = db()
         if not conn:
@@ -892,6 +896,8 @@ def get_paper_trades(from_date=None, to_date=None, sym=None,
             result = []
             for r in rows:
                 row = dict(r)
+                if not include_path:
+                    row.pop("path", None)
                 for k, v in row.items():
                     if hasattr(v, "isoformat"):        # date / datetime
                         row[k] = v.isoformat()
@@ -925,7 +931,7 @@ def settle_paper_trade(trade_id: str, close_price: float,
                        target_hit: bool, sl_hit: bool,
                        day_high: float = None, day_low: float = None,
                        mfe_pct: float = None, mae_pct: float = None,
-                       exit_time: str = None) -> bool:
+                       exit_time: str = None, path: list = None) -> bool:
     """Update a paper trade with end-of-day settlement data."""
     conn = db()
     if not conn:
@@ -937,11 +943,12 @@ def settle_paper_trade(trade_id: str, close_price: float,
                 SET close_price=%s, settled_at=NOW(), outcome=%s,
                     pnl_pts=%s, pnl_pct=%s, target_hit=%s, sl_hit=%s,
                     day_high=%s, day_low=%s,
-                    mfe_pct=%s, mae_pct=%s, exit_time=%s
+                    mfe_pct=%s, mae_pct=%s, exit_time=%s, path=%s::jsonb
                 WHERE id=%s AND outcome='open'
             """, (close_price, outcome, pnl_pts, pnl_pct,
                   target_hit, sl_hit, day_high, day_low,
-                  mfe_pct, mae_pct, exit_time, trade_id))
+                  mfe_pct, mae_pct, exit_time,
+                  json.dumps(path) if path else None, trade_id))
         return True
     except Exception as e:
         log.warning("settle_paper_trade: %s", e)

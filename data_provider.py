@@ -402,17 +402,50 @@ def _yf_index_change(index_name):
         return 0.0
 
 
+_CBOE_VIX_URL = "https://cdn-api.cboe.com/api/global/delayed_quotes/quotes/_VIX.json"
+_VIX_FRESH_SECS = 300    # reuse a fetched value for 5 min — context is built once per stock
+_VIX_STALE_SECS = 3600   # on fetch failure, a value up to 1 h old beats 0
+_vix_cache = {"ts": 0.0, "val": 0.0}
+
+
+def _cboe_vix():
+    """VIX from CBOE's public delayed-quotes feed (no key, ~15 min delay). None on failure."""
+    try:
+        resp = _YF_SESSION.get(_CBOE_VIX_URL, timeout=8)
+        resp.raise_for_status()
+        price = (resp.json().get("data") or {}).get("current_price")
+        return round(float(price), 2) if price else None
+    except Exception as e:
+        log.warning("[CBOE] VIX fetch failed: %s", e)
+        return None
+
+
 def _yf_vix():
-    """Latest VIX level via yfinance ^VIX. Tries intraday first, then daily.
-    Returns 0.0 if unavailable (Yahoo throttles the '^' index tickers)."""
-    for period, interval in (("1d", "1m"), ("5d", "1d")):
-        try:
-            df = _yf_fetch("^VIX", period=period, interval=interval)
-        except YFRateLimitError:
-            return 0.0
-        if df is not None and not df.empty:
+    """Latest VIX level: CBOE first, then yfinance ^VIX (intraday, then daily).
+
+    Yahoo throttles the '^' index tickers from Render's IP, and this ran once per stock
+    in every US scan — 23 of 35 post-7-Oct US paper trades were saved with VIX 0. The
+    cache cuts the calls to one per 5 min and survives a short outage. 0.0 only when
+    every source fails and nothing usable is cached."""
+    now = time.time()
+    if _vix_cache["val"] and now - _vix_cache["ts"] < _VIX_FRESH_SECS:
+        return _vix_cache["val"]
+    val = _cboe_vix()
+    if not val:
+        for period, interval in (("1d", "1m"), ("5d", "1d")):
             try:
-                return round(float(df["Close"].iloc[-1]), 2)
-            except Exception:
-                continue
+                df = _yf_fetch("^VIX", period=period, interval=interval)
+            except YFRateLimitError:
+                break
+            if df is not None and not df.empty:
+                try:
+                    val = round(float(df["Close"].iloc[-1]), 2)
+                    break
+                except Exception:
+                    continue
+    if val:
+        _vix_cache.update(ts=now, val=val)
+        return val
+    if _vix_cache["val"] and now - _vix_cache["ts"] < _VIX_STALE_SECS:
+        return _vix_cache["val"]
     return 0.0

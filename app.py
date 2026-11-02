@@ -1654,6 +1654,7 @@ def get_paper_trades():
         limit=int(request.args.get("limit", 500)),
         username=sess["username"],
         market=request.args.get("market") or None,
+        include_path=request.args.get("include_path") == "1",
     )
     return jsonify({"trades": trades, "count": len(trades)})
 
@@ -2007,8 +2008,9 @@ def _compute_outcome_intraday(sig: str, entry: float, target: float,
     If neither level is hit before session end: exit at the last candle's close.
 
     Returns: (exit_price, outcome, pnl_pts, pnl_pct, target_hit, sl_hit, extra)
-      extra = {"mfe_pct", "mae_pct", "exit_time"}: max favourable / adverse move from
-      `fill` (in %) up to the exit, and the HH:MM of the exit candle.
+      extra = {"mfe_pct", "mae_pct", "exit_time", "path"}: max favourable / adverse move
+      from `fill` (in %) up to the exit, the HH:MM of the exit candle, and the 1-min
+      price path from the signal to session end.
     """
     base = fill if fill else entry
 
@@ -2098,10 +2100,17 @@ def _compute_outcome_intraday(sig: str, entry: float, target: float,
     else:
         mfe, mae = base - min(fav_px), max(adv_px) - base
     ts = str(relevant[exit_idx][0])
+    # Full post-signal price path to session end (not just to the exit), so alternative
+    # stops / targets / trailing exits can be replayed later. One row per 1-min candle:
+    # [minutes since signal, high %, low %, close %], each % move from the fill.
+    pct_of = lambda px: round((float(px) - base) / base * 100, 3)
+    path = [[_candle_mins(c) - sig_mins, pct_of(c[2]), pct_of(c[3]), pct_of(c[4])]
+            for c in relevant] if base else None
     extra = {
         "mfe_pct":   round(max(mfe, 0) / base * 100, 3) if base else None,
         "mae_pct":   round(max(mae, 0) / base * 100, 3) if base else None,
         "exit_time": ts[11:16] if len(ts) >= 16 else None,
+        "path":      path,
     }
     return exit_px, outcome, pts, pct, tgt_hit, sl_hit, extra
 
@@ -2227,6 +2236,7 @@ def _settle_paper_trades_for_date(date_str: str = None):
                 mfe_pct     = extra["mfe_pct"],
                 mae_pct     = extra["mae_pct"],
                 exit_time   = extra["exit_time"],
+                path        = extra["path"],
             )
 
             if ok:
@@ -2356,6 +2366,7 @@ def _settle_us_paper_trades_for_date(date_str: str = None):
                 mfe_pct     = extra["mfe_pct"],
                 mae_pct     = extra["mae_pct"],
                 exit_time   = extra["exit_time"],
+                path        = extra["path"],
             )
 
             if ok:

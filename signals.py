@@ -711,6 +711,11 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
 
     # ── New indicators ────────────────────────────────────────────────────────
     rvol_ratio              = rvol_spike(intra) if intra else 1.0
+    # Logged for analysis only (not scored yet). `rs` above is daily RSI; this is RSI14 on
+    # today's 1-min closes. VWAP slope = VWAP now vs 15 candles ago, in %.
+    intra_rsi      = rsi14([c[4] for c in intra]) if len(intra) >= 15 else None
+    vw_prev        = vwap(intra[:-15]) if len(intra) > 15 else None
+    vwap_slope_pct = round((vwap(intra) - vw_prev) / vw_prev * 100, 3) if vw_prev else None
     mc, ms_v, mh            = macd_signal(closes_chron)
     bb_upper, bb_lower, bb_bw, bb_sq = bollinger_bands(closes_chron)
     t_vol = sum(c[5] for c in intra)
@@ -957,6 +962,7 @@ def build_setup(sym, sec, intra, daily, ltp, market_ctx=None, depth=None):
         regime=regime,
         # ── New indicators ─────────────────────────────────────────────────
         rvol_spike=rvol_ratio,
+        intra_rsi=intra_rsi, vwap_slope_pct=vwap_slope_pct,
         macd=mc, macd_sig=ms_v, macd_hist=mh,
         bb_upper=bb_upper, bb_lower=bb_lower, bb_bw=bb_bw, bb_squeeze=bb_sq,
         depth=depth,

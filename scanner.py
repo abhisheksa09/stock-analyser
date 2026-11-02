@@ -487,6 +487,13 @@ def _save_paper_trade(s: dict, market: str = "NSE"):
                 "rvol_spike":    s.get("rvol_spike"),
                 "macd_hist":     s.get("macd_hist"),
                 "bb_squeeze":    s.get("bb_squeeze"),
+                # Candidate predictors, logged before any gate uses them
+                "intra_rsi":        s.get("intra_rsi"),
+                "vwap_slope_pct":   s.get("vwap_slope_pct"),
+                "rel_strength":     (round(s["chg"] - mctx["composite_chg"], 2)
+                                     if s.get("chg") is not None and mctx.get("composite_chg") is not None
+                                     else None),
+                "idx_intraday_chg": mctx.get("nifty_intraday_chg"),
             },
         })
         saved = _db_module.save_paper_trade(trade)
