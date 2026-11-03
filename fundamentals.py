@@ -1,8 +1,11 @@
 """
 fundamentals.py — Long-Term Stock Scorer
 Segment-aware (Large / Mid / Small Cap) fundamental + technical scoring.
-Data sources: yfinance (primary), Screener.in (promoter holding), NSE India (events).
-Runs as a weekly batch job (Sunday 8pm IST) via APScheduler in app.py.
+Data sources: Screener.in (fundamentals) + yfinance chart (price, 200 DMA, relative
+strength) when LT_FUNDAMENTALS_SOURCE=screener; yfinance quoteSummary otherwise.
+NSE India for events.
+Runs weekly from GitHub Actions (lt_scan_job.py, .github/workflows/lt-scan.yml): Render's
+IP is refused by both Yahoo quoteSummary and Screener.in, so the scan can't run there.
 Does NOT touch any intraday scanner state.
 """
 
@@ -383,6 +386,141 @@ def _get_promoter_holding(symbol: str) -> float | None:
         log.debug("Screener.in %s failed: %s", symbol, e)
     return None
 
+# ── Screener.in fundamentals ──────────────────────────────────────────────────
+# Screener answers from residential and GitHub-runner IPs (probe on 3 Nov 2026: 7/8 pages
+# returned a P/E) but Cloudflare blocks Render. One page carries everything the score needs.
+LT_FUNDAMENTALS_SOURCE = os.environ.get("LT_FUNDAMENTALS_SOURCE", "yfinance").lower()
+SCREENER_DELAY_S       = float(os.environ.get("SCREENER_DELAY_S", "1.0"))
+_SCREENER_HEADERS = {
+    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/120 Safari/537.36",
+    "Accept":          "text/html",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def _scr_num(s):
+    """'4,01,413' / '-12.5' / '' → float or None."""
+    try:
+        return float(s.replace(",", "").strip())
+    except (AttributeError, ValueError):
+        return None
+
+
+def _scr_get(url: str) -> str | None:
+    """GET a Screener page; backs off once on 429. None on any other failure."""
+    for attempt in range(2):
+        try:
+            req = urllib.request.Request(url, headers=_SCREENER_HEADERS)
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return r.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt == 0:
+                log.warning("Screener 429 on %s — backing off 30s", url)
+                time.sleep(30)
+                continue
+            log.debug("Screener %s: HTTP %s", url, e.code)
+            return None
+        except Exception as e:
+            log.debug("Screener %s: %s", url, e)
+            return None
+    return None
+
+
+def _scr_row(html: str, label: str) -> list:
+    """Numeric cells of the first table row whose label cell starts with `label`."""
+    import re
+    m = re.search(
+        r'<td class="text"[^>]*>\s*(?:<button[^>]*>)?\s*' + re.escape(label) + r'\b(.*?)</tr>',
+        html, re.S,
+    )
+    if not m:
+        return []
+    cells = re.findall(r'<td[^>]*>\s*([^<]*?)\s*</td>', m.group(1))
+    return [v for v in (_scr_num(c.rstrip("%")) for c in cells) if v is not None]
+
+
+def _parse_screener(html: str) -> dict | None:
+    import re
+    ratios = {}
+    top = re.search(r'<ul id="top-ratios">(.*?)</ul>', html, re.S)
+    if not top:
+        return None
+    for li in re.findall(r'<li[^>]*>(.*?)</li>', top.group(1), re.S):
+        name = re.search(r'<span class="name">\s*(.*?)\s*</span>', li, re.S)
+        nums = re.findall(r'<span class="number">([^<]*)</span>', li)
+        if name:
+            ratios[re.sub(r"\s+", " ", name.group(1)).strip()] = [_scr_num(n) for n in nums]
+
+    def first(key):
+        v = ratios.get(key) or [None]
+        return v[0]
+
+    pe = first("Stock P/E")
+    if not pe:
+        return None   # no earnings data on this view (e.g. consolidated for a standalone-only company)
+    cmp = first("Current Price")
+    hl  = ratios.get("High / Low") or [None, None]
+
+    # Sector = the "Sector" level of the peer-comparison breadcrumb. The finer "Industry"
+    # level leaves too few peers per segment for _compute_sector_medians (needs 3).
+    sec = re.search(r'title="Sector">\s*([^<]+?)\s*</a>', html)
+
+    def cagr(heading):
+        """Compounded growth table → {'3 Years': 0.29, 'TTM': 0.45, ...} as fractions."""
+        i = html.find(heading)
+        if i < 0:
+            return {}
+        # Stop at this table's end — the next growth table repeats the same "3 Years:" keys
+        block = re.sub(r"<[^>]+>", " ", html[i:html.find("</table>", i)])
+        return {k.strip(): float(v) / 100 for k, v in re.findall(r"(\d+ Years|TTM):\s*(-?\d+)%", block)}
+
+    profit_g = cagr("Compounded Profit Growth")
+    sales_g  = cagr("Compounded Sales Growth")
+
+    # Debt/equity from the latest balance-sheet column: borrowings / (equity capital + reserves)
+    borrow  = _scr_row(html[html.find('id="balance-sheet"'):], "Borrowings")
+    eq_cap  = _scr_row(html[html.find('id="balance-sheet"'):], "Equity Capital")
+    reserve = _scr_row(html[html.find('id="balance-sheet"'):], "Reserves")
+    de = None
+    if borrow and eq_cap and reserve and (eq_cap[-1] + reserve[-1]) > 0:
+        de = round(borrow[-1] / (eq_cap[-1] + reserve[-1]), 2)
+
+    promoters = _scr_row(html[html.find('id="shareholding"'):], "Promoters")
+
+    return {
+        "cmp":            cmp,
+        "pe":             pe,
+        "eps":            round(cmp / pe, 2) if cmp and pe else None,
+        "roe":            first("ROE"),
+        "debt_equity":    de,
+        # 3-year CAGR, not TTM: a 6–12 month thesis shouldn't hinge on one quarter's swing.
+        "eps_growth":     profit_g.get("3 Years", profit_g.get("TTM")),
+        "rev_growth":     sales_g.get("3 Years", sales_g.get("TTM")),
+        "sector":         sec.group(1) if sec else "",
+        "promoter_holding": promoters[-1] if promoters else None,
+        "book_value":     first("Book Value"),
+        "dividend_yield": first("Dividend Yield") or 0.0,
+        "52w_high":       hl[0] if len(hl) > 0 else None,
+        "52w_low":        hl[1] if len(hl) > 1 else None,
+    }
+
+
+def _fetch_screener(symbol: str) -> dict | None:
+    """Fundamentals for one NSE stock from Screener.in — consolidated view first, then
+    standalone (banks like KARURVYSYA have no consolidated accounts)."""
+    sym = urllib.parse.quote(symbol)
+    for view in ("consolidated/", ""):
+        html = _scr_get(f"https://www.screener.in/company/{sym}/{view}")
+        time.sleep(SCREENER_DELAY_S)
+        if html:
+            d = _parse_screener(html)
+            if d:
+                return d
+    log.debug("Screener: no usable data for %s", symbol)
+    return None
+
+
 # ── Corporate events (NSE India) ──────────────────────────────────────────────
 def _get_corporate_events(symbol: str) -> dict:
     """
@@ -452,8 +590,26 @@ def _fetch_nifty_history(yf):
     return None
 
 
-def _fetch_yf(symbol: str, nifty_hist=None) -> dict | None:
-    """Fetch fundamentals + price history for one NSE stock via yfinance."""
+def _fetch_stock(symbol: str, nifty_hist=None) -> dict | None:
+    """One stock's scoring inputs from the configured source. With Screener, yfinance is
+    only asked for price history (the crumb-free chart endpoint) and Screener fills in
+    every fundamental — no quoteSummary calls at all."""
+    if LT_FUNDAMENTALS_SOURCE != "screener":
+        return _fetch_yf(symbol, nifty_hist=nifty_hist)
+    d   = _fetch_yf(symbol, nifty_hist=nifty_hist, fundamentals=False) or {"symbol": symbol}
+    scr = _fetch_screener(symbol)
+    if not scr:
+        return d
+    price_cmp = d.get("cmp")
+    d.update({k: v for k, v in scr.items() if v is not None})
+    if price_cmp:
+        d["cmp"] = price_cmp   # Yahoo's close is fresher than Screener's cached quote
+    return d
+
+
+def _fetch_yf(symbol: str, nifty_hist=None, fundamentals: bool = True) -> dict | None:
+    """Fetch fundamentals + price history for one NSE stock via yfinance.
+    fundamentals=False fetches price history only (Screener supplies the rest)."""
     try:
         import yfinance as yf
     except ImportError:
@@ -464,10 +620,10 @@ def _fetch_yf(symbol: str, nifty_hist=None) -> dict | None:
     # Timestamp.utcnow is raised by pandas internals and not actionable from here.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return _fetch_yf_inner(symbol, yf, nifty_hist)
+        return _fetch_yf_inner(symbol, yf, nifty_hist, fundamentals)
 
 
-def _fetch_yf_inner(symbol: str, yf, nifty_hist=None) -> dict | None:
+def _fetch_yf_inner(symbol: str, yf, nifty_hist=None, fundamentals: bool = True) -> dict | None:
     """Inner implementation — called inside warnings.catch_warnings() block."""
     proxy = _get_yf_proxy()
     ticker = yf.Ticker(f"{symbol}.NS", **({"proxy": proxy} if proxy else {}))
@@ -488,7 +644,7 @@ def _fetch_yf_inner(symbol: str, yf, nifty_hist=None) -> dict | None:
     # circuit breaker has tripped, which drops the per-symbol cost from 3 Yahoo
     # requests to 1 and stops the 401 flood.
     info = {}
-    if not _yf_rl["info_disabled"]:
+    if fundamentals and not _yf_rl["info_disabled"]:
         if _yf_crumb_is_poisoned(yf):
             _yf_reset_crumb(yf, "cached crumb is a rate-limit error body")
         err = None
@@ -545,7 +701,9 @@ def _fetch_yf_inner(symbol: str, yf, nifty_hist=None) -> dict | None:
     # growth are the only real fundamentals left in a throttled run; skipping this
     # call would throw away the last two working factors.
     try:
-        fin = ticker.get_financials(proxy=proxy) if proxy else ticker.financials  # annual, most recent first
+        fin = None
+        if fundamentals:
+            fin = ticker.get_financials(proxy=proxy) if proxy else ticker.financials  # annual, most recent first
         if fin is not None and not fin.empty and fin.shape[1] >= 2:
             for key in _NI_KEYS:
                 if key in fin.index:
@@ -922,7 +1080,7 @@ def run_lt_scan(segment: str = None) -> dict:
         stock_data = []
         for i, sym in enumerate(stocks, 1):
             try:
-                d = _fetch_yf(sym, nifty_hist=nifty_hist)
+                d = _fetch_stock(sym, nifty_hist=nifty_hist)
                 if d:
                     stock_data.append(d)
                 time.sleep(_yf_rl["delay"])  # be gentle to yfinance
@@ -1004,12 +1162,12 @@ def run_lt_scan(segment: str = None) -> dict:
         sector_medians = _compute_sector_medians(stock_data)
 
         # Step 3: Enrich with NSE events
-        # Note: Screener.in is skipped — Cloudflare blocks server/cloud IPs reliably.
-        # Promoter holding falls back to None (scored as neutral 50 pts).
+        # Promoter holding comes from Screener when that source is on; otherwise None
+        # (scored as neutral 50 pts).
         enriched = []
         for i, d in enumerate(stock_data, 1):
             sym = d["symbol"]
-            d["promoter_holding"] = None  # Screener.in not reachable from Render
+            d.setdefault("promoter_holding", None)
             try:
                 d["events"] = _get_corporate_events(sym)
             except Exception:

@@ -2626,6 +2626,38 @@ def _run_lt_scan_with_alerts(segment: str = None, label: str = "LT scan"):
     return picks
 
 
+LT_SCAN_ON_RENDER = os.environ.get("LT_SCAN_ON_RENDER", "0") == "1"
+
+
+def _dispatch_lt_scan_workflow(segment):
+    """Start .github/workflows/lt-scan.yml. Returns (ok, message)."""
+    token = os.environ.get("GITHUB_DISPATCH_TOKEN", "").strip()
+    if not token:
+        return False, ("Long-term scans run on GitHub Actions — start one from the repo's "
+                       "Actions tab (Weekly long-term scan → Run workflow), or set "
+                       "GITHUB_DISPATCH_TOKEN on Render to enable this button.")
+    repo = os.environ.get("GITHUB_REPO", "abhisheksa09/stock-analyser")
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/actions/workflows/lt-scan.yml/dispatches",
+        data=json.dumps({"ref": "main", "inputs": {"segment": segment or ""}}).encode(),
+        headers={"Authorization": f"Bearer {token}",
+                 "Accept": "application/vnd.github+json",
+                 "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15):
+            pass
+    except urllib.error.HTTPError as e:
+        log.warning("LT scan dispatch failed: HTTP %s %s", e.code, e.read()[:200])
+        return False, f"GitHub refused the scan request (HTTP {e.code})"
+    except Exception as e:
+        return False, f"Could not reach GitHub: {e}"
+    est = "10–20 min" if segment else "30–45 min"
+    return True, (f"Scan started on GitHub Actions — takes about {est}. "
+                  "The digest email arrives when it finishes; refresh this tab then.")
+
+
 def _lt_scan_job():
     """APScheduler job — runs Sunday 00:00 IST (= Saturday 18:30 UTC)."""
     if not _lt_claim_run(None, "Weekly LT scan"):
@@ -2645,6 +2677,12 @@ def lt_picks_run():
     segment = data.get("segment")   # optional — run one segment or all
     if segment and segment not in ("large", "mid", "small"):
         return jsonify({"error": "segment must be large, mid, or small"}), 400
+
+    if not LT_SCAN_ON_RENDER:
+        ok, msg = _dispatch_lt_scan_workflow(segment)
+        if not ok:
+            return jsonify({"error": msg}), 503
+        return jsonify({"status": "ok", "dispatched": True, "message": msg})
 
     if not _lt_claim_run(segment, "Manual LT scan"):
         return jsonify({
@@ -2781,17 +2819,21 @@ def start_scheduler():
     )
     log.info("US EOD paper-trade settlement job scheduled at 16:05 ET daily")
 
-    # Weekly long-term scan — Sunday at 00:00 IST
-    sched.add_job(
-        _lt_scan_job,
-        trigger="cron",
-        day_of_week="sun",
-        hour=0, minute=0,
-        id="lt_weekly_scan",
-        max_instances=1,
-        misfire_grace_time=3600,
-    )
-    log.info("Weekly LT scan job scheduled for Sunday 00:00 IST")
+    # Weekly long-term scan — Sunday at 00:00 IST. Off by default: it runs from GitHub
+    # Actions now (Yahoo quoteSummary and Screener.in both refuse Render's IP).
+    if LT_SCAN_ON_RENDER:
+        sched.add_job(
+            _lt_scan_job,
+            trigger="cron",
+            day_of_week="sun",
+            hour=0, minute=0,
+            id="lt_weekly_scan",
+            max_instances=1,
+            misfire_grace_time=3600,
+        )
+        log.info("Weekly LT scan job scheduled for Sunday 00:00 IST")
+    else:
+        log.info("Weekly LT scan runs on GitHub Actions (lt-scan.yml) — not scheduled here")
 
     sched.start()
     log.info("Scheduler started — scanning every %d min (NSE + US)", interval)

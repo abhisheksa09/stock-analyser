@@ -1,0 +1,53 @@
+name: Weekly long-term scan
+
+# Runs the long-term picks scan here instead of on Render: Yahoo quoteSummary and
+# Screener.in both refuse Render's IP, so scans there saved nothing after 2026-08-04.
+# Fundamentals come from Screener.in, prices from Yahoo's chart endpoint.
+# Results go straight to the app's database; the digest email goes out via Resend.
+#
+# Required secrets: DATABASE_URL, RESEND_API_KEY, EMAIL_TO
+# Optional secrets: EMAIL_FROM, NEWS_API_KEY, ANTHROPIC_API_KEY (per-stock sentiment)
+
+on:
+  schedule:
+    # Sunday 00:00 IST = Saturday 18:30 UTC. GitHub may start it a few minutes late.
+    - cron: '30 18 * * 6'
+  workflow_dispatch:
+    inputs:
+      segment:
+        description: 'Segment to scan (blank = all)'
+        required: false
+        default: ''
+        type: choice
+        options: ['', 'large', 'mid', 'small']
+      dry_run:
+        description: 'Dry run: print picks, save and email nothing'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: lt-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run long-term scan
+        env:
+          DATABASE_URL:      ${{ secrets.DATABASE_URL }}
+          RESEND_API_KEY:    ${{ secrets.RESEND_API_KEY }}
+          EMAIL_TO:          ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM:        ${{ secrets.EMAIL_FROM }}
+          NEWS_API_KEY:      ${{ secrets.NEWS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python lt_scan_job.py "${{ inputs.segment }}" ${{ inputs.dry_run && '--dry-run' || '' }}
