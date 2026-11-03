@@ -10,7 +10,9 @@ Does NOT touch any intraday scanner state.
 """
 
 import os
+import html as _html
 import json
+import re
 import logging
 import time
 import threading
@@ -193,10 +195,10 @@ LARGE_CAP = [
     "EICHERMOT","GRASIM","SHREECEM","APOLLOHOSP","BRITANNIA","TATACONSUM","PIDILITIND",
     "DABUR","HAVELLS","GODREJCP","BOSCHLTD","MUTHOOTFIN","SIEMENS","INDIGO",
     "DLF","VEDL","HINDALCO","NMDC","SAIL","JINDALSTEL","LUPIN","AUROPHARMA",
-    "TORNTPHARM","LICHSGFIN","CHOLAFIN","MFSL","SBILIFE","HDFCLIFE","ICICIPRULI",
+    "TORNTPHARM","LICHSGFIN","CHOLAFIN","MFSL","SBILIFE","HDFCLIFE",
     "ICICIGI","BAJAJ-AUTO","M&M","TVSMOTOR","ESCORTS","ASHOKLEY",
     "BERGEPAINT","KANSAINER","MARICO","COLPAL","EMAMILTD","VBL","TRENT","NYKAA",
-    "DMART","ZOMATO","PAYTM","POLICYBZR","NAUKRI","INDIAMART","IRCTC","ZEEL",
+    "DMART","ETERNAL","PAYTM","POLICYBZR","NAUKRI","INDIAMART","IRCTC","ZEEL",
     "SUNTV","PVRINOX","JUBLFOOD","DEVYANI","WESTLIFE","UNITDSPR",
     "GMRAIRPORT","AIAENG","CUMMINSIND","THERMAX","ABB","BHEL","BEL","HAL",
 ]
@@ -209,6 +211,8 @@ LARGE_CAP = [
 #                              log — the entity demerged and the old ticker is
 #                              retired. Add the successor ticker(s) once confirmed
 #                              against the NSE symbol list.)
+#   ZOMATO       → ETERNAL    (NSE renamed the symbol)
+#   ICICIPRULI   → dropped    (no longer on Screener or Yahoo, Nov 2026)
 
 MIDCAP = [
     "PERSISTENT","MPHASIS","COFORGE","LTTS","KPITTECH","TATAELXSI","HEXAWARE",
@@ -408,16 +412,18 @@ def _scr_num(s):
 
 
 def _scr_get(url: str) -> str | None:
-    """GET a Screener page; backs off once on 429. None on any other failure."""
-    for attempt in range(2):
+    """GET a Screener page; backs off 30s then 60s on 429. None on any other failure.
+    One retry wasn't enough: a second 429 in a row dropped INDIGO from the 3 Nov dry run."""
+    for attempt in range(3):
         try:
             req = urllib.request.Request(url, headers=_SCREENER_HEADERS)
             with urllib.request.urlopen(req, timeout=20) as r:
                 return r.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as e:
-            if e.code == 429 and attempt == 0:
-                log.warning("Screener 429 on %s — backing off 30s", url)
-                time.sleep(30)
+            if e.code == 429 and attempt < 2:
+                wait = 30 * (attempt + 1)
+                log.warning("Screener 429 on %s — backing off %ds", url, wait)
+                time.sleep(wait)
                 continue
             log.debug("Screener %s: HTTP %s", url, e.code)
             return None
@@ -497,7 +503,7 @@ def _parse_screener(html: str) -> dict | None:
         # 3-year CAGR, not TTM: a 6–12 month thesis shouldn't hinge on one quarter's swing.
         "eps_growth":     profit_g.get("3 Years", profit_g.get("TTM")),
         "rev_growth":     sales_g.get("3 Years", sales_g.get("TTM")),
-        "sector":         sec.group(1) if sec else "",
+        "sector":         _html.unescape(sec.group(1)) if sec else "",   # "Metals &amp; Mining"
         "promoter_holding": promoters[-1] if promoters else None,
         "book_value":     first("Book Value"),
         "dividend_yield": first("Dividend Yield") or 0.0,
@@ -516,9 +522,46 @@ def _fetch_screener(symbol: str) -> dict | None:
         if html:
             d = _parse_screener(html)
             if d:
+                cid = re.search(r'data-company-id="(\d+)"', html)
+                d["_scr_id"] = cid.group(1) if cid else None
                 return d
     log.debug("Screener: no usable data for %s", symbol)
     return None
+
+
+def _scr_closes(company_id: str) -> tuple[list, float | None]:
+    """(daily closes for the last year, oldest first; latest 200 DMA) from Screener's
+    price chart. ([], None) on failure."""
+    txt = _scr_get(f"https://www.screener.in/api/company/{company_id}/chart/"
+                   f"?q=Price-DMA50-DMA200-Volume&days=365")
+    time.sleep(SCREENER_DELAY_S)
+    try:
+        sets = {ds["metric"]: ds["values"] for ds in json.loads(txt)["datasets"]}
+    except Exception as e:
+        log.debug("Screener chart %s: %s", company_id, e)
+        return [], None
+    closes = [c for c in (_scr_num(str(v[1])) for v in sets.get("Price", [])) if c]
+    dma    = [d for d in (_scr_num(str(v[1])) for v in sets.get("DMA200", [])) if d]
+    return closes, (dma[-1] if dma else None)
+
+
+_scr_nifty: dict = {}   # {"closes": [...]} — fetched once per process
+
+
+def _scr_nifty_closes() -> list:
+    """Nifty 50 daily closes from Screener (its NIFTY index page)."""
+    if "closes" not in _scr_nifty:
+        page = _scr_get("https://www.screener.in/company/NIFTY/") or ""
+        time.sleep(SCREENER_DELAY_S)
+        cid = re.search(r'data-company-id="(\d+)"', page)
+        _scr_nifty["closes"] = _scr_closes(cid.group(1))[0] if cid else []
+        log.info("LT scan: Nifty 50 history from Screener (%d days)", len(_scr_nifty["closes"]))
+    return _scr_nifty["closes"]
+
+
+def _ret_6m(closes: list) -> float | None:
+    """Return over the last 126 trading days (~6 months)."""
+    return closes[-1] / closes[-127] - 1 if len(closes) >= 127 and closes[-127] else None
 
 
 # ── Corporate events (NSE India) ──────────────────────────────────────────────
@@ -596,14 +639,22 @@ def _fetch_stock(symbol: str, nifty_hist=None) -> dict | None:
     every fundamental — no quoteSummary calls at all."""
     if LT_FUNDAMENTALS_SOURCE != "screener":
         return _fetch_yf(symbol, nifty_hist=nifty_hist)
-    d   = _fetch_yf(symbol, nifty_hist=nifty_hist, fundamentals=False) or {"symbol": symbol}
+    # Screener only: Yahoo rate-limits GitHub runners too (3 Nov dry run — no 200 DMA or
+    # relative strength for any stock), so price history comes from Screener's chart.
+    d = {"symbol": symbol, "above_200dma": None, "rel_strength_6m": None, "analyst_target": None}
     scr = _fetch_screener(symbol)
     if not scr:
         return d
-    price_cmp = d.get("cmp")
-    d.update({k: v for k, v in scr.items() if v is not None})
-    if price_cmp:
-        d["cmp"] = price_cmp   # Yahoo's close is fresher than Screener's cached quote
+    d.update({k: v for k, v in scr.items() if v is not None and k != "_scr_id"})
+    if scr.get("_scr_id"):
+        closes, dma_200 = _scr_closes(scr["_scr_id"])
+        if closes:
+            d["cmp"] = closes[-1]   # today's close; the page's quote can lag
+            if dma_200:
+                d["above_200dma"] = closes[-1] > dma_200
+            stock_ret, nifty_ret = _ret_6m(closes), _ret_6m(_scr_nifty_closes())
+            if stock_ret is not None and nifty_ret is not None:
+                d["rel_strength_6m"] = stock_ret - nifty_ret
     return d
 
 
@@ -874,10 +925,16 @@ def compute_targets(data: dict, sector_medians: dict) -> dict:
     if not target_low and target_high:
         target_low = round(target_high * 0.85, 2)
 
-    # Clamp: targets must be above CMP to be a buy pick
-    if cmp and target_low and target_low < cmp:
+    # The two methods are independent, so P/E reversion can land above the PEG value
+    # (BAJAJ-AUTO on 3 Nov: low 13,143 vs high 12,100) — order them.
+    if target_low and target_high and target_low > target_high:
+        target_low, target_high = target_high, target_low
+
+    # Clamp: a target needs at least 5% upside to be a buy pick. A stock that sets its own
+    # sector median P/E (MARUTI) otherwise gets a "target" equal to today's price.
+    if cmp and target_low and target_low < cmp * 1.05:
         target_low = None
-    if cmp and target_high and target_high < cmp:
+    if cmp and target_high and target_high < cmp * 1.05:
         target_high = None
 
     upside_low  = round((target_low  / cmp - 1) * 100, 1) if (cmp and target_low)  else None
@@ -890,6 +947,12 @@ def compute_targets(data: dict, sector_medians: dict) -> dict:
     if upside_low and upside_low > 150:
         upside_low = None
         target_low = None
+
+    # A single surviving target is shown as the high one — the UI and email only print
+    # target_high when there's no range (BEL's lone low target was invisible).
+    if target_low and not target_high:
+        target_high, upside_high = target_low, upside_low
+        target_low,  upside_low  = None, None
 
     return {
         "target_low":   target_low,
@@ -1066,13 +1129,16 @@ def run_lt_scan(segment: str = None) -> dict:
         stocks = universe[seg]
 
         # Step 1a: Fetch Nifty 50 history once for the whole segment
-        try:
-            import yfinance as _yf
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                nifty_hist = _fetch_nifty_history(_yf)
-        except Exception:
-            nifty_hist = None
+        # (the Screener source fetches its own via _scr_nifty_closes)
+        nifty_hist = None
+        if LT_FUNDAMENTALS_SOURCE != "screener":
+            try:
+                import yfinance as _yf
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    nifty_hist = _fetch_nifty_history(_yf)
+            except Exception:
+                nifty_hist = None
 
         # Step 1b: Fetch yfinance data for all stocks in segment.
         # Pace adaptively: _yf_rl["delay"] grows on rate-limit signals and decays
