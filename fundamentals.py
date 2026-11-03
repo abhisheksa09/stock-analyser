@@ -1315,11 +1315,14 @@ def run_lt_scan(segment: str = None) -> dict:
             except Exception as e:
                 log.warning("score %s: %s", d.get("symbol"), e)
 
-        # Strong buys first, then by score; keep top 10 per segment
+        # Only Strong Buys are saved (top 10 by score). WATCH used to fill the gaps, but
+        # with 10+ Strong Buys per segment it never showed and only muddied the track record.
         picks.sort(key=lambda x: (x["signal"] == "STRONG_BUY", x["score"]), reverse=True)
-        top_picks = [p for p in picks if p["signal"] != "SKIP"][:10]
+        top_picks = [p for p in picks if p["signal"] == "STRONG_BUY"][:10]
+        n_watch = sum(p["signal"] == "WATCH" for p in picks)
 
-        log.info("LT scan %s: %d stocks scored, %d picks (≥50)", seg, len(picks), len(top_picks))
+        log.info("LT scan %s: %d stocks scored, %d Strong Buy picks saved (%d WATCH not saved)",
+                 seg, len(picks), len(top_picks), n_watch)
         if picks:
             top5 = picks[:5]
             log.info(

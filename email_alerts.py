@@ -702,7 +702,7 @@ def format_weekly_lt_picks(picks: list) -> tuple:
         f'<p style="margin:0 0 4px;font-size:14px;color:#374151;">'
         f'Weekly long-term scan complete — <b>{len(picks)} picks</b> across all segments.</p>'
         f'<p style="margin:0 0 16px;font-size:13px;color:#6b7280;">'
-        f'{total_strong} Strong Buy &nbsp;|&nbsp; {len(picks) - total_strong} Watch &nbsp;|&nbsp; '
+        f'{total_strong} Strong Buy &nbsp;|&nbsp; '
         f'Horizon: 6–12 months</p>'
         + sections_html
         + disclaimer

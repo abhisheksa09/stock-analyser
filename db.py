@@ -1492,6 +1492,11 @@ def get_lt_scan_dates() -> list:
         return []
 
 
+# The scoring model changed on this date (Screener fundamentals, Strong Buy needs ≥5%
+# upside). Older picks stay in the table but would mix two models, so they're left out.
+LT_TRACK_FROM = "2026-11-03"
+
+
 def get_lt_track_record() -> dict:
     """How past long-term picks did against the Nifty, from their `perf` records.
     Per signal (and all): picks measured, average return, average Nifty return,
@@ -1503,7 +1508,9 @@ def get_lt_track_record() -> dict:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT scan_date, signal, perf FROM long_term_picks WHERE perf IS NOT NULL"
+                "SELECT scan_date, signal, perf FROM long_term_picks"
+                " WHERE perf IS NOT NULL AND scan_date >= %s AND signal = 'STRONG_BUY'",
+                (LT_TRACK_FROM,),
             )
             rows = cur.fetchall()
     except Exception as e:
@@ -1523,9 +1530,8 @@ def get_lt_track_record() -> dict:
             "up_pct":   round(100 * sum(r > 0 for r, _ in pairs) / k),
         }
 
-    groups = {"ALL": rows,
-              "STRONG_BUY": [r for r in rows if r["signal"] == "STRONG_BUY"],
-              "WATCH":      [r for r in rows if r["signal"] == "WATCH"]}
+    # Only Strong Buys are listed since 3 Nov 2026, so they're the only group
+    groups = {"STRONG_BUY": rows}
     out = {"first_scan": None, "groups": {}}
     if rows:
         first = min(r["scan_date"] for r in rows)
