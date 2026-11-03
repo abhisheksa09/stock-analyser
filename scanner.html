@@ -926,7 +926,11 @@ th[data-tip]{cursor:default;}
       <span style="font-size:12px;color:#666;">₹</span>
       <input id="btCapitalInput" type="number" min="10000" step="10000" value="100000"
              style="width:110px;padding:3px 7px;border:1px solid #ccc;border-radius:6px;font-size:13px;font-weight:600;"
-             title="Assumed capital deployed per trade — used to compute INR P&L">
+             title="Assumed capital deployed per NSE trade — used to compute INR P&L">
+      <span style="font-size:12px;color:#666;margin-left:6px;">$</span>
+      <input id="btCapitalUsdInput" type="number" min="100" step="100" value="1000"
+             style="width:90px;padding:3px 7px;border:1px solid #ccc;border-radius:6px;font-size:13px;font-weight:600;"
+             title="Assumed capital deployed per US trade — used to compute USD P&L">
       <span style="font-size:11px;color:#999;">per trade · qty = ⌊capital ÷ entry⌋</span>
     </div>
 
@@ -3251,14 +3255,19 @@ async function loadPaperTrades() {
   }
 }
 
-function btCapital() {
-  var v = parseFloat((document.getElementById('btCapitalInput') || {}).value);
-  return (isNaN(v) || v <= 0) ? 100000 : v;
+// Per-trade capital in the trade's own currency: ₹1L for NSE, $1,000 for US. Sharing the ₹
+// figure made every US trade a $100k position and inflated USD P&L ~80×.
+function btCapital(market) {
+  var us = market === 'US';
+  var v  = parseFloat((document.getElementById(us ? 'btCapitalUsdInput' : 'btCapitalInput') || {}).value);
+  return (isNaN(v) || v <= 0) ? (us ? 1000 : 100000) : v;
 }
 
 (function() {
-  var inp = document.getElementById('btCapitalInput');
-  if(inp) inp.addEventListener('change', function() { renderBtTable(); });
+  ['btCapitalInput', 'btCapitalUsdInput'].forEach(function(id) {
+    var inp = document.getElementById(id);
+    if(inp) inp.addEventListener('change', function() { renderBtTable(); });
+  });
 })();
 
 function renderBtStats(stats) {
@@ -3490,11 +3499,11 @@ function renderBtTable() {
     var totalPnL = pnls.length ? +pnls.reduce(function(a,b){return a+b;},0).toFixed(2) : null;
     var totalInr = dayRows.reduce(function(sum, t) {
       if (t.pnl_pts == null || !(t.entry > 0) || t.market === 'US') return sum;
-      return sum + Math.round(t.pnl_pts * Math.floor(btCapital() / t.entry));
+      return sum + Math.round(t.pnl_pts * Math.floor(btCapital('NSE') / t.entry));
     }, 0);
     var totalUsd = dayRows.reduce(function(sum, t) {
       if (t.pnl_pts == null || !(t.entry > 0) || t.market !== 'US') return sum;
-      return sum + Math.round(t.pnl_pts * Math.floor(btCapital() / t.entry));
+      return sum + Math.round(t.pnl_pts * Math.floor(btCapital('US') / t.entry));
     }, 0);
     var hasInr = dayRows.some(function(t) { return t.pnl_pts != null && t.entry > 0 && t.market !== 'US'; });
     var hasUsd = dayRows.some(function(t) { return t.pnl_pts != null && t.entry > 0 && t.market === 'US'; });
@@ -3504,8 +3513,8 @@ function renderBtTable() {
     if (losses.length) meta += '<span class="dg-badge dg-loss">'    + losses.length + ' loss' + (losses.length !== 1 ? 'es' : '') + '</span>';
     if (open.length)   meta += '<span class="dg-badge dg-pending">' + open.length   + ' open' + '</span>';
     if (totalPnL !== null) meta += '<span class="dg-pnl ' + (totalPnL >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '">' + (totalPnL >= 0 ? '+' : '') + fc(totalPnL) + ' pts</span>';
-    if (hasInr) meta += '<span class="dg-pnl ' + (totalInr >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '" style="margin-left:4px;">' + (totalInr >= 0 ? '+' : '') + '₹' + Math.abs(totalInr).toLocaleString('en-IN') + '</span>';
-    if (hasUsd) meta += '<span class="dg-pnl ' + (totalUsd >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '" style="margin-left:4px;">' + (totalUsd >= 0 ? '+' : '') + '$' + Math.abs(totalUsd).toLocaleString('en-US') + '</span>';
+    if (hasInr) meta += '<span class="dg-pnl ' + (totalInr >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '" style="margin-left:4px;">' + (totalInr >= 0 ? '+' : '−') + '₹' + Math.abs(totalInr).toLocaleString('en-IN') + '</span>';
+    if (hasUsd) meta += '<span class="dg-pnl ' + (totalUsd >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '" style="margin-left:4px;">' + (totalUsd >= 0 ? '+' : '−') + '$' + Math.abs(totalUsd).toLocaleString('en-US') + '</span>';
     // Admin: open trades from a finished session mean that market's EOD settlement was missed
     if (window._isAdmin) {
       [['NSE', 'Asia/Kolkata'], ['US', 'America/New_York']].forEach(function(m) {
@@ -3531,9 +3540,9 @@ function renderBtTable() {
       var pnlCls  = t.pnl_pts != null ? (t.pnl_pts >= 0 ? 'pnl-pos' : 'pnl-neg') : '';
       var _isUS   = t.market === 'US';
       var _sym    = _isUS ? '$' : '₹';
-      var _qty    = t.entry > 0 ? Math.floor(btCapital() / t.entry) : 0;
+      var _qty    = t.entry > 0 ? Math.floor(btCapital(t.market) / t.entry) : 0;
       var _inr    = (t.pnl_pts != null && _qty > 0) ? Math.round(t.pnl_pts * _qty) : null;
-      var pnlInr  = _inr != null ? ((_inr >= 0 ? '+' : '') + _sym + Math.abs(_inr).toLocaleString('en-IN')) : '—';
+      var pnlInr  = _inr != null ? ((_inr >= 0 ? '+' : '−') + _sym + Math.abs(_inr).toLocaleString(_isUS ? 'en-US' : 'en-IN')) : '—';
       var closePx = t.close_price != null ? _sym + fc(t.close_price) : '—';
       var confMt  = confMeta(t.conf || 0);
       var isSel   = _btSelectedIds.has(t.id);
