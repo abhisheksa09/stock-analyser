@@ -529,39 +529,126 @@ def _fetch_screener(symbol: str) -> dict | None:
     return None
 
 
-def _scr_closes(company_id: str) -> tuple[list, float | None]:
-    """(daily closes for the last year, oldest first; latest 200 DMA) from Screener's
-    price chart. ([], None) on failure."""
+_SCR_CHART_DAYS = 400   # a year of history, plus room to score picks up to 12 months old
+
+
+def _scr_chart(company_id: str) -> tuple[list, list, float | None]:
+    """(dates 'YYYY-MM-DD', closes, latest 200 DMA) from Screener's price chart, oldest
+    first. ([], [], None) on failure."""
     txt = _scr_get(f"https://www.screener.in/api/company/{company_id}/chart/"
-                   f"?q=Price-DMA50-DMA200-Volume&days=365")
+                   f"?q=Price-DMA50-DMA200-Volume&days={_SCR_CHART_DAYS}")
     time.sleep(SCREENER_DELAY_S)
     try:
         sets = {ds["metric"]: ds["values"] for ds in json.loads(txt)["datasets"]}
     except Exception as e:
         log.debug("Screener chart %s: %s", company_id, e)
-        return [], None
-    closes = [c for c in (_scr_num(str(v[1])) for v in sets.get("Price", [])) if c]
-    dma    = [d for d in (_scr_num(str(v[1])) for v in sets.get("DMA200", [])) if d]
-    return closes, (dma[-1] if dma else None)
+        return [], [], None
+    pts = [(v[0], c) for v in sets.get("Price", []) if (c := _scr_num(str(v[1])))]
+    dma = [d for d in (_scr_num(str(v[1])) for v in sets.get("DMA200", [])) if d]
+    return [d for d, _ in pts], [c for _, c in pts], (dma[-1] if dma else None)
 
 
-_scr_nifty: dict = {}   # {"closes": [...]} — fetched once per process
+# symbol → (dates, closes) for this run. The scan fills it for every stock it charts, so
+# the performance update after it only fetches symbols that have left the universe.
+_scr_series: dict = {}
 
 
-def _scr_nifty_closes() -> list:
-    """Nifty 50 daily closes from Screener (its NIFTY index page)."""
-    if "closes" not in _scr_nifty:
-        page = _scr_get("https://www.screener.in/company/NIFTY/") or ""
+def _scr_symbol_series(symbol: str) -> tuple[list, list]:
+    """Dated closes for one symbol (or the NIFTY index), cached for the run."""
+    if symbol not in _scr_series:
+        page = _scr_get(f"https://www.screener.in/company/{urllib.parse.quote(symbol)}/") or ""
         time.sleep(SCREENER_DELAY_S)
         cid = re.search(r'data-company-id="(\d+)"', page)
-        _scr_nifty["closes"] = _scr_closes(cid.group(1))[0] if cid else []
-        log.info("LT scan: Nifty 50 history from Screener (%d days)", len(_scr_nifty["closes"]))
-    return _scr_nifty["closes"]
+        dates, closes, _ = _scr_chart(cid.group(1)) if cid else ([], [], None)
+        _scr_series[symbol] = (dates, closes)
+        if symbol == "NIFTY":
+            log.info("LT scan: Nifty 50 history from Screener (%d days)", len(closes))
+    return _scr_series[symbol]
 
 
 def _ret_6m(closes: list) -> float | None:
     """Return over the last 126 trading days (~6 months)."""
     return closes[-1] / closes[-127] - 1 if len(closes) >= 127 and closes[-127] else None
+
+
+# ── Pick performance ──────────────────────────────────────────────────────────
+# Each saved pick gets a `perf` record so the Long Term tab can show whether the scores
+# and targets predict anything: return since the pick against the Nifty, at fixed
+# horizons once they've passed, and whether the first target was reached.
+_PERF_HORIZONS = {"1m": 30, "3m": 91, "6m": 182, "12m": 365}
+
+
+def _close_on(dates: list, closes: list, day: str, after: bool = False):
+    """Last close on or before `day`, or with after=True the first close on or after it.
+    None outside the series."""
+    import bisect
+    if after:
+        i = bisect.bisect_left(dates, day)
+        return closes[i] if i < len(dates) and i > 0 else None
+    i = bisect.bisect_right(dates, day) - 1
+    return closes[i] if i >= 0 else None
+
+
+def pick_performance(pick: dict, series: tuple, nifty: tuple) -> dict | None:
+    """perf record for one pick from its dated closes and the Nifty's. None until there
+    is a close after the scan date."""
+    dates, closes = series
+    n_dates, n_closes = nifty
+    scan = str(pick["scan_date"])[:10]
+    after = [c for d, c in zip(dates, closes) if d > scan]
+    entry = float(pick["cmp"]) if pick.get("cmp") else _close_on(dates, closes, scan)
+    if not after or not entry:
+        return None
+    n_entry = _close_on(n_dates, n_closes, scan)
+
+    def pct(a, b):
+        return round((a / b - 1) * 100, 2) if a and b else None
+
+    target = pick.get("target_low") or pick.get("target_high")
+    perf = {
+        "as_of":      dates[-1],
+        "price":      closes[-1],
+        "ret":        pct(closes[-1], entry),
+        "nifty":      pct(n_closes[-1], n_entry) if n_closes else None,
+        "max_ret":    pct(max(after), entry),
+        "hit_target": (max(after) >= float(target)) if target else None,
+    }
+    for key, days in _PERF_HORIZONS.items():
+        day = (date.fromisoformat(scan) + timedelta(days=days)).isoformat()
+        if day > dates[-1]:
+            continue
+        perf[key] = {
+            "ret":   pct(_close_on(dates, closes, day, after=True), entry),
+            "nifty": pct(_close_on(n_dates, n_closes, day, after=True), n_entry),
+        }
+    return perf
+
+
+def update_lt_performance(conn) -> int:
+    """Refresh `perf` on every pick still inside its 12-month window. Returns rows updated."""
+    cutoff = (date.today() - timedelta(days=_SCR_CHART_DAYS - 10)).isoformat()
+    with conn.cursor() as cur:
+        cur.execute("ALTER TABLE long_term_picks ADD COLUMN IF NOT EXISTS perf JSONB")
+        cur.execute(
+            "SELECT id, scan_date, symbol, cmp, target_low, target_high FROM long_term_picks"
+            " WHERE scan_date >= %s AND perf->'12m' IS NULL ORDER BY symbol",
+            (cutoff,),
+        )
+        rows = cur.fetchall()
+    nifty = _scr_symbol_series("NIFTY")
+    updated = 0
+    for r in rows:
+        try:
+            perf = pick_performance(r, _scr_symbol_series(r["symbol"]), nifty)
+            if perf:
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE long_term_picks SET perf=%s::jsonb WHERE id=%s",
+                                (json.dumps(perf), r["id"]))
+                updated += 1
+        except Exception as e:
+            log.warning("LT performance %s %s: %s", r["symbol"], r["scan_date"], e)
+    log.info("LT performance: updated %d of %d open picks", updated, len(rows))
+    return updated
 
 
 # ── Corporate events (NSE India) ──────────────────────────────────────────────
@@ -647,12 +734,13 @@ def _fetch_stock(symbol: str, nifty_hist=None) -> dict | None:
         return d
     d.update({k: v for k, v in scr.items() if v is not None and k != "_scr_id"})
     if scr.get("_scr_id"):
-        closes, dma_200 = _scr_closes(scr["_scr_id"])
+        dates, closes, dma_200 = _scr_chart(scr["_scr_id"])
+        _scr_series[symbol] = (dates, closes)
         if closes:
             d["cmp"] = closes[-1]   # today's close; the page's quote can lag
             if dma_200:
                 d["above_200dma"] = closes[-1] > dma_200
-            stock_ret, nifty_ret = _ret_6m(closes), _ret_6m(_scr_nifty_closes())
+            stock_ret, nifty_ret = _ret_6m(closes), _ret_6m(_scr_symbol_series("NIFTY")[1])
             if stock_ret is not None and nifty_ret is not None:
                 d["rel_strength_6m"] = stock_ret - nifty_ret
     return d
@@ -1093,6 +1181,7 @@ def run_lt_scan(segment: str = None) -> dict:
     global _nse_blocked
     _nse_blocked = False  # reset per scan run — give NSE a fresh attempt each time
     _yf_reset_run_state()          # fresh crumb/backoff budget each run
+    _scr_series.clear()            # fresh Screener prices each run
     _install_yf_noise_filter()     # app.py may have replaced the root handler since import
 
     segments = [segment] if segment else ["large", "mid", "small"]
@@ -1129,7 +1218,7 @@ def run_lt_scan(segment: str = None) -> dict:
         stocks = universe[seg]
 
         # Step 1a: Fetch Nifty 50 history once for the whole segment
-        # (the Screener source fetches its own via _scr_nifty_closes)
+        # (the Screener source fetches its own via _scr_symbol_series)
         nifty_hist = None
         if LT_FUNDAMENTALS_SOURCE != "screener":
             try:
@@ -1259,7 +1348,10 @@ def run_lt_scan(segment: str = None) -> dict:
                     "symbol":          d["symbol"],
                     "segment":         seg,
                     "score":           final_score,
-                    "signal":          "STRONG_BUY" if final_score >= 70 else ("WATCH" if final_score >= 50 else "SKIP"),
+                    # STRONG_BUY also needs a valuation target ≥5% above CMP: a high score
+                    # with no upside is a quality stock that's fully priced — WATCH it.
+                    "signal":          "STRONG_BUY" if final_score >= 70 and targets.get("upside_high")
+                                       else ("WATCH" if final_score >= 50 else "SKIP"),
                     "cmp":             d.get("cmp"),
                     "pe":              d.get("pe"),
                     # Preserve None end-to-end so the UI renders "—" instead of a
@@ -1288,8 +1380,8 @@ def run_lt_scan(segment: str = None) -> dict:
             except Exception as e:
                 log.warning("score %s: %s", d.get("symbol"), e)
 
-        # Sort by score desc, keep top 10 per segment
-        picks.sort(key=lambda x: x["score"], reverse=True)
+        # Strong buys first, then by score; keep top 10 per segment
+        picks.sort(key=lambda x: (x["signal"] == "STRONG_BUY", x["score"]), reverse=True)
         top_picks = [p for p in picks if p["signal"] != "SKIP"][:10]
 
         log.info("LT scan %s: %d stocks scored, %d picks (≥50)", seg, len(picks), len(top_picks))

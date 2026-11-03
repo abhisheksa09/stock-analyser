@@ -2483,6 +2483,14 @@ def lt_picks():
     })
 
 
+@app.route("/api/long-term-picks/track-record")
+def lt_track_record():
+    sess, err = _require_session(request)
+    if err:
+        return err
+    return jsonify({"status": "ok", **_db_module.get_lt_track_record()})
+
+
 def _start_keepalive_heartbeat(label: str):
     """
     Keep the Render instance awake for the duration of a long in-process job.

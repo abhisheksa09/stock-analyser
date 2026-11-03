@@ -1471,6 +1471,9 @@ th[data-tip]{cursor:default;}
       <div id="ltSummaryRow" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
     </div>
 
+    <!-- Track record: how past picks did vs the Nifty -->
+    <div class="card" id="ltTrackRecord" style="margin-bottom:14px;display:none;"></div>
+
     <!-- Status / loading -->
     <div id="ltStatus" style="font-size:13px;color:#888;padding:4px 0 10px;display:none;"></div>
 
@@ -3870,6 +3873,60 @@ function loadLongTermPicks(){
     status.style.display = 'block';
     status.textContent = 'Failed to load — ' + e.message;
   });
+  loadLtTrackRecord();
+}
+
+function _pct(v){ return v == null ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1) + '%'; }
+function _pctColor(v){ return v == null ? '#6b7280' : (v >= 0 ? '#15803d' : '#dc2626'); }
+
+// Track record: average return of past picks vs the Nifty over the same days, filled in
+// weekly by the GitHub scan job (fundamentals.update_lt_performance).
+function loadLtTrackRecord(){
+  var box = document.getElementById('ltTrackRecord');
+  fetch('https://nse-proxy-mojx.onrender.com/api/long-term-picks/track-record', {
+    headers: _appSessionToken ? {'X-Session-Token': _appSessionToken} : {},
+    credentials: 'include'
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if(d.error){ box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    var g = d.groups || {};
+    var head = '<div class="card-title" style="margin:0 0 2px;">Track Record</div>';
+    if(!g.ALL || !g.ALL.so_far){
+      box.innerHTML = head + '<div style="font-size:12px;color:#888;">No results yet. Each pick&#39;s return against the Nifty is filled in by the weekly scan, from the first scan after this feature went live.</div>';
+      return;
+    }
+    function cell(st){
+      if(!st) return '<td style="padding:7px 6px;text-align:center;color:#9ca3af;">not yet</td>';
+      var edge = st.avg_ret - st.avg_nifty;
+      return '<td style="padding:7px 6px;text-align:center;white-space:nowrap;">'
+           + '<span style="font-weight:700;color:'+_pctColor(st.avg_ret)+';">'+_pct(st.avg_ret)+'</span>'
+           + ' <span style="color:#6b7280;">vs Nifty '+_pct(st.avg_nifty)+'</span>'
+           + '<div style="font-size:11px;color:'+_pctColor(edge)+';">'+(edge >= 0 ? 'beat by ' : 'lagged by ')+Math.abs(edge).toFixed(1)+' pts'
+           + ' <span style="color:#9ca3af;">&middot; '+st.beat_pct+'% beat Nifty &middot; '+st.n+' picks</span></div></td>';
+    }
+    var rows = [['so_far','Since pick'],['1m','After 1 month'],['3m','After 3 months'],['6m','After 6 months'],['12m','After 12 months']];
+    var th = 'padding:7px 6px;color:#6b7280;font-weight:600;';
+    var html = head
+      + '<div style="font-size:12px;color:#888;margin-bottom:8px;">Average return of past picks against the Nifty over the same days &middot; picks since ' + (d.first_scan || '—') + '</div>'
+      + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
+      + '<thead><tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb;">'
+      + '<th style="'+th+'text-align:left;">Horizon</th>'
+      + '<th style="'+th+'text-align:center;color:#15803d;">Strong Buy</th>'
+      + '<th style="'+th+'text-align:center;color:#b45309;">Watch</th>'
+      + '<th style="'+th+'text-align:center;">All picks</th></tr></thead><tbody>';
+    rows.forEach(function(r){
+      html += '<tr style="border-bottom:1px solid #f3f4f6;"><td style="padding:7px 6px;font-weight:600;white-space:nowrap;">'+r[1]+'</td>'
+            + cell((g.STRONG_BUY||{})[r[0]]) + cell((g.WATCH||{})[r[0]]) + cell(g.ALL[r[0]]) + '</tr>';
+    });
+    html += '</tbody></table></div>';
+    var t = g.ALL.targets;
+    if(t) html += '<div style="font-size:12px;color:#374151;margin-top:8px;">First target reached: <b>'+t.hit+' of '+t.n+'</b> picks with a target ('+Math.round(100*t.hit/t.n)+'%)</div>';
+    html += '<div style="font-size:11px;color:#9ca3af;margin-top:6px;">Scoring changed on 3 Nov 2026: fundamentals and trend now come from Screener.in, and Strong Buy needs a target at least 5% above the price. Earlier picks used the old model.</div>';
+    box.innerHTML = html;
+  })
+  .catch(function(){ box.style.display = 'none'; });
 }
 
 function _populateDateFilter(dates){
@@ -3924,7 +3981,8 @@ function _renderLtPicks(picks){
   segOrder.forEach(function(seg){
     var sp = bySegment[seg];
     if(!sp.length) return;
-    sp.sort(function(a,b){ return b.score - a.score; });
+    // Strong buys first (they carry an upside target), then by score — same order as the scan
+    sp.sort(function(a,b){ return ((b.signal==='STRONG_BUY') - (a.signal==='STRONG_BUY')) || (b.score - a.score); });
 
     html += '<div style="margin-bottom:20px;">';
     html += '<div style="font-size:12px;font-weight:700;color:'+segColors[seg]+';text-transform:uppercase;'
@@ -3941,6 +3999,7 @@ function _renderLtPicks(picks){
           + '<th style="padding:8px 6px;text-align:right;color:#6b7280;font-weight:600;">CMP</th>'
           + '<th style="padding:8px 6px;text-align:right;color:#6b7280;font-weight:600;white-space:nowrap;">Target Range</th>'
           + '<th style="padding:8px 6px;text-align:right;color:#6b7280;font-weight:600;">Upside</th>'
+          + '<th style="padding:8px 6px;text-align:right;color:#6b7280;font-weight:600;white-space:nowrap;" title="Return since the scan date vs the Nifty over the same days">Since pick</th>'
           + '<th style="padding:8px 6px;text-align:right;color:#6b7280;font-weight:600;">P/E</th>'
           + '<th style="padding:8px 6px;text-align:right;color:#6b7280;font-weight:600;white-space:nowrap;">EPS Gr%</th>'
           + '<th style="padding:8px 6px;text-align:right;color:#6b7280;font-weight:600;">ROE%</th>'
@@ -3966,6 +4025,12 @@ function _renderLtPicks(picks){
               + p.upside_low.toFixed(0) + '&ndash;' + p.upside_high.toFixed(0) + '%</span>';
       else if(p.upside_high != null)
         upStr = '<span style="color:#15803d;font-weight:600;">' + p.upside_high.toFixed(0) + '%</span>';
+
+      var perfStr = '—';
+      if(p.perf && p.perf.ret != null)
+        perfStr = '<span style="font-weight:600;color:'+_pctColor(p.perf.ret)+';">'+_pct(p.perf.ret)+'</span>'
+                + '<div style="font-size:10px;color:#9ca3af;white-space:nowrap;">Nifty '+_pct(p.perf.nifty)
+                + (p.perf.hit_target ? ' &middot; <span style="color:#15803d;">target hit</span>' : '') + '</div>';
 
       var dmaIcon = p.above_200dma === true
         ? '<span style="color:#15803d;" title="Above 200 DMA">&#9650;</span>'
@@ -3995,6 +4060,7 @@ function _renderLtPicks(picks){
             + '<td style="padding:8px 6px;text-align:right;">&#8377;' + _fmt(p.cmp) + '</td>'
             + '<td style="padding:8px 6px;text-align:right;white-space:nowrap;">' + tgtStr + '</td>'
             + '<td style="padding:8px 6px;text-align:right;">' + upStr + '</td>'
+            + '<td style="padding:8px 6px;text-align:right;" title="'+(p.perf ? 'as of '+p.perf.as_of : 'Not measured yet')+'">' + perfStr + '</td>'
             + '<td style="padding:8px 6px;text-align:right;">' + (p.pe ? p.pe.toFixed(1) : '—') + '</td>'
             + '<td style="padding:8px 6px;text-align:right;">' + (p.eps_growth != null ? (p.eps_growth > 0 ? '<span style="color:#15803d;">+' : '<span style="color:#dc2626;">') + p.eps_growth.toFixed(1) + '%</span>' : '—') + '</td>'
             + '<td style="padding:8px 6px;text-align:right;">' + (p.roe != null ? p.roe.toFixed(1) + '%' : '—') + '</td>'
@@ -4010,7 +4076,7 @@ function _renderLtPicks(picks){
 
   html += '<p style="font-size:11px;color:#9ca3af;margin-top:16px;padding-top:8px;border-top:1px solid #f3f4f6;">'
         + 'Scores based on EPS growth, revenue growth, ROE, D/E, P/E vs sector, 200 DMA, relative strength vs Nifty, promoter holding. '
-        + 'Targets: low = P/E reversion, high = PEG-based. Not investment advice.</p>';
+        + 'Targets: low = P/E reversion, high = PEG-based; Strong Buy needs a target at least 5% above the price. Not investment advice.</p>';
 
   content.innerHTML = html;
 }

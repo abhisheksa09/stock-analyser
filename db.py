@@ -1359,6 +1359,8 @@ CREATE TABLE IF NOT EXISTS long_term_picks (
 );
 CREATE INDEX IF NOT EXISTS idx_lt_picks_date    ON long_term_picks(scan_date);
 CREATE INDEX IF NOT EXISTS idx_lt_picks_segment ON long_term_picks(segment);
+-- Return since the pick vs Nifty, filled weekly by fundamentals.update_lt_performance
+ALTER TABLE long_term_picks ADD COLUMN IF NOT EXISTS perf JSONB;
 """
 
 def init_lt_picks_table():
@@ -1486,3 +1488,52 @@ def get_lt_scan_dates() -> list:
     except Exception as e:
         log.warning("get_lt_scan_dates: %s", e)
         return []
+
+
+def get_lt_track_record() -> dict:
+    """How past long-term picks did against the Nifty, from their `perf` records.
+    Per signal (and all): picks measured, average return, average Nifty return,
+    % that beat the Nifty and % that gained — "so far" and at each passed horizon —
+    plus how many reached their first target."""
+    conn = db()
+    if not conn:
+        return {}
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT scan_date, signal, perf FROM long_term_picks WHERE perf IS NOT NULL"
+            )
+            rows = cur.fetchall()
+    except Exception as e:
+        log.warning("get_lt_track_record: %s", e)
+        return {}
+
+    def stats(pairs):
+        pairs = [(r, n) for r, n in pairs if r is not None and n is not None]
+        if not pairs:
+            return None
+        k = len(pairs)
+        return {
+            "n":        k,
+            "avg_ret":  round(sum(r for r, _ in pairs) / k, 1),
+            "avg_nifty": round(sum(n for _, n in pairs) / k, 1),
+            "beat_pct": round(100 * sum(r > n for r, n in pairs) / k),
+            "up_pct":   round(100 * sum(r > 0 for r, _ in pairs) / k),
+        }
+
+    groups = {"ALL": rows,
+              "STRONG_BUY": [r for r in rows if r["signal"] == "STRONG_BUY"],
+              "WATCH":      [r for r in rows if r["signal"] == "WATCH"]}
+    out = {"first_scan": None, "groups": {}}
+    if rows:
+        first = min(r["scan_date"] for r in rows)
+        out["first_scan"] = first.isoformat() if hasattr(first, "isoformat") else first
+    for name, rs in groups.items():
+        g = {"so_far": stats([(r["perf"].get("ret"), r["perf"].get("nifty")) for r in rs])}
+        for h in ("1m", "3m", "6m", "12m"):
+            g[h] = stats([((r["perf"].get(h) or {}).get("ret"), (r["perf"].get(h) or {}).get("nifty"))
+                          for r in rs])
+        with_tgt = [r["perf"]["hit_target"] for r in rs if r["perf"].get("hit_target") is not None]
+        g["targets"] = {"n": len(with_tgt), "hit": sum(with_tgt)} if with_tgt else None
+        out["groups"][name] = g
+    return out
