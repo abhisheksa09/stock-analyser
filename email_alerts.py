@@ -63,7 +63,8 @@ def send_email(subject: str, html_body: str, to_override: str = None) -> tuple:
 
     api_key   = os.environ.get("RESEND_API_KEY", "").strip()
     to_addr   = (to_override or os.environ.get("EMAIL_TO", "")).strip()
-    from_addr = os.environ.get("EMAIL_FROM", "NSE Scanner <onboarding@resend.dev>").strip()
+    # `or`, not a get() default: GitHub Actions sets an unset secret to "", not absent
+    from_addr = os.environ.get("EMAIL_FROM", "").strip() or "NSE Scanner <onboarding@resend.dev>"
 
     payload = json.dumps({
         "from":    from_addr,
