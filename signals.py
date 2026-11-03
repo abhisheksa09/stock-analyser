@@ -56,6 +56,12 @@ ALIGN_MIN_PCT = float(os.environ.get("ALIGN_MIN_PCT", "0.0"))
 # Follow-through gate: price must have run past the entry by at least this % of the
 # entry→SL distance. Setups barely poking through the ORB won 29% (7/24); 50–100% won 80%.
 MIN_FOLLOW_THROUGH_PCT = float(os.environ.get("MIN_FOLLOW_THROUGH_PCT", "25"))
+# US needs more: Oct 7–29 US trades with 25–50% follow-through broke even (4/9, PF 0.95) while
+# 50%+ won 9/12 (PF 2.77). NSE's 25–50% band was profitable (PF 2.0), so it keeps 25.
+US_MIN_FOLLOW_THROUGH_PCT = float(os.environ.get("US_MIN_FOLLOW_THROUGH_PCT", "50"))
+# Earliest US paper-trade window, ET minutes (600 = 10:00). US signals before 10:00 won 3/16
+# (PF 0.27) vs 11/19 (PF 1.48) after; 9:45–10:00 setups now show amber and aren't saved.
+US_PRIME_START_MINS = int(os.environ.get("US_PRIME_START_MINS", "600"))
 
 # RSI entry bands — these MUST stay consistent with _score_rsi(), which is momentum-aligned:
 # a breakout BUY is *confirmed* by RSI pushing up through 50–65 (scores 1.00), not by a low
@@ -1002,7 +1008,7 @@ def is_ready(s, ist_mins, market="NSE"):
 
     market="US"  → ist_mins is interpreted as ET minutes and windows shift:
       time_ok    = 570–960  (9:30 AM – 4:00 PM ET)
-      time_prime = 585–660  (9:45 – 11:00 AM ET — ORB momentum window)
+      time_prime = US_PRIME_START_MINS–660  (10:00 – 11:00 AM ET by default)
     market="NSE" → original IST windows unchanged.
 
     No confidence level waives the 9:45 floor: the old high-conf early override let
@@ -1010,13 +1016,14 @@ def is_ready(s, ist_mins, market="NSE"):
 
     Two direction/quality gates (hard fails):
       align      — composite and the stock's own day move must both favour the trade
-      followthru — price has run >= MIN_FOLLOW_THROUGH_PCT of the risk past the entry
+      followthru — price has run >= MIN_FOLLOW_THROUGH_PCT (US: US_MIN_FOLLOW_THROUGH_PCT)
+                   of the risk past the entry
     """
     vp = round(s["tVpm"] / (s["aVpm"] or 1) * 100)
 
     if market == "US":
         time_ok    = 570 <= ist_mins <= 960   # 9:30 AM – 4:00 PM ET
-        time_prime = 585 <= ist_mins <= 660   # 9:45 – 11:00 AM ET
+        time_prime = US_PRIME_START_MINS <= ist_mins <= 660   # 10:00 – 11:00 AM ET
     else:
         time_ok    = 585 <= ist_mins <= 900
         time_prime = 585 <= ist_mins <= 660  # 9:45–11:00 AM IST — ORB momentum window
@@ -1032,7 +1039,8 @@ def is_ready(s, ist_mins, market="NSE"):
     risk = abs(s["en"] - s["sl"])
     run  = (s["ltp"] - s["en"]) * side
     follow_pct    = round(run / risk * 100, 1) if risk else 0.0
-    followthru_ok = not is_actual or follow_pct >= MIN_FOLLOW_THROUGH_PCT
+    follow_min    = US_MIN_FOLLOW_THROUGH_PCT if market == "US" else MIN_FOLLOW_THROUGH_PCT
+    followthru_ok = not is_actual or follow_pct >= follow_min
     orb_ok     = (
         (s["sig"] == "BUY"  and s["bo"]) or
         (s["sig"] == "SELL" and s["bd"]) or
@@ -1055,6 +1063,8 @@ def is_ready(s, ist_mins, market="NSE"):
         "align":      align_ok,
         "followthru": followthru_ok,
         "follow_pct": follow_pct,
+        "follow_min": follow_min,
+        "prime_label": f"{US_PRIME_START_MINS // 60}:{US_PRIME_START_MINS % 60:02d}-11:00 ET" if market == "US" else "9:45-11:00",
         "conf_green": conf_ok,
         "conf_amber": conf_warn,
         "rvol_pct":   vp,
@@ -1102,7 +1112,7 @@ def failing_gates(s):
     if not g.get("time"):
         fails.append("outside-time-window")
     elif not g.get("prime"):
-        fails.append("outside-prime-window(9:45-11:00)")
+        fails.append(f"outside-prime-window({g.get('prime_label', '9:45-11:00')})")
     if not g.get("candle"):
         fails.append(f"candle-confirm({s.get('confirm_count', '?')}/{CONFIRM_CANDLES})")
     if not g.get("vol"):
@@ -1112,7 +1122,7 @@ def failing_gates(s):
     if not g.get("align", True):
         fails.append("market/day-move-against-trade")
     if not g.get("followthru", True):
-        fails.append(f"follow-through({g.get('follow_pct', '?')}%<{MIN_FOLLOW_THROUGH_PCT:.0f}%)")
+        fails.append(f"follow-through({g.get('follow_pct', '?')}%<{g.get('follow_min', MIN_FOLLOW_THROUGH_PCT):.0f}%)")
     if not g.get("conf_green") and not g.get("conf_amber"):
         fails.append(f"conf({s.get('conf', '?')}%<{READY_AMBER_MIN}%)")
     elif not g.get("conf_green"):
