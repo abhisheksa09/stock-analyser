@@ -96,9 +96,9 @@ def _alpaca_bars(sym, timeframe, start, end, limit=500):
     return candles
 
 
-def _alpaca_intraday(sym):
-    """Real-time 1-min candles for today's ET session via Alpaca IEX feed."""
-    today = datetime.now(ET).date()
+def _alpaca_intraday(sym, date_str=None):
+    """Real-time 1-min candles for today's (or date_str's) ET session via Alpaca IEX feed."""
+    today = datetime.fromisoformat(date_str).date() if date_str else datetime.now(ET).date()
     start = datetime(today.year, today.month, today.day, 9, 30, tzinfo=ET).isoformat()
     end   = datetime(today.year, today.month, today.day, 16, 0, tzinfo=ET).isoformat()
     return _alpaca_bars(sym, "1Min", start, end, limit=400)
@@ -129,10 +129,11 @@ def _alpaca_ltp(sym):
 
 # ─── Unified interface ────────────────────────────────────────────────────────
 
-def get_intraday_candles(sym, market, token=None, ikey=None):
-    """1-min intraday candles. Returns chronological list (oldest first)."""
+def get_intraday_candles(sym, market, token=None, ikey=None, date_str=None):
+    """1-min intraday candles. Returns chronological list (oldest first).
+    date_str (YYYY-MM-DD, US only) picks a past session — used to backfill missed settlements."""
     if market == MARKET_US:
-        return _alpaca_intraday(sym) if _alpaca_configured() else _yf_intraday(sym)
+        return _alpaca_intraday(sym, date_str) if _alpaca_configured() else _yf_intraday(sym, date_str)
     from signals import get_intraday
     return get_intraday(ikey, token)
 
@@ -326,9 +327,10 @@ def _df_to_candles(df):
     return result
 
 
-def _yf_intraday(sym):
-    """1-min candles for the most recent session (chronological, oldest first).
-    Uses period='5d' so pre-market runs still return the previous session."""
+def _yf_intraday(sym, date_str=None):
+    """1-min candles for the most recent session, or date_str's session if given
+    (chronological, oldest first). Uses period='5d' so pre-market runs still return
+    the previous session; yfinance keeps ~7 days of 1-min data, so older dates come back empty."""
     try:
         df = _yf_fetch(sym, period="5d", interval="1m")
     except YFRateLimitError as e:
@@ -339,8 +341,8 @@ def _yf_intraday(sym):
     candles = _df_to_candles(df)
     if not candles:
         return []
-    # Keep only the most recent trading session (same date as last candle)
-    last_date = candles[-1][0][:10]
+    # Keep only the requested session, else the most recent one (same date as last candle)
+    last_date = date_str or candles[-1][0][:10]
     return [c for c in candles if c[0][:10] == last_date]
 
 

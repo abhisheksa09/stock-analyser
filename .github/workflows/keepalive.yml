@@ -5,14 +5,13 @@ name: Render Keepalive (backup)
 #
 # This GitHub Actions workflow is the BACKUP. It covers two windows the
 # Cloudflare free plan's 5-trigger limit couldn't fit:
-#   - US EOD tail: 20:02–20:17 UTC Mon–Fri
-#   - Weekly LT scan: 18:12–18:42 UTC Saturday
-# It also duplicates the primary windows so a GitHub delay is caught by CF and vice versa.
+#   (none currently)
+# It duplicates the primary windows so a GitHub delay is caught by CF and vice versa.
 #
 # GitHub Actions schedule is BEST-EFFORT — can be delayed 5–30+ min under load.
 # Minutes are offset off :00/:05/:10 to reduce drop rate (see GitHub docs).
 #
-# All times UTC. IST = UTC+5:30. ET (summer) = UTC-4.
+# All times UTC. IST = UTC+5:30. ET = UTC-4 (EDT) / UTC-5 (EST) — US windows must cover both.
 
 on:
   schedule:
@@ -26,9 +25,8 @@ on:
     # 3b. US market: 13:00–15:57 UTC Mon–Fri
     - cron: '2,7,12,17,22,27,32,37,42,47,52,57 13-15 * * 1-5'
 
-    # 4. US EOD bracket: 19:47–20:17 UTC Mon–Fri
-    - cron: '47,52,57 19 * * 1-5'
-    - cron: '2,7,12,17 20 * * 1-5'
+    # 4. US EOD bracket: 20:02–21:52 UTC Mon–Fri — covers 16:05 ET in both EDT and EST
+    - cron: '2,12,22,32,42,52 20-21 * * 1-5'
 
     # 5. Weekly LT scan: 18:02–20:57 UTC Saturday (Sun 00:00–02:27 IST)
     #    Must outlast the scan itself, not just its start — see wrangler.toml.
