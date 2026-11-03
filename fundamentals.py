@@ -3,7 +3,7 @@ fundamentals.py — Long-Term Stock Scorer
 Segment-aware (Large / Mid / Small Cap) fundamental + technical scoring.
 Data sources: Screener.in (fundamentals) + yfinance chart (price, 200 DMA, relative
 strength) when LT_FUNDAMENTALS_SOURCE=screener; yfinance quoteSummary otherwise.
-NSE India for events.
+Corporate events (dividends, results date) also come from the Screener page.
 Runs weekly from GitHub Actions (lt_scan_job.py, .github/workflows/lt-scan.yml): Render's
 IP is refused by both Yahoo quoteSummary and Screener.in, so the scan can't run there.
 Does NOT touch any intraday scanner state.
@@ -297,78 +297,6 @@ WEIGHTS = {
     },
 }
 
-# ── NSE session (needed for corporate events API) ─────────────────────────────
-_nse_session_cookie  = None
-_nse_session_ts      = None
-_nse_blocked         = False   # set True on first 403 — skip all further NSE calls this run
-_nse_lock            = threading.Lock()
-NSE_HEADERS = {
-    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120",
-    "Accept":          "application/json, text/plain, */*",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer":         "https://www.nseindia.com/",
-}
-
-def _get_nse_cookies() -> dict:
-    """Fetch a fresh NSE India session cookie (valid ~5 min)."""
-    global _nse_session_cookie, _nse_session_ts, _nse_blocked
-    # Fast path: check outside lock to avoid contention on every call
-    if _nse_blocked:
-        return {}
-    with _nse_lock:
-        # Re-check inside lock — another thread may have just set _nse_blocked
-        if _nse_blocked:
-            return {}
-        now = time.time()
-        if _nse_session_cookie and _nse_session_ts and (now - _nse_session_ts < 240):
-            return _nse_session_cookie
-        try:
-            req = urllib.request.Request(
-                "https://www.nseindia.com/",
-                headers={**NSE_HEADERS, "Accept": "text/html"},
-            )
-            with urllib.request.urlopen(req, timeout=10) as r:
-                cookies = {}
-                for hdr in r.headers.get_all("Set-Cookie") or []:
-                    name, _, rest = hdr.partition("=")
-                    val, _, _     = rest.partition(";")
-                    cookies[name.strip()] = val.strip()
-                _nse_session_cookie = cookies
-                _nse_session_ts     = now
-                return cookies
-        except urllib.error.HTTPError as e:
-            if e.code == 403:
-                _nse_blocked = True
-                log.warning("NSE India blocked this server IP (403) — skipping corporate events for this scan")
-            else:
-                log.debug("NSE session fetch failed: %s", e)
-            return {}
-        except Exception as e:
-            log.debug("NSE session fetch failed: %s", e)
-            return {}
-
-def _nse_get(url: str) -> dict | None:
-    """GET an NSE India API endpoint with session cookie. Returns parsed JSON or None."""
-    cookies = _get_nse_cookies()
-    if not cookies:
-        return None
-    cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
-    try:
-        req = urllib.request.Request(url, headers={**NSE_HEADERS, "Cookie": cookie_str})
-        with urllib.request.urlopen(req, timeout=4) as r:
-            return json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 403:
-            global _nse_blocked
-            _nse_blocked = True
-            log.warning("NSE India API blocked (403) — skipping remaining corporate events")
-        else:
-            log.debug("NSE API %s failed: %s", url, e)
-        return None
-    except Exception as e:
-        log.debug("NSE API %s failed: %s", url, e)
-        return None
-
 # ── Screener.in promoter holding ──────────────────────────────────────────────
 def _get_promoter_holding(symbol: str) -> float | None:
     """Fetch promoter holding % from Screener.in. Returns float or None."""
@@ -509,7 +437,61 @@ def _parse_screener(html: str) -> dict | None:
         "dividend_yield": first("Dividend Yield") or 0.0,
         "52w_high":       hl[0] if len(hl) > 0 else None,
         "52w_low":        hl[1] if len(hl) > 1 else None,
+        "events":         _scr_events(html),
     }
+
+
+_MONTHS = {m: i for i, m in enumerate(
+    ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+_DATE_DMY = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)?[\s-]+([A-Za-z]{3,9})[\s,-]+(\d{4})\b")
+_DATE_MDY = re.compile(r"\b([A-Za-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b")
+_DATE_NUM = re.compile(r"\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})\b")
+
+
+def _text_dates(text: str) -> list:
+    """Every calendar date written in free text: '2 November 2026', 'Nov 2, 2026', '02-11-2026'."""
+    found = []
+    for d, mon, y in _DATE_DMY.findall(text):
+        found.append((y, _MONTHS.get(mon[:3].lower()), d))
+    for mon, d, y in _DATE_MDY.findall(text):
+        found.append((y, _MONTHS.get(mon[:3].lower()), d))
+    for d, m, y in _DATE_NUM.findall(text):
+        found.append((y, int(m), d))   # Indian filings are day-first
+    out = []
+    for y, m, d in found:
+        try:
+            out.append(date(int(y), m, int(d)))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def _scr_events(html: str) -> dict:
+    """Dividend consistency and the next results board meeting, from the Screener page
+    already fetched. Replaces NSE India's corporateEvents API, which 403s every cloud IP
+    (GitHub runners, Render)."""
+    out = {"results_due": None, "dividend_consistent": False,
+           "last_pat_growth": None, "event_risk": False}
+
+    # Annual P&L: a payout in each of the last 3 financial years. The blank TTM cell drops out;
+    # a negative % is a dividend paid in a loss year (TATASTEEL FY24), so it still counts.
+    payout = _scr_row(html[html.find('id="profit-loss"'):], "Dividend Payout")
+    out["dividend_consistent"] = len(payout) >= 3 and all(v != 0 for v in payout[-3:])
+
+    # Results meeting: a "Board Meeting Intimation ... Results" announcement, whose title
+    # or one-line summary names the meeting date ("Board meets on 2 November 2026 ...").
+    today = date.today()
+    upcoming = []
+    for li in re.findall(r"<li[^>]*>\s*<a[^>]*bseindia[^>]*>(.*?)</a>", html, re.S):
+        text = _html.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", li)))
+        low = text.lower()
+        if "board meeting intimation" in low and "result" in low:
+            upcoming += [d for d in _text_dates(text) if today <= d <= today + timedelta(days=60)]
+    if upcoming:
+        due = min(upcoming)
+        out["results_due"] = due.isoformat()
+        out["event_risk"] = due <= today + timedelta(days=7)   # results this week
+    return out
 
 
 def _fetch_screener(symbol: str) -> dict | None:
@@ -650,53 +632,6 @@ def update_lt_performance(conn) -> int:
     log.info("LT performance: updated %d of %d open picks", updated, len(rows))
     return updated
 
-
-# ── Corporate events (NSE India) ──────────────────────────────────────────────
-def _get_corporate_events(symbol: str) -> dict:
-    """
-    Fetch upcoming results + recent dividend from NSE India.
-    Returns dict with keys: results_due (date str or None), dividend_yield (float or None),
-    dividend_consistent (bool), last_pat_growth (float or None), event_risk (bool).
-    """
-    out = {
-        "results_due":       None,
-        "dividend_yield":    None,
-        "dividend_consistent": False,
-        "last_pat_growth":   None,
-        "event_risk":        False,
-    }
-    today     = date.today()
-    in_7_days = (today + timedelta(days=7)).isoformat()
-    today_str = today.isoformat()
-
-    # Upcoming quarterly results
-    url = (
-        f"https://www.nseindia.com/api/corporateEvents"
-        f"?index=equities&from_date={today_str}&to_date={in_7_days}"
-        f"&type=Quarterly%20Results&symbol={symbol}"
-    )
-    data = _nse_get(url)
-    if data and isinstance(data, list) and data:
-        out["results_due"] = data[0].get("exDate") or data[0].get("date")
-        out["event_risk"]  = True
-
-    # Recent dividends (last 3 years)
-    three_yr = (today - timedelta(days=1095)).isoformat()
-    url2 = (
-        f"https://www.nseindia.com/api/corporateEvents"
-        f"?index=equities&from_date={three_yr}&to_date={today_str}"
-        f"&type=Dividend&symbol={symbol}"
-    )
-    data2 = _nse_get(url2)
-    if data2 and isinstance(data2, list):
-        years = set()
-        for ev in data2:
-            d = ev.get("exDate") or ev.get("date") or ""
-            if len(d) >= 4:
-                years.add(d[:4])
-        out["dividend_consistent"] = len(years) >= 3  # paid in all 3 of last 3 years
-
-    return out
 
 # ── yfinance fundamentals ─────────────────────────────────────────────────────
 def _get_yf_proxy() -> str | None:
@@ -1178,8 +1113,6 @@ def run_lt_scan(segment: str = None) -> dict:
     Saves results to DB via a dedicated connection (not shared with intraday thread).
     Returns summary dict.
     """
-    global _nse_blocked
-    _nse_blocked = False  # reset per scan run — give NSE a fresh attempt each time
     _yf_reset_run_state()          # fresh crumb/backoff budget each run
     _scr_series.clear()            # fresh Screener prices each run
     _install_yf_noise_filter()     # app.py may have replaced the root handler since import
@@ -1320,20 +1253,18 @@ def run_lt_scan(segment: str = None) -> dict:
         # Step 2: Compute sector medians from this segment's data
         sector_medians = _compute_sector_medians(stock_data)
 
-        # Step 3: Enrich with NSE events
-        # Promoter holding comes from Screener when that source is on; otherwise None
-        # (scored as neutral 50 pts).
+        # Step 3: Defaults for fields only Screener supplies. Events (dividends, results
+        # date) come from the Screener page itself; the yfinance source has none.
+        # Promoter holding missing → scored as neutral 50 pts.
         enriched = []
-        for i, d in enumerate(stock_data, 1):
-            sym = d["symbol"]
+        for d in stock_data:
             d.setdefault("promoter_holding", None)
-            try:
-                d["events"] = _get_corporate_events(sym)
-            except Exception:
-                d["events"] = {}
+            d.setdefault("events", {})
             enriched.append(d)
-            if i % 10 == 0:
-                log.info("LT scan %s: enriched %d/%d stocks", seg, i, len(stock_data))
+        with_div = sum(1 for d in enriched if d["events"].get("dividend_consistent"))
+        with_res = sum(1 for d in enriched if d["events"].get("results_due"))
+        log.info("LT scan %s: events from Screener — %d consistent dividend payers, "
+                 "%d with an announced results date", seg, with_div, with_res)
 
         # Step 4: Score + compute targets
         picks = []
