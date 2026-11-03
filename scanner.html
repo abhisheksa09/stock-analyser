@@ -3897,7 +3897,7 @@ function loadLtTrackRecord(){
     var head = '<div class="card-title" style="margin:0 0 2px;">Track Record</div>';
     if(!g.STRONG_BUY || !g.STRONG_BUY.so_far){
       box.innerHTML = head + '<div style="font-size:12px;color:#888;">Tracking starts with the picks of 3 Nov 2026 (the current scoring model). '
-        + 'Each week the scan records how every pick has moved against the Nifty: the first numbers appear after the next weekly scan (Sunday), '
+        + 'Every trading day at about 17:30 IST it records how each pick has moved against the Nifty: the first numbers appear the evening after the first trading day, '
         + 'the &ldquo;After 1 month&rdquo; row about a month after the first picks.</div>';
       return;
     }
@@ -3934,7 +3934,7 @@ function loadLtTrackRecord(){
     var th = 'padding:7px 6px;color:#6b7280;font-weight:600;';
     var html = head
       + '<div style="font-size:12px;color:#888;margin-bottom:8px;">How the picks did against the Nifty over the same days &middot; picks since 3 Nov 2026 (current scoring model)'
-      + '<br>Updated by the weekly scan. Each &ldquo;After&rdquo; row fills in once that much time has passed since the picks. Hover any cell for what it means.</div>'
+      + '<br>Updated every trading day at about 17:30 IST. Each &ldquo;After&rdquo; row fills in once that much time has passed since the picks. Hover any cell for what it means.</div>'
       + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
       + '<thead><tr style="background:#f8fafc;border-bottom:2px solid #e5e7eb;">'
       + '<th style="'+th+'text-align:left;cursor:help;" title="How long after the pick the return is measured">Horizon</th>'
@@ -4028,7 +4028,8 @@ function _renderLtPicks(picks){
                 + 'High: PEG-based: next year EPS x a P/E equal to the growth rate (clamped 10-50).&#10;'
                 + 'Targets under 5% or over 150% above the price are dropped.')
           + _ltTh('Upside', 'right', 'Gain from CMP to the target low-high.')
-          + _ltTh('Since pick', 'right', 'Return since the scan date; below it, the Nifty over the same days.&#10;'
+          + _ltTh('Since pick', 'right', 'Return from the price on the pick date to the latest close; below it, the Nifty over the same days.&#10;'
+                + 'Updated every trading day at about 17:30 IST. A new pick shows a dash until the next trading day closes.&#10;'
                 + 'Shows target hit once the price reached the first target.')
           + _ltTh('P/E', 'right', 'Price / earnings per share (trailing 12 months). Lower = cheaper per rupee of profit.')
           + _ltTh('EPS Gr%', 'right', 'Profit growth, compounded over 3 years (TTM if no 3 year history).&#10;'
@@ -4061,10 +4062,16 @@ function _renderLtPicks(picks){
         upStr = '<span style="color:#15803d;font-weight:600;">' + p.upside_high.toFixed(0) + '%</span>';
 
       var perfStr = '—';
-      if(p.perf && p.perf.ret != null)
+      var perfTip = 'Picked on ' + p.scan_date + '. First update after the next trading day closes (about 17:30 IST).';
+      if(p.perf && p.perf.ret != null){
+        perfTip = 'Picked on ' + p.scan_date + (p.cmp ? ' at ₹' + _fmt(p.cmp) : '') + '.&#10;'
+                + 'Closed ' + (p.perf.price ? '₹' + _fmt(p.perf.price) + ' ' : '') + 'on ' + p.perf.as_of
+                + ' = ' + _pct(p.perf.ret) + '. Nifty over the same days: ' + _pct(p.perf.nifty) + '.'
+                + (p.perf.hit_target ? '&#10;Reached its first target.' : '');
         perfStr = '<span style="font-weight:600;color:'+_pctColor(p.perf.ret)+';">'+_pct(p.perf.ret)+'</span>'
                 + '<div style="font-size:10px;color:#9ca3af;white-space:nowrap;">Nifty '+_pct(p.perf.nifty)
                 + (p.perf.hit_target ? ' &middot; <span style="color:#15803d;">target hit</span>' : '') + '</div>';
+      }
 
       var dmaIcon = p.above_200dma === true
         ? '<span style="color:#15803d;" title="Above 200 DMA">&#9650;</span>'
@@ -4093,7 +4100,7 @@ function _renderLtPicks(picks){
             + '<td style="padding:8px 6px;text-align:right;">&#8377;' + _fmt(p.cmp) + '</td>'
             + '<td style="padding:8px 6px;text-align:right;white-space:nowrap;">' + tgtStr + '</td>'
             + '<td style="padding:8px 6px;text-align:right;">' + upStr + '</td>'
-            + '<td style="padding:8px 6px;text-align:right;" title="'+(p.perf ? 'as of '+p.perf.as_of : 'Not measured yet')+'">' + perfStr + '</td>'
+            + '<td style="padding:8px 6px;text-align:right;cursor:help;" title="'+perfTip+'">' + perfStr + '</td>'
             + '<td style="padding:8px 6px;text-align:right;">' + (p.pe ? p.pe.toFixed(1) : '—') + '</td>'
             + '<td style="padding:8px 6px;text-align:right;">' + (p.eps_growth != null ? (p.eps_growth > 0 ? '<span style="color:#15803d;">+' : '<span style="color:#dc2626;">') + p.eps_growth.toFixed(1) + '%</span>' : '—') + '</td>'
             + '<td style="padding:8px 6px;text-align:right;">' + (p.roe != null ? p.roe.toFixed(1) + '%' : '—') + '</td>'

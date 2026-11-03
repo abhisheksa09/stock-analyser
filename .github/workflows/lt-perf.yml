@@ -1,0 +1,37 @@
+name: Daily long-term pick performance
+
+# Refreshes every open long-term pick's return since it was picked (and the Nifty's over
+# the same days) from Screener's daily closes, so the Long Term tab's "Since pick" column
+# and Track Record move every trading day instead of only with the weekly scan.
+# No scan, no email: lt_scan_job.py --perf-only.
+#
+# Required secret: DATABASE_URL
+
+on:
+  schedule:
+    # Weekdays 17:30 IST = 12:00 UTC: two hours after the 15:30 close, so Screener has
+    # the day's closing price. GitHub may start it a few minutes late.
+    - cron: '0 12 * * 1-5'
+  workflow_dispatch:
+
+concurrency:
+  # Same group as the weekly scan: never write perf while a scan is saving picks
+  group: lt-scan
+  cancel-in-progress: false
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Refresh pick performance
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python lt_scan_job.py --perf-only

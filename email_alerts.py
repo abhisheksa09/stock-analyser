@@ -116,8 +116,13 @@ _HEADER_COLORS = {
 }
 
 
-def _wrap(title: str, subtitle: str, body_html: str, kind: str, market: str = "NSE") -> str:
+def _wrap(title: str, subtitle: str, body_html: str, kind: str, market: str = "NSE",
+          max_width: int = None) -> str:
+    """max_width: let a table-heavy email stretch to the window up to this many px;
+    otherwise it's a fixed 560px card."""
     color      = _HEADER_COLORS.get(kind, "#374151")
+    card_width = (f'width="100%" style="max-width:{max_width}px;' if max_width
+                  else 'width="560" style="')
     ts         = datetime.now(IST).strftime("%d %b %Y, %H:%M IST")
     brand_hdr  = "US STOCK SCANNER" if market == "US" else "NSE STOCK SCANNER"
     brand_ftr  = "US Stock Scanner" if market == "US" else "NSE Scanner"
@@ -127,8 +132,7 @@ def _wrap(title: str, subtitle: str, body_html: str, kind: str, market: str = "N
         '<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;">'
         '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0;">'
         '<tr><td align="center">'
-        '<table width="560" cellpadding="0" cellspacing="0" '
-        'style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">'
+        f'<table cellpadding="0" cellspacing="0" {card_width}background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">'
         f'<tr><td style="background:{color};padding:20px 24px;">'
         '<p style="margin:0;color:#ffffff;font-size:11px;letter-spacing:1px;text-transform:uppercase;opacity:0.85;">'
         f'{brand_hdr}</p>'
@@ -598,6 +602,14 @@ def format_real_trade_candidate(s: dict, evening_pick: dict) -> tuple:
     )
 
 
+_LT_TD  = "padding:8px 6px;font-size:12px;white-space:nowrap;"
+_LT_TDR = _LT_TD + "text-align:right;"
+
+
+def _lt_num(v, fmt: str = "{:.1f}") -> str:
+    return fmt.format(v) if v is not None else "&mdash;"
+
+
 def format_weekly_lt_picks(picks: list) -> tuple:
     """Returns (subject, html_body) for the weekly long-term picks digest email."""
     date_str = datetime.now(IST).strftime("%d %b %Y")
@@ -621,72 +633,72 @@ def format_weekly_lt_picks(picks: list) -> tuple:
         label = seg_labels.get(seg, seg.title())
         rows_html = ""
         for p in seg_picks:
-            score      = p.get("score", 0)
-            signal     = p.get("signal", "WATCH")
-            tgt_low    = p.get("target_low")
-            tgt_high   = p.get("target_high")
-            up_low     = p.get("upside_low")
-            up_high    = p.get("upside_high")
-            ev_risk    = p.get("event_risk", False)
-            div_ok     = p.get("dividend_consistent", False)
-            eps_g      = p.get("eps_growth")
-            pe         = p.get("pe")
-
-            sig_color  = "#15803d" if signal == "STRONG_BUY" else "#b45309"
-            sig_label  = "STRONG BUY" if signal == "STRONG_BUY" else "WATCH"
+            tgt_low, tgt_high = p.get("target_low"), p.get("target_high")
+            up_low, up_high   = p.get("upside_low"), p.get("upside_high")
 
             target_str = "&mdash;"
             if tgt_low and tgt_high:
-                target_str = f"Rs&nbsp;{tgt_low:,.0f} &ndash; {tgt_high:,.0f}"
+                target_str = f"Rs&nbsp;{tgt_low:,.0f}&nbsp;&ndash;&nbsp;{tgt_high:,.0f}"
             elif tgt_high:
                 target_str = f"Rs&nbsp;{tgt_high:,.0f}"
 
             upside_str = "&mdash;"
             if up_low is not None and up_high is not None:
-                upside_str = f"{up_low:+.0f}% &ndash; {up_high:+.0f}%"
+                upside_str = f"{up_low:+.0f}%&nbsp;&ndash;&nbsp;{up_high:+.0f}%"
             elif up_high is not None:
                 upside_str = f"{up_high:+.0f}%"
 
-            tags = []
-            if ev_risk:
-                tags.append('<span style="color:#c2410c;font-size:10px;">&#9888; Results soon</span>')
-            if div_ok:
-                tags.append('<span style="color:#15803d;font-size:10px;">&#128176; Dividend</span>')
-            tags_html = " &nbsp;".join(tags) if tags else ""
+            dma = p.get("above_200dma")
+            dma_html = ('<span style="color:#15803d;">&#9650; Above</span>' if dma is True else
+                        '<span style="color:#dc2626;">&#9660; Below</span>' if dma is False else "&mdash;")
 
+            tags = []
+            if p.get("event_risk"):
+                tags.append('<span style="color:#c2410c;">&#9888;&nbsp;Results&nbsp;' +
+                            (p.get("results_due") or "soon") + '</span>')
+            if p.get("dividend_consistent"):
+                tags.append('<span style="color:#15803d;">&#128176;&nbsp;Dividend</span>')
+            tags_html = "<br>".join(tags) if tags else "&mdash;"
+
+            cmp = p.get("cmp")
             rows_html += (
                 '<tr style="border-bottom:1px solid #e5e7eb;">'
-                f'<td style="padding:8px 6px;font-weight:700;font-size:13px;">{p.get("symbol","")}</td>'
-                f'<td style="padding:8px 6px;font-size:12px;color:#6b7280;">{p.get("sector","")[:18]}</td>'
-                f'<td style="padding:8px 6px;text-align:center;">'
-                f'<span style="background:{sig_color}18;color:{sig_color};padding:2px 8px;'
-                f'border-radius:10px;font-size:11px;font-weight:700;">{sig_label}</span></td>'
-                f'<td style="padding:8px 6px;text-align:center;font-weight:700;font-size:13px;">{score:.0f}</td>'
-                f'<td style="padding:8px 6px;font-size:12px;">Rs&nbsp;{p.get("cmp") or "&mdash;"}</td>'
-                f'<td style="padding:8px 6px;font-size:12px;">{target_str}</td>'
-                f'<td style="padding:8px 6px;font-size:12px;color:#15803d;font-weight:600;">{upside_str}</td>'
-                f'<td style="padding:8px 6px;font-size:11px;">'
-                f'{"P/E " + str(round(pe,1)) if pe else "&mdash;"}'
-                + (f' &nbsp;|&nbsp; EPS {eps_g:+.0f}%' if eps_g is not None else "")
-                + (f'<br>{tags_html}' if tags_html else "")
-                + '</td>'
+                f'<td style="{_LT_TD}font-weight:700;font-size:13px;">{p.get("symbol","")}</td>'
+                f'<td style="padding:8px 6px;font-size:12px;color:#6b7280;">{p.get("sector") or "&mdash;"}</td>'
+                f'<td style="{_LT_TD}text-align:center;font-weight:700;font-size:13px;color:#15803d;">{p.get("score", 0):.0f}</td>'
+                f'<td style="{_LT_TDR}">{"Rs&nbsp;" + format(cmp, ",.2f") if cmp else "&mdash;"}</td>'
+                f'<td style="{_LT_TDR}">{target_str}</td>'
+                f'<td style="{_LT_TDR}color:#15803d;font-weight:600;">{upside_str}</td>'
+                f'<td style="{_LT_TDR}">{_lt_num(p.get("pe"))}</td>'
+                f'<td style="{_LT_TDR}">{_lt_num(p.get("eps_growth"), "{:+.0f}%")}</td>'
+                f'<td style="{_LT_TDR}">{_lt_num(p.get("roe"), "{:.1f}%")}</td>'
+                f'<td style="{_LT_TDR}">{_lt_num(p.get("debt_equity"), "{:.2f}")}</td>'
+                f'<td style="{_LT_TDR}">{_lt_num(p.get("promoter_pct"), "{:.1f}%")}</td>'
+                f'<td style="{_LT_TD}text-align:center;">{dma_html}</td>'
+                f'<td style="{_LT_TD}">{tags_html}</td>'
                 '</tr>'
             )
 
+        th = 'padding:6px;font-size:11px;color:#6b7280;white-space:nowrap;'
         sections_html += (
             f'<h3 style="margin:20px 0 8px;font-size:12px;font-weight:700;'
             f'color:{color};text-transform:uppercase;letter-spacing:0.5px;">'
             f'{label} — {len(seg_picks)} pick{"s" if len(seg_picks) != 1 else ""}</h3>'
             '<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;">'
             '<tr style="background:#f3f4f6;">'
-            '<th style="padding:6px;text-align:left;font-size:11px;color:#6b7280;">Stock</th>'
-            '<th style="padding:6px;text-align:left;font-size:11px;color:#6b7280;">Sector</th>'
-            '<th style="padding:6px;text-align:center;font-size:11px;color:#6b7280;">Signal</th>'
-            '<th style="padding:6px;text-align:center;font-size:11px;color:#6b7280;">Score</th>'
-            '<th style="padding:6px;text-align:left;font-size:11px;color:#6b7280;">CMP</th>'
-            '<th style="padding:6px;text-align:left;font-size:11px;color:#6b7280;">Target Range</th>'
-            '<th style="padding:6px;text-align:left;font-size:11px;color:#6b7280;">Upside</th>'
-            '<th style="padding:6px;text-align:left;font-size:11px;color:#6b7280;">Metrics</th>'
+            f'<th style="{th}text-align:left;">Stock</th>'
+            f'<th style="{th}text-align:left;">Sector</th>'
+            f'<th style="{th}text-align:center;">Score</th>'
+            f'<th style="{th}text-align:right;">CMP</th>'
+            f'<th style="{th}text-align:right;">Target</th>'
+            f'<th style="{th}text-align:right;">Upside</th>'
+            f'<th style="{th}text-align:right;">P/E</th>'
+            f'<th style="{th}text-align:right;">EPS Gr</th>'
+            f'<th style="{th}text-align:right;">ROE</th>'
+            f'<th style="{th}text-align:right;">D/E</th>'
+            f'<th style="{th}text-align:right;">Promoter</th>'
+            f'<th style="{th}text-align:center;">200 DMA</th>'
+            f'<th style="{th}text-align:left;">Events</th>'
             '</tr>'
             + rows_html
             + '</table>'
@@ -711,7 +723,7 @@ def format_weekly_lt_picks(picks: list) -> tuple:
     return subject, _wrap(
         "Weekly Long-Term Picks",
         f"{date_str} · {len(picks)} picks across Large / Mid / Small cap",
-        body, "weekly_lt_picks",
+        body, "weekly_lt_picks", max_width=1100,
     )
 
 
