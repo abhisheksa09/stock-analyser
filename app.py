@@ -1933,8 +1933,7 @@ def get_best_pick_stats():
 @app.route("/paper-trades/settle", methods=["POST"])
 def trigger_paper_trade_settlement():
     """Manually trigger EOD settlement for today's open paper trades (admin only).
-    ?market=US&date=YYYY-MM-DD settles a past US session the scheduled job missed.
-    date is US-only: the NSE settler always replays today's Upstox candles."""
+    ?market=NSE|US&date=YYYY-MM-DD settles a past session the scheduled job missed."""
     sess, err = _require_admin(request)
     if err:
         return err
@@ -1945,7 +1944,7 @@ def trigger_paper_trade_settlement():
             datetime.strptime(date_str, "%Y-%m-%d")
         except ValueError:
             return jsonify({"error": "date must be YYYY-MM-DD"}), 400
-    nse_settled, nse_skipped, nse_errors = (0, 0, []) if market == "US" or date_str else _settle_paper_trades_for_date()
+    nse_settled, nse_skipped, nse_errors = (0, 0, []) if market == "US" else _settle_paper_trades_for_date(date_str)
     us_settled,  us_skipped,  us_errors  = (0, 0, []) if market == "NSE" else _settle_us_paper_trades_for_date(date_str)
     return jsonify({
         "status":      "ok",
@@ -2188,6 +2187,7 @@ def _settle_paper_trades_for_date(date_str: str = None):
         from_date=date_str,
         to_date=date_str,
         outcome="open",
+        market="NSE",
         limit=200,
     )
 
@@ -2214,7 +2214,7 @@ def _settle_paper_trades_for_date(date_str: str = None):
             continue
 
         try:
-            candles = get_intraday(ikey, token)
+            candles = get_intraday(ikey, token, date_str)
             if not candles:
                 raise ValueError("Empty intraday candle data")
 
@@ -2285,6 +2285,18 @@ def _eod_settlement_job():
     log.info("EOD settlement job triggered at %s IST",
              now_ist.strftime("%H:%M"))
     settled, skipped, errors = _settle_paper_trades_for_date()
+    # Catch up sessions whose 15:35 run was missed (Render asleep, DB drop)
+    stale = _db_module.get_paper_trades(
+        from_date=(now_ist - timedelta(days=6)).strftime("%Y-%m-%d"),
+        to_date=(now_ist - timedelta(days=1)).strftime("%Y-%m-%d"),
+        outcome="open", market="NSE", limit=200,
+    )
+    for missed_date in sorted({t["trade_date"][:10] for t in stale}):
+        log.info("EOD settlement: catching up missed session %s", missed_date)
+        s, k, e = _settle_paper_trades_for_date(missed_date)
+        settled += s
+        skipped += k
+        errors  += [f"[{missed_date}] {x}" for x in e]
     if errors:
         log.warning("EOD settlement errors: %s", errors)
     # Alert via Telegram if any trades were skipped so they don't go unnoticed

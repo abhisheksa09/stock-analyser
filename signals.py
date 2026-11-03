@@ -234,10 +234,17 @@ def get_ltp(ikey, token):
         raise ValueError("No LTP")
     return float(ltp)
 
-def get_intraday(ikey, token):
-    d = _upstox_get(
-        f"/v2/historical-candle/intraday/{urllib.parse.quote(ikey)}/1minute", token
-    )
+def get_intraday(ikey, token, date_str=None):
+    """1-min candles for today, or for a past session when date_str (YYYY-MM-DD, IST) is
+    given — the intraday endpoint only serves today, so missed settlements need the
+    historical one."""
+    from datetime import datetime, timedelta, timezone
+    today_ist = (datetime.now(timezone.utc) + timedelta(hours=5, minutes=30)).strftime("%Y-%m-%d")
+    if date_str and date_str != today_ist:
+        path = f"/v2/historical-candle/{urllib.parse.quote(ikey)}/1minute/{date_str}/{date_str}"
+    else:
+        path = f"/v2/historical-candle/intraday/{urllib.parse.quote(ikey)}/1minute"
+    d = _upstox_get(path, token)
     return d.get("data", {}).get("candles", [])
 
 def get_daily(ikey, token):

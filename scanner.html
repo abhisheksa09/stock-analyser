@@ -2268,10 +2268,10 @@ async function settleNow(){
   finally{ btn.disabled=false; btn.textContent='▶ Settle now'; }
 }
 
-// Force-settle a past US session the 16:05 ET job missed (Backtest date-group button, admin only).
-// US only: the NSE settler replays today's Upstox candles, so it can't backfill a past date.
+// Force-settle a past NSE/US session the EOD job missed (Backtest date-group button, admin only).
 async function settleBtDate(market,date,btn){
   if(!confirm(`Settle all open ${market} trades from ${fmtDate(date)} using that session's 1-min candles?`)) return;
+  const label=btn.textContent, k=market.toLowerCase();
   btn.disabled=true; btn.textContent='Settling…';
   try{
     const r=await fetch(`${BACKEND}/paper-trades/settle?market=${market}&date=${date}`,{
@@ -2281,12 +2281,12 @@ async function settleBtDate(market,date,btn){
     });
     const d=await r.json();
     if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
-    const errs=d.us_errors||[];
-    alert(`Settled ${d.us_settled} trade(s)`+(d.us_skipped?`, skipped ${d.us_skipped}`:'')+'.'+(errs.length?'\n\n'+errs.join('\n'):''));
+    const errs=d[k+'_errors']||[];
+    alert(`Settled ${d[k+'_settled']} ${market} trade(s)`+(d[k+'_skipped']?`, skipped ${d[k+'_skipped']}`:'')+'.'+(errs.length?'\n\n'+errs.join('\n'):''));
     loadPaperTrades();
   }catch(e){
     alert('Settle failed: '+e.message);
-    btn.disabled=false; btn.textContent='Settle';
+    btn.disabled=false; btn.textContent=label;
   }
 }
 
@@ -3506,11 +3506,15 @@ function renderBtTable() {
     if (totalPnL !== null) meta += '<span class="dg-pnl ' + (totalPnL >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '">' + (totalPnL >= 0 ? '+' : '') + fc(totalPnL) + ' pts</span>';
     if (hasInr) meta += '<span class="dg-pnl ' + (totalInr >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '" style="margin-left:4px;">' + (totalInr >= 0 ? '+' : '') + '₹' + Math.abs(totalInr).toLocaleString('en-IN') + '</span>';
     if (hasUsd) meta += '<span class="dg-pnl ' + (totalUsd >= 0 ? 'dg-pnl-pos' : 'dg-pnl-neg') + '" style="margin-left:4px;">' + (totalUsd >= 0 ? '+' : '') + '$' + Math.abs(totalUsd).toLocaleString('en-US') + '</span>';
-    // Admin: open US trades from a finished session mean the 16:05 ET settlement was missed
-    var todayEt = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-    if (window._isAdmin && date < todayEt && open.some(function(t) { return t.market === 'US'; }))
-      meta += '<button class="btn" style="margin-left:6px;padding:2px 10px;font-size:11px;background:#27500A;color:#fff;border-color:#27500A;" ' +
-              'onclick="event.stopPropagation();settleBtDate(\'US\',\'' + date + '\',this)">Settle</button>';
+    // Admin: open trades from a finished session mean that market's EOD settlement was missed
+    if (window._isAdmin) {
+      [['NSE', 'Asia/Kolkata'], ['US', 'America/New_York']].forEach(function(m) {
+        var today = new Date().toLocaleDateString('en-CA', { timeZone: m[1] });
+        if (date < today && open.some(function(t) { return (t.market || 'NSE') === m[0]; }))
+          meta += '<button class="btn" style="margin-left:6px;padding:2px 10px;font-size:11px;background:#27500A;color:#fff;border-color:#27500A;" ' +
+                  'onclick="event.stopPropagation();settleBtDate(\'' + m[0] + '\',\'' + date + '\',this)">Settle ' + m[0] + '</button>';
+      });
+    }
 
     var hdr = document.createElement('tr');
     hdr.className = 'date-group-hdr';
