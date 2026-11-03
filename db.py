@@ -1464,6 +1464,8 @@ def get_lt_picks(segment: str = None, scan_date: str = None, limit: int = 50) ->
             for k, v in row.items():
                 if hasattr(v, "isoformat"):
                     row[k] = v.isoformat()
+                elif isinstance(v, bool):
+                    pass   # bools have __float__ too — True became 1.0 and the page's === true checks failed
                 elif hasattr(v, "__float__"):
                     fval = float(v)
                     row[k] = None if (_math.isnan(fval) or _math.isinf(fval)) else fval
