@@ -1208,9 +1208,13 @@ def run_lt_scan(segment: str = None) -> dict:
     except Exception as e:
         log.debug("LT scan: crumb pre-flight skipped: %s", e)
 
-    # Open a dedicated DB connection for this scan run — never shares with intraday thread
+    # Check the DB is reachable up front, but don't hold the connection: a segment takes
+    # 15+ minutes and the database drops idle connections, so each save opens its own.
     lt_conn = _open_lt_db_conn()
-    if not lt_conn:
+    db_ok = lt_conn is not None
+    if db_ok:
+        lt_conn.close()
+    else:
         log.warning("LT scan: no DB connection — picks will not be saved")
 
     for seg in segments:
@@ -1399,19 +1403,20 @@ def run_lt_scan(segment: str = None) -> dict:
                 ),
             )
 
-        # Save to DB via dedicated connection
-        if lt_conn:
-            for p in top_picks:
-                _lt_save_pick(p, lt_conn)
+        # Save to DB via a fresh dedicated connection (never shared with the intraday thread)
+        if db_ok:
+            lt_conn = _open_lt_db_conn()
+            if lt_conn:
+                try:
+                    saved = sum(_lt_save_pick(p, lt_conn) for p in top_picks)
+                    log.info("LT scan %s: saved %d/%d picks", seg, saved, len(top_picks))
+                finally:
+                    lt_conn.close()
+            else:
+                log.error("LT scan %s: DB reconnect failed — picks not saved", seg)
 
         all_picks.extend(top_picks)
         summary[seg] = {"scanned": len(picks), "picks": len(top_picks)}
-
-    if lt_conn:
-        try:
-            lt_conn.close()
-        except Exception:
-            pass
 
     _yf_noise.report_and_reset()
     return {"summary": summary, "picks": all_picks, "run_at": datetime.now(IST).isoformat()}
