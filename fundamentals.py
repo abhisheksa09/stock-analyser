@@ -22,6 +22,8 @@ import urllib.error
 import urllib.parse
 from datetime import datetime, timezone, timedelta, date
 
+import us_fundamentals as _us
+
 # yfinance/pandas trigger deprecation warnings about Timestamp.utcnow internally.
 # Suppress the entire yfinance + pandas_datareader warning namespace.
 warnings.filterwarnings("ignore", module=r"yfinance\..*")
@@ -294,6 +296,17 @@ WEIGHTS = {
         "above_200dma":   0.10,
         "rel_strength":   0.10,
         "promoter":       0.15,
+    },
+    # US Top 50 (us_fundamentals.py): mega caps, so large-cap emphasis. No promoter
+    # holding in the US — its 10% is spread over the other factors.
+    "us": {
+        "eps_growth":     0.17,
+        "rev_growth":     0.12,
+        "roe":            0.17,
+        "debt_equity":    0.15,
+        "pe_vs_sector":   0.15,
+        "above_200dma":   0.12,
+        "rel_strength":   0.12,
     },
 }
 
@@ -612,16 +625,23 @@ def update_lt_performance(conn) -> int:
     with conn.cursor() as cur:
         cur.execute("ALTER TABLE long_term_picks ADD COLUMN IF NOT EXISTS perf JSONB")
         cur.execute(
-            "SELECT id, scan_date, symbol, cmp, target_low, target_high FROM long_term_picks"
+            "SELECT id, scan_date, symbol, segment, cmp, target_low, target_high FROM long_term_picks"
             " WHERE scan_date >= %s AND perf->'12m' IS NULL ORDER BY symbol",
             (cutoff,),
         )
         rows = cur.fetchall()
-    nifty = _scr_symbol_series("NIFTY")
+    has_in = any(r["segment"] != "us" for r in rows)
+    has_us = any(r["segment"] == "us" for r in rows)
+    nifty = _scr_symbol_series("NIFTY") if has_in else ([], [])
+    spy   = _us.price_series(_us.BENCHMARK) if has_us else ([], [])
     updated = 0
     for r in rows:
         try:
-            perf = pick_performance(r, _scr_symbol_series(r["symbol"]), nifty)
+            # perf["nifty"] holds the pick's benchmark: the Nifty for India, SPY for the US
+            if r["segment"] == "us":
+                perf = pick_performance(r, _us.price_series(r["symbol"]), spy)
+            else:
+                perf = pick_performance(r, _scr_symbol_series(r["symbol"]), nifty)
             if perf:
                 with conn.cursor() as cur:
                     cur.execute("UPDATE long_term_picks SET perf=%s::jsonb WHERE id=%s",
@@ -986,7 +1006,7 @@ def compute_targets(data: dict, sector_medians: dict) -> dict:
     }
 
 # ── Per-stock news sentiment (reuses NewsAPI + Claude from macro.py) ──────────
-def _get_stock_news_sentiment(symbol: str) -> float:
+def _get_stock_news_sentiment(symbol: str, market: str = "NSE") -> float:
     """
     Fetch last 24h news for a stock, classify via Claude Haiku.
     Returns sentiment multiplier 0.7–1.1 (same scale as macro.py).
@@ -995,7 +1015,7 @@ def _get_stock_news_sentiment(symbol: str) -> float:
     if not news_key:
         return 1.0
     try:
-        query    = urllib.parse.quote(f"{symbol} NSE stock")
+        query    = urllib.parse.quote(f"{symbol} {market} stock" if market == "NSE" else f"{symbol} stock")
         url      = (
             f"https://newsapi.org/v2/everything?q={query}"
             f"&language=en&sortBy=publishedAt&pageSize=5"
@@ -1088,11 +1108,11 @@ def _lt_save_pick(pick: dict, conn) -> bool:
 
 def _open_lt_db_conn():
     """Open a fresh, dedicated psycopg connection for the LT scan thread."""
-    import psycopg
-    from psycopg.rows import dict_row
     url = os.environ.get("DATABASE_URL", "")
     if not url:
-        return None
+        return None   # before the import, so a --dry-run works without psycopg installed
+    import psycopg
+    from psycopg.rows import dict_row
     if "sslmode" not in url:
         url = url + ("&" if "?" in url else "?") + "sslmode=require"
     try:
@@ -1115,10 +1135,13 @@ def run_lt_scan(segment: str = None) -> dict:
     """
     _yf_reset_run_state()          # fresh crumb/backoff budget each run
     _scr_series.clear()            # fresh Screener prices each run
+    _us.reset_run_state()          # fresh US prices each run
     _install_yf_noise_filter()     # app.py may have replaced the root handler since import
 
+    # No segment = the three Indian segments. The US Top 50 runs only when asked for
+    # ("us"): it's a separate weekly step with its own digest email.
     segments = [segment] if segment else ["large", "mid", "small"]
-    universe = {"large": LARGE_CAP, "mid": MIDCAP, "small": SMALLCAP}
+    universe = {"large": LARGE_CAP, "mid": MIDCAP, "small": SMALLCAP, "us": _us.US_SYMBOLS}
     all_picks = []
     summary   = {}
 
@@ -1157,7 +1180,7 @@ def run_lt_scan(segment: str = None) -> dict:
         # Step 1a: Fetch Nifty 50 history once for the whole segment
         # (the Screener source fetches its own via _scr_symbol_series)
         nifty_hist = None
-        if LT_FUNDAMENTALS_SOURCE != "screener":
+        if LT_FUNDAMENTALS_SOURCE != "screener" and seg != "us":
             try:
                 import yfinance as _yf
                 with warnings.catch_warnings():
@@ -1172,10 +1195,11 @@ def run_lt_scan(segment: str = None) -> dict:
         stock_data = []
         for i, sym in enumerate(stocks, 1):
             try:
-                d = _fetch_stock(sym, nifty_hist=nifty_hist)
+                d = _us.fetch_us(sym) if seg == "us" else _fetch_stock(sym, nifty_hist=nifty_hist)
                 if d:
                     stock_data.append(d)
-                time.sleep(_yf_rl["delay"])  # be gentle to yfinance
+                if seg != "us":
+                    time.sleep(_yf_rl["delay"])  # be gentle to yfinance (US paces itself)
             except Exception as e:
                 log.debug("fetch_yf %s: %s", sym, e)
             if i % 10 == 0:
@@ -1263,7 +1287,7 @@ def run_lt_scan(segment: str = None) -> dict:
             enriched.append(d)
         with_div = sum(1 for d in enriched if d["events"].get("dividend_consistent"))
         with_res = sum(1 for d in enriched if d["events"].get("results_due"))
-        log.info("LT scan %s: events from Screener — %d consistent dividend payers, "
+        log.info("LT scan %s: events from " + ("SEC" if seg == "us" else "Screener") + " — %d consistent dividend payers, "
                  "%d with an announced results date", seg, with_div, with_res)
 
         # Step 4: Score + compute targets
@@ -1275,7 +1299,7 @@ def run_lt_scan(segment: str = None) -> dict:
                 sentiment = 1.0
                 if scored["score"] >= 50:
                     # Only fetch news for plausible picks (save API calls)
-                    sentiment = _get_stock_news_sentiment(d["symbol"])
+                    sentiment = _get_stock_news_sentiment(d["symbol"], "US" if seg == "us" else "NSE")
 
                 final_score = round(min(100.0, scored["score"] * sentiment), 1)
 

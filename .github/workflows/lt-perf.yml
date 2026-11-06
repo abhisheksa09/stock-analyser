@@ -12,6 +12,9 @@ on:
     # Weekdays 17:30 IST = 12:00 UTC: two hours after the 15:30 close, so Screener has
     # the day's closing price. GitHub may start it a few minutes late.
     - cron: '0 12 * * 1-5'
+    # US picks: 22:30 UTC = after the 16:00 ET close in both EDT (20:00 UTC) and EST
+    # (21:00 UTC). Also refreshes Indian picks again, which is harmless.
+    - cron: '30 22 * * 1-5'
   workflow_dispatch:
 
 concurrency:
@@ -33,5 +36,8 @@ jobs:
         run: pip install -r requirements.txt
       - name: Refresh pick performance
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL:      ${{ secrets.DATABASE_URL }}
+          SEC_USER_AGENT:    ${{ secrets.SEC_USER_AGENT }}
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
         run: python lt_scan_job.py --perf-only

@@ -613,8 +613,11 @@ def _lt_num(v, fmt: str = "{:.1f}") -> str:
 def format_weekly_lt_picks(picks: list) -> tuple:
     """Returns (subject, html_body) for the weekly long-term picks digest email."""
     date_str = datetime.now(IST).strftime("%d %b %Y")
-    seg_labels = {"large": "Large Cap", "mid": "Mid Cap", "small": "Small Cap"}
-    seg_colors = {"large": "#0f4c81", "mid": "#0369a1", "small": "#0284c7"}
+    seg_labels = {"large": "Large Cap", "mid": "Mid Cap", "small": "Small Cap", "us": "US Top 50"}
+    seg_colors = {"large": "#0f4c81", "mid": "#0369a1", "small": "#0284c7", "us": "#1d4ed8"}
+    # The US Top 50 scan sends its own digest: dollars, and no promoter holding in the US
+    is_us = bool(picks) and all(p.get("segment") == "us" for p in picks)
+    cur = "$" if is_us else "Rs&nbsp;"
 
     # Group by segment, strong buys first
     from collections import defaultdict
@@ -625,7 +628,7 @@ def format_weekly_lt_picks(picks: list) -> tuple:
     sections_html = ""
     total_strong = sum(1 for p in picks if p.get("signal") == "STRONG_BUY")
 
-    for seg in ("large", "mid", "small"):
+    for seg in ("large", "mid", "small", "us"):
         seg_picks = sorted(by_seg.get(seg, []), key=lambda x: x.get("score", 0), reverse=True)
         if not seg_picks:
             continue
@@ -638,9 +641,9 @@ def format_weekly_lt_picks(picks: list) -> tuple:
 
             target_str = "&mdash;"
             if tgt_low and tgt_high:
-                target_str = f"Rs&nbsp;{tgt_low:,.0f}&nbsp;&ndash;&nbsp;{tgt_high:,.0f}"
+                target_str = f"{cur}{tgt_low:,.0f}&nbsp;&ndash;&nbsp;{tgt_high:,.0f}"
             elif tgt_high:
-                target_str = f"Rs&nbsp;{tgt_high:,.0f}"
+                target_str = f"{cur}{tgt_high:,.0f}"
 
             upside_str = "&mdash;"
             if up_low is not None and up_high is not None:
@@ -666,14 +669,14 @@ def format_weekly_lt_picks(picks: list) -> tuple:
                 f'<td style="{_LT_TD}font-weight:700;font-size:13px;">{p.get("symbol","")}</td>'
                 f'<td style="padding:8px 6px;font-size:12px;color:#6b7280;">{p.get("sector") or "&mdash;"}</td>'
                 f'<td style="{_LT_TD}text-align:center;font-weight:700;font-size:13px;color:#15803d;">{p.get("score", 0):.0f}</td>'
-                f'<td style="{_LT_TDR}">{"Rs&nbsp;" + format(cmp, ",.2f") if cmp else "&mdash;"}</td>'
+                f'<td style="{_LT_TDR}">{cur + format(cmp, ",.2f") if cmp else "&mdash;"}</td>'
                 f'<td style="{_LT_TDR}">{target_str}</td>'
                 f'<td style="{_LT_TDR}color:#15803d;font-weight:600;">{upside_str}</td>'
                 f'<td style="{_LT_TDR}">{_lt_num(p.get("pe"))}</td>'
                 f'<td style="{_LT_TDR}">{_lt_num(p.get("eps_growth"), "{:+.0f}%")}</td>'
                 f'<td style="{_LT_TDR}">{_lt_num(p.get("roe"), "{:.1f}%")}</td>'
                 f'<td style="{_LT_TDR}">{_lt_num(p.get("debt_equity"), "{:.2f}")}</td>'
-                f'<td style="{_LT_TDR}">{_lt_num(p.get("promoter_pct"), "{:.1f}%")}</td>'
+                + ("" if is_us else f'<td style="{_LT_TDR}">{_lt_num(p.get("promoter_pct"), "{:.1f}%")}</td>') +
                 f'<td style="{_LT_TD}text-align:center;">{dma_html}</td>'
                 f'<td style="{_LT_TD}">{tags_html}</td>'
                 '</tr>'
@@ -696,7 +699,7 @@ def format_weekly_lt_picks(picks: list) -> tuple:
             f'<th style="{th}text-align:right;">EPS Gr</th>'
             f'<th style="{th}text-align:right;">ROE</th>'
             f'<th style="{th}text-align:right;">D/E</th>'
-            f'<th style="{th}text-align:right;">Promoter</th>'
+            + ("" if is_us else f'<th style="{th}text-align:right;">Promoter</th>') +
             f'<th style="{th}text-align:center;">200 DMA</th>'
             f'<th style="{th}text-align:left;">Events</th>'
             '</tr>'
@@ -712,17 +715,21 @@ def format_weekly_lt_picks(picks: list) -> tuple:
 
     body = (
         f'<p style="margin:0 0 4px;font-size:14px;color:#374151;">'
-        f'Weekly long-term scan complete — <b>{len(picks)} picks</b> across all segments.</p>'
+        f'Weekly long-term scan complete — <b>{len(picks)} picks</b> {"from the US Top 50" if is_us else "across all segments"}.</p>'
         f'<p style="margin:0 0 16px;font-size:13px;color:#6b7280;">'
         f'{total_strong} Strong Buy &nbsp;|&nbsp; '
         f'Horizon: 6–12 months</p>'
         + sections_html
         + disclaimer
     )
-    subject = f"NSE Scanner: Weekly Long-Term Picks — {len(picks)} stocks | {date_str}"
+    if is_us:
+        subject = f"US Scanner: Weekly Long-Term Picks — {len(picks)} stocks | {date_str}"
+        title, subtitle = "Weekly US Long-Term Picks", f"{date_str} · {len(picks)} picks from the US Top 50"
+    else:
+        subject = f"NSE Scanner: Weekly Long-Term Picks — {len(picks)} stocks | {date_str}"
+        title, subtitle = "Weekly Long-Term Picks", f"{date_str} · {len(picks)} picks across Large / Mid / Small cap"
     return subject, _wrap(
-        "Weekly Long-Term Picks",
-        f"{date_str} · {len(picks)} picks across Large / Mid / Small cap",
+        title, subtitle,
         body, "weekly_lt_picks", max_width=1100,
     )
 

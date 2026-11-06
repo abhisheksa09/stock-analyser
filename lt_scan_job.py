@@ -7,11 +7,16 @@ This runs fundamentals.run_lt_scan with Screener as the fundamentals source, sav
 to DATABASE_URL (the same table the app reads), emails the digest, then refreshes every
 past pick's performance against the Nifty (the Long Term tab's track record).
 
-Usage: python lt_scan_job.py [large|mid|small] [--dry-run | --perf-only]
+The US Top 50 ("us") is a separate run with its own digest: SEC EDGAR fundamentals,
+Alpaca/Yahoo prices, SPY as the benchmark (us_fundamentals.py).
+
+Usage: python lt_scan_job.py [large|mid|small|us] [--dry-run | --perf-only]
        --dry-run   prints the picks and saves/emails nothing (no DATABASE_URL needed).
        --perf-only skips the scan and only refreshes past picks' performance.
 Env:   DATABASE_URL (required), RESEND_API_KEY + EMAIL_TO (digest), NEWS_API_KEY +
-       ANTHROPIC_API_KEY (optional per-stock sentiment)
+       ANTHROPIC_API_KEY (optional per-stock sentiment); for "us": SEC_USER_AGENT
+       ("Name email@domain" — SEC refuses requests without a contact email),
+       ALPACA_API_KEY + ALPACA_API_SECRET (optional, else Yahoo prices)
 Exit:  non-zero if no picks were saved or a segment was skipped, so the workflow run
        shows red instead of silently leaving stale picks behind.
 """
@@ -49,8 +54,8 @@ def main() -> int:
     dry_run   = "--dry-run" in args
     perf_only = "--perf-only" in args
     segment   = next((a for a in args if not a.startswith("--")), None)
-    if segment not in (None, "large", "mid", "small"):
-        log.error("segment must be large, mid or small (got %r)", segment)
+    if segment not in (None, "large", "mid", "small", "us"):
+        log.error("segment must be large, mid, small or us (got %r)", segment)
         return 2
     if dry_run:
         os.environ.pop("DATABASE_URL", None)   # run_lt_scan saves only with a DB connection

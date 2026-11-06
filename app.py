@@ -2461,6 +2461,8 @@ def _us_eod_settlement_job():
 
 import fundamentals as _lt
 
+LT_SEGMENTS = ("large", "mid", "small", "us")   # "us" = US Top 50 (us_fundamentals.py)
+
 # ── Long-term picks routes ────────────────────────────────────────────────────
 
 @app.route("/api/long-term-picks")
@@ -2468,14 +2470,16 @@ def lt_picks():
     sess, err = _require_session(request)
     if err:
         return err
-    segment   = request.args.get("segment")   # large | mid | small | None (all)
+    segment   = request.args.get("segment")   # large | mid | small | us | None (all)
     scan_date = request.args.get("scan_date")  # YYYY-MM-DD or None (latest)
-    if segment and segment not in ("large", "mid", "small"):
-        return jsonify({"error": "segment must be large, mid, or small"}), 400
-    picks = _db_module.get_lt_picks(segment=segment, scan_date=scan_date)
-    dates = _db_module.get_lt_scan_dates()
+    market    = "US" if (request.args.get("market", "").upper() == "US" or segment == "us") else "IN"
+    if segment and segment not in LT_SEGMENTS:
+        return jsonify({"error": "segment must be large, mid, small, or us"}), 400
+    picks = _db_module.get_lt_picks(segment=segment, scan_date=scan_date, market=market)
+    dates = _db_module.get_lt_scan_dates(market)
     return jsonify({
         "status":    "ok",
+        "market":    market,
         "segment":   segment or "all",
         "scan_date": scan_date or (dates[0] if dates else None),
         "picks":     picks,
@@ -2488,7 +2492,8 @@ def lt_track_record():
     sess, err = _require_session(request)
     if err:
         return err
-    return jsonify({"status": "ok", **_db_module.get_lt_track_record()})
+    market = "US" if request.args.get("market", "").upper() == "US" else "IN"
+    return jsonify({"status": "ok", "market": market, **_db_module.get_lt_track_record(market)})
 
 
 def _start_keepalive_heartbeat(label: str):
@@ -2661,7 +2666,7 @@ def _dispatch_lt_scan_workflow(segment):
         return False, f"GitHub refused the scan request (HTTP {e.code})"
     except Exception as e:
         return False, f"Could not reach GitHub: {e}"
-    est = "10–20 min" if segment else "30–45 min"
+    est = "5–10 min" if segment == "us" else ("10–20 min" if segment else "30–45 min")
     return True, (f"Scan started on GitHub Actions — takes about {est}. "
                   "The digest email arrives when it finishes; refresh this tab then.")
 
@@ -2683,8 +2688,8 @@ def lt_picks_run():
         return jsonify({"error": "Admin only"}), 403
     data    = request.get_json(silent=True) or {}
     segment = data.get("segment")   # optional — run one segment or all
-    if segment and segment not in ("large", "mid", "small"):
-        return jsonify({"error": "segment must be large, mid, or small"}), 400
+    if segment and segment not in LT_SEGMENTS:
+        return jsonify({"error": "segment must be large, mid, small, or us"}), 400
 
     if not LT_SCAN_ON_RENDER:
         ok, msg = _dispatch_lt_scan_workflow(segment)

@@ -1424,30 +1424,38 @@ def save_lt_pick(pick: dict) -> bool:
         log.warning("save_lt_pick %s: %s", pick.get("symbol"), e)
         return False
 
-def get_lt_picks(segment: str = None, scan_date: str = None, limit: int = 50) -> list:
+def _lt_market_filter(segment: str = None, market: str = "IN") -> tuple:
+    """(SQL condition, params) selecting one segment, or one market's segments.
+    The US Top 50 is segment 'us'; every other segment is Indian."""
+    if market == "US" or segment == "us":
+        return "segment=%s", ["us"]
+    if segment:
+        return "segment=%s", [segment]
+    return "segment<>%s", ["us"]
+
+
+def get_lt_picks(segment: str = None, scan_date: str = None, limit: int = 50,
+                 market: str = "IN") -> list:
     """
-    Fetch long-term picks. If scan_date is None, returns the most recent scan's picks.
+    Fetch long-term picks for one market (IN = large/mid/small, US = us). If scan_date
+    is None, returns the most recent scan's picks.
     """
     conn = db()
     if not conn:
         return []
+    cond, cond_params = _lt_market_filter(segment, market)
     try:
         # Resolve latest scan date if not specified
         if not scan_date:
             with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT MAX(scan_date) AS d FROM long_term_picks"
-                    + (" WHERE segment=%s" if segment else ""),
-                    (segment,) if segment else (),
-                )
+                cur.execute("SELECT MAX(scan_date) AS d FROM long_term_picks WHERE " + cond,
+                            cond_params)
                 row = cur.fetchone()
                 if not row or not row["d"]:
                     return []
                 scan_date = row["d"].isoformat() if hasattr(row["d"], "isoformat") else row["d"]
 
-        where, params = ["scan_date=%s"], [scan_date]
-        if segment:
-            where.append("segment=%s"); params.append(segment)
+        where, params = ["scan_date=%s", cond], [scan_date, *cond_params]
         sql = (
             "SELECT * FROM long_term_picks WHERE " + " AND ".join(where)
             + " ORDER BY score DESC LIMIT %s"
@@ -1475,15 +1483,17 @@ def get_lt_picks(segment: str = None, scan_date: str = None, limit: int = 50) ->
         log.warning("get_lt_picks: %s", e)
         return []
 
-def get_lt_scan_dates() -> list:
-    """Return list of distinct scan_dates available, newest first."""
+def get_lt_scan_dates(market: str = "IN") -> list:
+    """Return list of distinct scan_dates available for one market, newest first."""
     conn = db()
     if not conn:
         return []
+    cond, params = _lt_market_filter(None, market)
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT DISTINCT scan_date FROM long_term_picks ORDER BY scan_date DESC LIMIT 12"
+                "SELECT DISTINCT scan_date FROM long_term_picks WHERE " + cond
+                + " ORDER BY scan_date DESC LIMIT 12", params
             )
             return [r["scan_date"].isoformat() if hasattr(r["scan_date"], "isoformat")
                     else r["scan_date"] for r in cur.fetchall()]
@@ -1497,20 +1507,22 @@ def get_lt_scan_dates() -> list:
 LT_TRACK_FROM = "2026-11-03"
 
 
-def get_lt_track_record() -> dict:
-    """How past long-term picks did against the Nifty, from their `perf` records.
+def get_lt_track_record(market: str = "IN") -> dict:
+    """How past long-term picks did against their benchmark (Nifty for India, SPY for
+    the US: perf["nifty"] holds whichever applies), from their `perf` records.
     Per signal (and all): picks measured, average return, average Nifty return,
     % that beat the Nifty and % that gained — "so far" and at each passed horizon —
     plus how many reached their first target."""
     conn = db()
     if not conn:
         return {}
+    cond, params = _lt_market_filter(None, market)
     try:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT scan_date, signal, perf FROM long_term_picks"
-                " WHERE perf IS NOT NULL AND scan_date >= %s AND signal = 'STRONG_BUY'",
-                (LT_TRACK_FROM,),
+                " WHERE perf IS NOT NULL AND scan_date >= %s AND signal = 'STRONG_BUY' AND " + cond,
+                (LT_TRACK_FROM, *params),
             )
             rows = cur.fetchall()
     except Exception as e:

@@ -5,8 +5,13 @@ name: Weekly long-term scan
 # Fundamentals come from Screener.in, prices from Yahoo's chart endpoint.
 # Results go straight to the app's database; the digest email goes out via Resend.
 #
-# Required secrets: DATABASE_URL, RESEND_API_KEY, EMAIL_TO
-# Optional secrets: EMAIL_FROM, NEWS_API_KEY, ANTHROPIC_API_KEY (per-stock sentiment)
+# The US Top 50 runs as a second step with its own digest: SEC EDGAR fundamentals,
+# Alpaca (or Yahoo chart) prices, SPY benchmark — see us_fundamentals.py.
+#
+# Required secrets: DATABASE_URL, RESEND_API_KEY, EMAIL_TO,
+#                   SEC_USER_AGENT ("Name email@domain": SEC refuses requests without one)
+# Optional secrets: EMAIL_FROM, NEWS_API_KEY, ANTHROPIC_API_KEY (per-stock sentiment),
+#                   ALPACA_API_KEY + ALPACA_API_SECRET (US prices; Yahoo chart otherwise)
 
 on:
   schedule:
@@ -15,11 +20,11 @@ on:
   workflow_dispatch:
     inputs:
       segment:
-        description: 'Segment to scan (blank = all)'
+        description: 'Segment to scan (blank = all Indian segments, then the US Top 50)'
         required: false
         default: ''
         type: choice
-        options: ['', 'large', 'mid', 'small']
+        options: ['', 'large', 'mid', 'small', 'us']
       dry_run:
         description: 'Dry run: print picks, save and email nothing'
         required: false
@@ -55,4 +60,22 @@ jobs:
           EMAIL_FROM:        ${{ secrets.EMAIL_FROM }}
           NEWS_API_KEY:      ${{ secrets.NEWS_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SEC_USER_AGENT:    ${{ secrets.SEC_USER_AGENT }}
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
         run: python lt_scan_job.py "${{ inputs.segment }}" ${{ inputs.dry_run && '--dry-run' || '' }} ${{ inputs.perf_only && '--perf-only' || '' }}
+      # Weekly (and blank-segment manual) runs also scan the US Top 50. Runs even if the
+      # Indian step failed — the two markets don't share a data source.
+      - name: Run US Top 50 long-term scan
+        if: ${{ !cancelled() && inputs.segment == '' && !inputs.perf_only }}
+        env:
+          DATABASE_URL:      ${{ secrets.DATABASE_URL }}
+          RESEND_API_KEY:    ${{ secrets.RESEND_API_KEY }}
+          EMAIL_TO:          ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM:        ${{ secrets.EMAIL_FROM }}
+          NEWS_API_KEY:      ${{ secrets.NEWS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SEC_USER_AGENT:    ${{ secrets.SEC_USER_AGENT }}
+          ALPACA_API_KEY:    ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_API_SECRET: ${{ secrets.ALPACA_API_SECRET }}
+        run: python lt_scan_job.py us ${{ inputs.dry_run && '--dry-run' || '' }}
